@@ -1,0 +1,19 @@
+{
+  "name": "mani-core-node",
+  "version": "1.0.0",
+  "description": "Servicio Core Backend del ecosistema MANI (Usuarios, Tenants, Perfiles, KYC, Catalogos)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test"
+  },
+  "keywords": ["mani", "backend", "core", "microservices"],
+  "author": "TRAMA · Ingenieria de Software",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  }
+}
