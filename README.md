@@ -88,6 +88,12 @@ npm run dev
 
 # Modo producción
 npm start
+
+# Linter
+npm run lint
+
+# Pruebas unitarias e integración
+npm test
 ```
 
 ### Opción 2: Con Docker

@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "test": "node --test tests/",
+    "test:watch": "node --test --watch tests/",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "keywords": ["mani", "backend", "core", "microservices"],
   "author": "TRAMA · Ingenieria de Software",
@@ -15,5 +18,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0",
+    "supertest": "^7.0.0"
   }
 }
