@@ -2,10 +2,15 @@ const InMemoryTenantRepository = require('./infrastructure/repositories/InMemory
 const InMemoryProfileRepository = require('./infrastructure/repositories/InMemoryProfileRepository');
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
 const TokenService = require('./infrastructure/security/TokenService');
+const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
+const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
 
 const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUseCase');
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
+const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
+
+const config = require('./config');
 
 class Container {
   constructor() {
@@ -14,6 +19,14 @@ class Container {
     this.profileRepository = new InMemoryProfileRepository();
     this.catalogRepository = new InMemoryCatalogRepository();
     this.tokenService = new TokenService();
+
+    this.supabaseClientFactory = new SupabaseClientFactory({
+      supabaseUrl: config.supabaseUrl,
+      supabaseServiceRoleKey: config.supabaseServiceRoleKey,
+    });
+    this.supabaseConnectionChecker = new SupabaseConnectionChecker({
+      supabaseClientFactory: this.supabaseClientFactory,
+    });
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
     this.listTenantsUseCase = new ListTenantsUseCase({
@@ -26,6 +39,11 @@ class Container {
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
+    });
+
+    this.checkHealthUseCase = new CheckHealthUseCase({
+      supabaseConnectionChecker: this.supabaseConnectionChecker,
+      envLabel: config.envLabel,
     });
   }
 }

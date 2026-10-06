@@ -1,10 +1,17 @@
-function getHealth(req, res) {
-  res.status(200).json({
-    status: 'UP',
-    service: 'MANI-Core-Node',
-    timestamp: new Date().toISOString(),
-    correlationId: req.correlationId || 'none',
-  });
+const container = require('../container');
+
+async function getHealth(req, res, next) {
+  try {
+    const result = await container.checkHealthUseCase.execute();
+    const httpStatus = result.status === 'UP' ? 200 : 503;
+
+    res.status(httpStatus).json({
+      ...result,
+      correlationId: req.correlationId || 'none',
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = { getHealth };
