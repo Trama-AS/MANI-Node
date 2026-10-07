@@ -29,6 +29,11 @@ const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/De
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const { RegisterCompanyClientWithSitesUseCase } = require('./features/client/application/RegisterCompanyClientWithSitesUseCase');
+const { AddSiteToCompanyClientUseCase } = require('./features/client/application/AddSiteToCompanyClientUseCase');
+const { GetCompanyClientSitesUseCase } = require('./features/client/application/GetCompanyClientSitesUseCase');
+const { InMemoryCompanyClientRepository } = require('./features/client/infrastructure/InMemoryCompanyClientRepository');
+const { PostgresCompanyClientRepository } = require('./features/client/infrastructure/PostgresCompanyClientRepository');
 
 const config = require('./config');
 
@@ -79,6 +84,11 @@ class Container {
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
+      if (this.pgPoolFactory.isConfigured()) {
+        this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
+      } else {
+        this.companyClientRepository = new InMemoryCompanyClientRepository();
+      }
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
@@ -89,6 +99,7 @@ class Container {
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+      this.companyClientRepository = new InMemoryCompanyClientRepository();
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -119,6 +130,16 @@ class Container {
       supabaseConnectionChecker: this.supabaseConnectionChecker,
       envLabel: config.envLabel,
     });
+
+    this.registerCompanyClientWithSitesUseCase = new RegisterCompanyClientWithSitesUseCase({
+      companyClientRepository: this.companyClientRepository,
+      authIdentityService: this.authIdentityService,
+      tenantRepository: this.tenantRepository,
+    });
+
+    this.addSiteToCompanyClientUseCase = new AddSiteToCompanyClientUseCase(this.companyClientRepository);
+
+    this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
       tenantRepository: this.tenantRepository,
