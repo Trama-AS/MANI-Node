@@ -1,0 +1,170 @@
+name: CD
+
+# Publica la imagen en GHCR y despliega el Core en DEV y luego en QA.
+# Requisitos de infraestructura (coordinar con CFG-27/CFG-28):
+#   - Hosts DEV/QA con Docker, alcanzables por SSH desde GitHub Actions.
+#   - GitHub Environments "dev" y "qa" creados en Settings > Environments,
+#     cada uno con sus propios secrets (ver abajo) y, opcionalmente,
+#     "required reviewers" en "qa" para aprobar manualmente antes de promover.
+#
+# Secrets esperados por ambiente (prefijo DEV_ / QA_):
+#   SSH_HOST, SSH_USER, SSH_KEY, SSH_PORT (opcional, default 22)
+#   HOST_PORT (opcional, default 3000)
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET
+#   HEALTHCHECK_URL (URL pública/interna del /health de ese ambiente)
+#
+# SUPABASE_JWT_SECRET es obligatorio en QA (config.assertValid() aborta el arranque
+# si falta, ver src/config/index.js) y recomendado también en DEV: sin él, el Core
+# firma/verifica con un secreto de desarrollo fijo e inseguro.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag de imagen a redesplegar (default: sha del commit actual)'
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    name: Build & Push a GHCR
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Calcular nombre de imagen y tag
+        id: vars
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="${{ env.REGISTRY }}/${OWNER_LOWER}/mani-node"
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.vars.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-dev:
+    name: Deploy a DEV
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Desplegar vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          port: ${{ secrets.DEV_SSH_PORT || 22 }}
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,IMAGE,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_JWT_SECRET,HOST_PORT
+          script: |
+            set -e
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            docker pull "$IMAGE"
+            docker stop mani-core-dev || true
+            docker rm mani-core-dev || true
+            docker run -d --name mani-core-dev --restart unless-stopped \
+              -p "${HOST_PORT:-3000}:3000" \
+              -e NODE_ENV=development \
+              -e PORT=3000 \
+              -e SUPABASE_URL="$SUPABASE_URL" \
+              -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+              -e SUPABASE_JWT_SECRET="$SUPABASE_JWT_SECRET" \
+              "$IMAGE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          IMAGE: ${{ needs.build-and-push.outputs.image }}:${{ needs.build-and-push.outputs.tag }}
+          SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.DEV_SUPABASE_JWT_SECRET }}
+          HOST_PORT: ${{ secrets.DEV_HOST_PORT }}
+
+      - name: Verificar /health en DEV
+        run: |
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" "${{ secrets.DEV_HEALTHCHECK_URL }}")
+          cat /tmp/health.json
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check de DEV falló con status $STATUS"
+            exit 1
+          fi
+
+  deploy-qa:
+    name: Deploy a QA
+    needs: [build-and-push, deploy-dev]
+    runs-on: ubuntu-latest
+    environment: qa
+    steps:
+      - name: Desplegar vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.QA_SSH_HOST }}
+          username: ${{ secrets.QA_SSH_USER }}
+          key: ${{ secrets.QA_SSH_KEY }}
+          port: ${{ secrets.QA_SSH_PORT || 22 }}
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,IMAGE,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_JWT_SECRET,HOST_PORT
+          script: |
+            set -e
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            docker pull "$IMAGE"
+            docker stop mani-core-qa || true
+            docker rm mani-core-qa || true
+            docker run -d --name mani-core-qa --restart unless-stopped \
+              -p "${HOST_PORT:-3000}:3000" \
+              -e NODE_ENV=qa \
+              -e PORT=3000 \
+              -e SUPABASE_URL="$SUPABASE_URL" \
+              -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+              -e SUPABASE_JWT_SECRET="$SUPABASE_JWT_SECRET" \
+              "$IMAGE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          IMAGE: ${{ needs.build-and-push.outputs.image }}:${{ needs.build-and-push.outputs.tag }}
+          SUPABASE_URL: ${{ secrets.QA_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.QA_SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.QA_SUPABASE_JWT_SECRET }}
+          HOST_PORT: ${{ secrets.QA_HOST_PORT }}
+
+      - name: Verificar /health en QA
+        run: |
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" "${{ secrets.QA_HEALTHCHECK_URL }}")
+          cat /tmp/health.json
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check de QA falló con status $STATUS"
+            exit 1
+          fi
