@@ -1,7 +1,14 @@
 const InMemoryTenantRepository = require('./infrastructure/repositories/InMemoryTenantRepository');
+const SupabaseTenantRepository = require('./infrastructure/repositories/SupabaseTenantRepository');
 const InMemoryProfileRepository = require('./infrastructure/repositories/InMemoryProfileRepository');
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
+const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemoryUsuarioRepository');
+const InMemoryAliadoRepository = require('./infrastructure/repositories/InMemoryAliadoRepository');
+const SupabaseUsuarioRepository = require('./infrastructure/repositories/SupabaseUsuarioRepository');
+const SupabaseAliadoRepository = require('./infrastructure/repositories/SupabaseAliadoRepository');
 const TokenService = require('./infrastructure/security/TokenService');
+const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
+const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
 
@@ -9,13 +16,13 @@ const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUs
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
+const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 
 const config = require('./config');
 
 class Container {
   constructor() {
     // 1. Instancias de Infraestructura (Adaptadores Secundarios)
-    this.tenantRepository = new InMemoryTenantRepository();
     this.profileRepository = new InMemoryProfileRepository();
     this.catalogRepository = new InMemoryCatalogRepository();
     this.tokenService = new TokenService();
@@ -27,6 +34,23 @@ class Container {
     this.supabaseConnectionChecker = new SupabaseConnectionChecker({
       supabaseClientFactory: this.supabaseClientFactory,
     });
+
+    // Con Supabase configurado (QA/producción) se usa la persistencia e identidad
+    // reales; sin configurar (DEV/test sin credenciales) cae a implementaciones
+    // en memoria, igual que ya hacía el resto del container.
+    if (this.supabaseClientFactory.isConfigured()) {
+      this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.aliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.authIdentityService = new SupabaseAuthIdentityService({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
+    } else {
+      this.tenantRepository = new InMemoryTenantRepository();
+      this.usuarioRepository = new InMemoryUsuarioRepository();
+      this.aliadoRepository = new InMemoryAliadoRepository();
+      this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+    }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
     this.listTenantsUseCase = new ListTenantsUseCase({
@@ -44,6 +68,13 @@ class Container {
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
       envLabel: config.envLabel,
+    });
+
+    this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoRepository: this.aliadoRepository,
+      authIdentityService: this.authIdentityService,
     });
   }
 }

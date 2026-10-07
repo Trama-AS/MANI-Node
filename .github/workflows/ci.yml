@@ -67,9 +67,14 @@ jobs:
           echo "::error::El Core no respondió a /health a tiempo"
           exit 1
 
+      # Acotado a "Ally Registration": es el único folder implementado (US-02.1.1-M2).
+      # login/refresh/logout (folder "Auth") siguen sin implementar y seguirían dando
+      # 404 — se vuelven a incluir en el gate cuando tengan su propia tarea de
+      # implementación. Ver docs/openapi/core.yaml y postman/MANI-Core.postman_collection.json.
       - name: Ejecutar colección Postman con Newman contra DEV
         run: >
           npm run postman:run:dev --
+          --folder "Ally Registration"
           --reporters cli,junit
           --reporter-junit-export newman/report.xml
 

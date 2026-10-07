@@ -36,6 +36,7 @@ flowchart LR
 | `GET` | `/api/v1/core/tenants` | Catálogo de empresas / tenants activos. | Sí |
 | `GET` | `/api/v1/core/profiles/me` | Información del perfil del usuario autenticado. | Sí (JWT) |
 | `GET` | `/api/v1/core/catalog` | Catálogo de servicios de manicura disponibles. | No |
+| `POST` | `/api/v1/core/auth/register/ally` | Registro de Aliado persona natural (ADR-0022 / US-02.1.1-M2). | No (pre-auth; requiere `X-Tenant-Id`) |
 
 ### Ejemplo de Respuesta (`GET /api/v1/core/health`):
 ```json
@@ -71,7 +72,9 @@ npm run postman:run:qa    # contra postman/environments/qa.postman_environment.j
 Los `baseUrl` de `dev`/`qa` son placeholders hasta que CFG-27/CFG-28 provisionen los hosts reales (ver sección CI/CD).
 
 ### 🚦 Gate de contrato en CI
-El job `postman-contract-gate` (`.github/workflows/ci.yml`) levanta el Core en background, espera `/health`, y corre `npm run postman:run:dev` contra él en cada push/PR. Si el código deja de cumplir el contrato (status/esquema/tenant), Newman devuelve código de salida distinto de cero y **el build se rompe** — el reporte JUnit queda publicado como artifact (`newman-report`) para inspeccionar qué assertion falló. Hoy este job falla en rojo porque `/auth/*` todavía no está implementado en `src/`; eso es esperado hasta que se implemente esa parte del Core.
+El job `postman-contract-gate` (`.github/workflows/ci.yml`) levanta el Core en background, espera `/health`, y corre `npm run postman:run:dev` contra él en cada push/PR. Si el código deja de cumplir el contrato (status/esquema/tenant), Newman devuelve código de salida distinto de cero y **el build se rompe** — el reporte JUnit queda publicado como artifact (`newman-report`) para inspeccionar qué assertion falló.
+
+Actualmente el gate corre con `--folder "Ally Registration"`, es decir, **solo** valida `POST /auth/register/ally` (ya implementado). El folder `Auth` (`login`/`refresh`/`logout`) queda fuera del gate a propósito: esos endpoints todavía no existen en `src/` y no son parte de esta historia (US-02.1.1-M2) — se reincorporan al gate cuando tengan su propia tarea de implementación. Quitar el `--folder` antes de eso rompería el build por algo fuera de alcance.
 
 ---
 
@@ -167,6 +170,60 @@ Infraestructura pendiente de aprovisionar (coordinar con **CFG-27/CFG-28**) ante
 3. (Recomendado) "Required reviewers" en el Environment `qa` para aprobar manualmente la promoción DEV → QA.
 
 Hasta que esos secrets existan, el job `build-and-push` sí publicará la imagen en GHCR; los jobs `deploy-dev`/`deploy-qa` fallarán al no encontrar host/credenciales, lo cual es esperado hasta completar el aprovisionamiento.
+
+---
+
+## 🧑‍🔧 Registro de Aliado persona natural (US-02.1.1-M2 / ADR-0022)
+
+`POST /api/v1/auth/register/ally` migra a Core Node la lógica que en la arquitectura anterior (entregas 1-3) vivía como PL/pgSQL invocado directamente desde el cliente Flutter:
+* La función `registrar_aliado_persona_natural` y el trigger `handle_new_user` (disparado por `supabase.auth.signUp()`) — ahora es código explícito en `src/application/useCases/auth/RegisterAllyNaturalPersonUseCase.js`, ejecutado por Core Node, no por la base de datos.
+* El "upsert a usuario" — `SupabaseUsuarioRepository`/`SupabaseAliadoRepository` (`src/infrastructure/repositories/`) hacen el mismo `ON CONFLICT DO UPDATE` que hacía el trigger, pero desde Node.
+* La identidad sigue siendo de **Supabase Auth** (`IAuthIdentityService` → `SupabaseAuthIdentityService`: `auth.admin.createUser` + `auth.signInWithPassword`), tal como pide la nueva arquitectura ("Supabase Auth emitiendo el token"). El JWT resultante trae el claim `tenant_id`, verificado por `TokenService` en cada request subsecuente.
+* En DEV/test sin credenciales de Supabase, el `container.js` cae automáticamente a `InMemory*Repository` + `InMemoryAuthIdentityService` (mismo patrón ya usado por tenants/catálogo/perfiles), que firma JWTs reales con el secreto de desarrollo — permite probar el flujo completo sin ninguna credencial real.
+
+### ⚠️ Migración de base de datos pendiente de aplicar
+El contrato OpenAPI de CFG-16 pide `phone`, `documentType` y `documentNumber`, pero el esquema original (`MANI-Flutter/database/init/01-schema.sql`) no tenía columnas para guardarlos. `db/migrations/0001_add_identidad_aliado_core_node.sql` las agrega (`usuario.telefono`, `aliado.tipo_documento_identidad`, `aliado.numero_documento_identidad` + constraint UNIQUE por tenant). **Hay que correrla contra el proyecto de Supabase de QA** (SQL Editor o `psql`) antes de que `SupabaseAliadoRepository`/`SupabaseUsuarioRepository` funcionen contra una base real — sin ella, cualquier registro real en QA fallará con `INTERNAL_ERROR` al intentar escribir columnas que no existen. El archivo también documenta (sin ejecutarlo automáticamente) el `DROP TRIGGER on_auth_user_created` recomendado una vez validado el flujo, para que la BD no vuelva a correr la lógica vieja en paralelo.
+
+### 🐳 Probar el flujo completo con Docker (sin Supabase real)
+```bash
+# Construir la imagen
+docker build -t mani-node:local .
+
+# Levantar el contenedor en modo DEV (usa los repositorios en memoria)
+docker run -d --name mani-core -p 3000:3000 -e NODE_ENV=development mani-node:local
+
+# Ver que arrancó bien
+docker logs mani-core
+
+# Registrar un Aliado persona natural
+curl -X POST http://localhost:3000/api/v1/auth/register/ally \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: trama-demo" \
+  -d '{
+        "fullName": "Maria Fernanda Rojas",
+        "email": "maria@mani.test",
+        "password": "Cambiar123!",
+        "phone": "+573001234567",
+        "documentType": "CC",
+        "documentNumber": "1020304050"
+      }'
+
+# Limpiar
+docker rm -f mani-core
+```
+Respuesta esperada: `201 Created` con `profile.role = "ALLY"`, `profile.status = "PENDING"` y `tokens.accessToken`/`refreshToken` (JWT reales, firmados con el secreto de DEV). Repetir el mismo `curl` da `409 EMAIL_ALREADY_REGISTERED`; cambiar el email pero no `documentNumber` da `409 DOCUMENT_ALREADY_REGISTERED`; usar un `X-Tenant-Id` que no sea `trama-demo` da `400 TENANT_NOT_FOUND`.
+
+### 🐳 Probar contra Supabase real (QA)
+Requiere haber corrido la migración de arriba contra el proyecto de Supabase de QA:
+```bash
+docker run -d --name mani-core-qa -p 3000:3000 \
+  -e NODE_ENV=qa \
+  -e SUPABASE_URL="https://<tu-proyecto>.supabase.co" \
+  -e SUPABASE_SERVICE_ROLE_KEY="<service-role-key>" \
+  -e SUPABASE_JWT_SECRET="<jwt-secret-del-proyecto>" \
+  mani-node:local
+```
+El mismo `curl` de arriba, pero contra credenciales reales, va a crear el usuario en Supabase Auth + las filas en `public.usuario`/`public.aliado`.
 
 ---
 

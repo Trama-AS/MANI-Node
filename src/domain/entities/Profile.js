@@ -33,6 +33,7 @@ class Profile {
   toJSON() {
     return {
       id: this.id,
+      tenantId: this.tenantId,
       role: this.role,
       fullName: this.fullName,
       status: this.status,
