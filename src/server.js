@@ -1,39 +1,16 @@
-const express = require('express');
-const cors = require('cors');
 require('dotenv').config();
 
-const healthRoutes = require('./routes/health.routes');
-const coreRoutes = require('./routes/core.routes');
-const clientsRoutes = require('./features/client/presentation/clients.routes');
+const config = require('./config');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+try {
+  config.assertValid();
+} catch (err) {
+  console.error(`❌ Configuración inválida: ${err.message}`);
+  process.exit(1);
+}
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
+const app = require('./app');
 
-// Middleware de Trazabilidad: Log y propagación de Correlation ID
-app.use((req, res, next) => {
-  const correlationId = req.headers['x-correlation-id'] || `node-${Date.now()}`;
-  res.setHeader('X-Correlation-ID', correlationId);
-  console.log(`[${new Date().toISOString()}] [${req.method}] ${req.originalUrl} - Correlation: ${correlationId}`);
-  next();
-});
-
-// Rutas
-app.use(healthRoutes);
-app.use('/api/v1', coreRoutes);
-app.use('/api/v1/clients', clientsRoutes);
-app.use('/clientes', clientsRoutes);
-app.use('/', coreRoutes);
-
-// Manejador 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada en MANI-Core-Node' });
-});
-
-// Inicialización del servidor
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 MANI-Core-Node corriendo en el puerto ${PORT}`);
+app.listen(config.port, '0.0.0.0', () => {
+  console.log(`🚀 MANI-Core-Node [${config.envLabel}] corriendo en el puerto ${config.port}`);
 });

@@ -3,17 +3,37 @@
   "version": "1.0.0",
   "description": "Servicio Core Backend del ecosistema MANI (Usuarios, Tenants, Perfiles, KYC, Catalogos)",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:watch": "node --test --watch \"tests/**/*.test.js\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
-  "keywords": ["mani", "backend", "core", "microservices"],
+  "keywords": [
+    "mani",
+    "backend",
+    "core",
+    "microservices"
+  ],
   "author": "TRAMA · Ingenieria de Software",
   "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.5",
+    "@supabase/supabase-js": "^2.117.2",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0",
+    "supertest": "^7.0.0"
   }
 }
