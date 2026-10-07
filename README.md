@@ -53,6 +53,28 @@ Viven en **MANI-APIGateway** (`docs/openapi/core.yaml`, `postman/`, `.github/wor
 
 ---
 
+## 🧭 Frontera declarada hacia el Rules Service (US-03.1.1-M2.2)
+
+La historia padre **US-03.1.1-M2** separó explícitamente dos responsabilidades que antes vivían mezcladas: la **gestión de categoría de servicio** (implementada en Core Node, ver `US-02.1.1-M2`/`US-03.1.1-M2.1` abajo) y la **evaluación de reglas de negocio** sobre esas categorías, que le corresponde a `MANI-Java` (Rules Service), no a Core.
+
+Esta subtarea (**US-03.1.1-M2.2**) declara y documenta esa frontera, **sin implementarla**:
+
+* `src/domain/ports/IRuleEvaluationService.js` — el puerto de dominio. Define `evaluateCategoryRules({ tenantId, categoryId, context })`, el método que Core usará para delegar la evaluación a `MANI-Java`. Su implementación por defecto **lanza un error explícito** ("contrato declarado, sin implementación") en vez de simular un resultado: así ningún caso de uso puede depender silenciosamente de una evaluación de reglas que todavía no existe.
+* `src/domain/entities/RuleEvaluationResult.js` — la forma de datos (`{ allowed, ruleSetVersion, violations[] }`) que esa evaluación deberá devolver una vez implementada, para que un futuro adaptador HTTP y cualquier caso de uso que lo consuma compartan el mismo contrato.
+
+**Arquitectura de destino** (ADR-0019, ver diagrama arriba):
+```
+Flutter -> NGINX API Gateway (/api/v1/rules/*) -> MANI-Java (Rules Service)
+```
+Core Node consumiría `MANI-Java` como servicio interno (`config.rulesServiceUrl`, hoy `http://rules-service:8080`) — nunca expone esa URL al cliente final, y el cliente final nunca llama a `MANI-Java` directamente.
+
+**Qué falta (fuera de alcance de M2.2, historia futura):**
+* Un adaptador real, p. ej. `src/infrastructure/clients/RulesServiceHttpClient.js`, que implemente `IRuleEvaluationService` haciendo HTTP contra `MANI-Java` y envuelva errores de red/5xx en `DomainError('INTERNAL_ERROR', 500)` (mismo patrón que el resto de infraestructura de este repo).
+* El contrato OpenAPI de `/api/v1/rules/*` lo define `MANI-Java`/`MANI-APIGateway` (mismo principio que CFG-16 para `/api/v1/core/*`: el Gateway es dueño del contrato público), no este repo.
+* Wiring en `container.js` y en el/los caso(s) de uso que necesiten invocar la evaluación de reglas (p. ej. al crear o activar una categoría).
+
+---
+
 ## 🛠️ Stack Tecnológico
 
 * **Runtime:** Node.js (v20+ LTS).
