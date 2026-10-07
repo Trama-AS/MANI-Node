@@ -136,3 +136,88 @@ test('POST /api/v1/auth/register/ally repetido con el mismo email responde 409 E
   assert.equal(second.status, 409);
   assert.equal(second.body.code, 'EMAIL_ALREADY_REGISTERED');
 });
+
+// --- Registro de Cliente persona natural (US-02.2.1-M2) ---
+// Mismo endpoint de identidad y mismo cliente HTTP (supertest contra la app
+// real) que el registro de Aliado; aquí es JSON puro, sin multer/archivos.
+
+function registerClientRequest(overrides = {}) {
+  const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  return request(app)
+    .post('/api/v1/auth/register/client')
+    .set('X-Tenant-Slug', overrides.tenantSlug ?? 'trama-demo')
+    .send({
+      fullName: overrides.fullName ?? 'Carlos Andres Gomez',
+      email: overrides.email ?? `cliente.${unique}@mani.test`,
+      password: overrides.password ?? 'Cambiar123!',
+      ...(overrides.phone !== undefined ? { phone: overrides.phone } : {}),
+    });
+}
+
+test('POST /api/v1/auth/register/client responde 201 con profile CLIENT/VERIFIED y tokens válidos (CA-1)', async () => {
+  const res = await registerClientRequest();
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.profile.role, 'CLIENT');
+  assert.equal(res.body.profile.status, 'VERIFIED');
+  assert.equal(res.body.profile.tenantId, 'trama-demo');
+  assert.ok(res.body.tokens.accessToken);
+  assert.ok(res.body.tokens.refreshToken);
+
+  const claims = jwt.verify(res.body.tokens.accessToken, config.supabaseJwtSecret, { algorithms: ['HS256'] });
+  assert.equal(claims.app_metadata.tenant_id, 'trama-demo');
+  assert.equal(claims.app_metadata.user_role, 'cliente');
+});
+
+test('POST /api/v1/auth/register/client con slug real plomeria-express resuelve tenant_id uuid (CA-5)', async () => {
+  const res = await registerClientRequest({ tenantSlug: 'plomeria-express' });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.profile.tenantId, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
+
+  const claims = jwt.verify(res.body.tokens.accessToken, config.supabaseJwtSecret, { algorithms: ['HS256'] });
+  assert.equal(claims.app_metadata.tenant_id, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
+});
+
+test('POST /api/v1/auth/register/client sin X-Tenant-Slug responde 400 VALIDATION_ERROR', async () => {
+  const res = await request(app).post('/api/v1/auth/register/client').send({
+    fullName: 'x',
+    email: 'x@mani.test',
+    password: 'Cambiar123!',
+  });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/auth/register/client con tenant inexistente responde 400 TENANT_NOT_FOUND', async () => {
+  const res = await registerClientRequest({ tenantSlug: 'tenant-que-no-existe' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'TENANT_NOT_FOUND');
+});
+
+test('POST /api/v1/auth/register/client repetido con el mismo email responde 409 EMAIL_ALREADY_REGISTERED (CA-4)', async () => {
+  const email = `cliente.dup.${Date.now()}@mani.test`;
+
+  const first = await registerClientRequest({ email });
+  assert.equal(first.status, 201);
+
+  const second = await registerClientRequest({ email });
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, 'EMAIL_ALREADY_REGISTERED');
+});
+
+test('POST /api/v1/auth/register/client no acepta archivos (no hay multer montado en esta ruta)', async () => {
+  const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  const res = await request(app)
+    .post('/api/v1/auth/register/client')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .field('fullName', 'Sin Archivos')
+    .field('email', `cliente.${unique}@mani.test`)
+    .field('password', 'Cambiar123!');
+
+  // Sin express.json() parseando multipart, req.body queda vacío -> VALIDATION_ERROR.
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});

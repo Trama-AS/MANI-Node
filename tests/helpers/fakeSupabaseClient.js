@@ -6,8 +6,12 @@ function makeQueryBuilder(result) {
     eq: () => builder,
     ilike: () => builder,
     upsert: () => builder,
+    delete: () => builder,
     maybeSingle: async () => result,
     single: async () => result,
+    // Como el PostgrestFilterBuilder real, el builder es "thenable": permite
+    // `await client.from(...).delete().eq(...)` sin un .single()/.maybeSingle() final.
+    then: (resolve) => resolve(result),
   };
   return builder;
 }

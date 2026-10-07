@@ -34,4 +34,7 @@ router.post(
   authController.registerAllyNaturalPerson
 );
 
+// Sin multer: el registro de Cliente no lleva documentos KYC.
+router.post('/auth/register/client', authController.registerClientNaturalPerson);
+
 module.exports = router;
