@@ -14,14 +14,11 @@ Este documento sintetiza las reglas de arquitectura y patrones de código para t
 
 ---
 
-## 2. Convenciones de Código y Clean Architecture
-* **Regla de Dependencia:** Las dependencias del código fuente apuntan exclusivamente hacia adentro (Dominio <- Aplicación <- Infraestructura / Interfaces).
-* **Capas (Clean Architecture):**
-  - `domain/`: Entidades de negocio puras (`entities/`), errores de dominio (`errors/`) y contratos/puertos de repositorios y servicios (`ports/`). Sin dependencias externas ni de frameworks.
-  - `application/`: Casos de uso (`useCases/`) que orquestan las reglas de aplicación recibiendo dependencias por inyección (DIP).
-  - `infrastructure/`: Implementaciones concretas de persistencia (`repositories/`), clientes de red y seguridad (`security/`).
-  - `controllers/` & `routes/` & `middlewares/`: Adaptadores de interfaz HTTP. Extraen DTOs de las peticiones, invocan los casos de uso y traducen errores de dominio a respuestas HTTP semánticas.
-  - `container.js`: Composition Root para resolución e inyección de dependencias (IoC/DIP).
-* **Manejo de Errores:** Errores de dominio tipados (`NotFoundError`, `UnauthorizedError`, `ValidationError`) mapeados en `errorHandler` a respuestas `{ error: string, code?: string, correlationId: string }`.
-* **Variables de Entorno:** Todas las URLs de servicios externos y credenciales se leen exclusivamente desde `process.env` vía `config/`.
-
+## 2. Convenciones de Código
+* **Capas (Layered Architecture):**
+  - `routes/`: Enrutamiento y validación básica de esquemas de entrada.
+  - `controllers/`: Orquestación de llamadas y códigos de respuesta HTTP.
+  - `services/`: Lógica de dominio y reglas de core.
+  - `repositories/`: Acceso a la base de datos (PostgreSQL/Supabase).
+* **Manejo de Errores:** Errores tipados y controlados retornando `{ error: string, code?: string, correlationId: string }`.
+* **Variables de Entorno:** Todas las URLs de servicios externos y credenciales se leen exclusivamente desde `process.env`.

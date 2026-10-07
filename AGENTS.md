@@ -53,25 +53,6 @@ npm install
 # Iniciar servidor en desarrollo
 npm run dev
 
-# Ejecutar el linter
-npm run lint
-
-# Ejecutar pruebas (unitarias e integración)
+# Ejecutar pruebas
 npm test
-```
-
-## 5. Estructura de Carpetas
-```
-src/
-  app.js            # Construcción de la app Express (sin listen, usada en tests)
-  server.js         # Punto de entrada: carga env y arranca el servidor
-  config/           # Lectura centralizada de variables de entorno
-  routes/           # Enrutamiento HTTP
-  controllers/      # Orquestación de la petición/respuesta HTTP
-  services/         # Lógica de dominio del core
-  repositories/      # Acceso a datos (PostgreSQL/Supabase)
-  middlewares/       # Correlation-ID, manejo de errores, etc.
-tests/
-  unit/             # Pruebas de servicios sin HTTP
-  integration/      # Pruebas de rutas vía supertest
 ```
