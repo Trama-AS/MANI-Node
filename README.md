@@ -47,6 +47,16 @@ flowchart LR
 }
 ```
 
+### 📜 Contrato OpenAPI: Identidad y Registro de Aliado
+`docs/openapi/core.yaml` define el contrato Gateway ↔ Core para autenticación y registro de Aliado persona natural (`POST /auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/register/ally`): paths, métodos, esquemas de request/response, catálogo cerrado de códigos de error (`ErrorCode`) y la propagación del claim de tenant (`X-Tenant-Id` pre-auth → claim `tenant_id` en el JWT post-auth). Validar con:
+```bash
+# Validez estructural (resuelve $ref, chequea contra el meta-esquema OpenAPI 3.0)
+npm run validate:openapi
+
+# Reglas de estilo/buenas prácticas (Spectral, ruleset en .spectral.yaml)
+npm run lint:openapi
+```
+
 ---
 
 ## 🛠️ Stack Tecnológico

@@ -12,9 +12,16 @@
     "test": "node --test \"tests/**/*.test.js\"",
     "test:watch": "node --test --watch \"tests/**/*.test.js\"",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "validate:openapi": "node scripts/validate-openapi.js",
+    "lint:openapi": "spectral lint docs/openapi/core.yaml"
   },
-  "keywords": ["mani", "backend", "core", "microservices"],
+  "keywords": [
+    "mani",
+    "backend",
+    "core",
+    "microservices"
+  ],
   "author": "TRAMA · Ingenieria de Software",
   "license": "ISC",
   "dependencies": {
@@ -24,7 +31,9 @@
     "express": "^4.21.0"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0",
     "@eslint/js": "^9.13.0",
+    "@stoplight/spectral-cli": "^6.17.0",
     "eslint": "^9.13.0",
     "globals": "^15.11.0",
     "supertest": "^7.0.0"
