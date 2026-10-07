@@ -76,6 +76,7 @@ cp .env.example .env
 | `SUPABASE_URL` | Endpoint del proyecto de Supabase (requerido en `qa`/`production`) | `https://your-project.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Llave de servicio para operaciones seguras de backend (requerido en `qa`/`production`) | *Secreto* |
 | `SUPABASE_JWT_SECRET` | Secreto HS256 para verificar la firma de los JWTs de Supabase Auth (requerido en `qa`/`production`; en `development`/`test` cae a un secreto inseguro fijo solo para pruebas locales) | *Secreto* |
+| `DATABASE_URL` | Cadena de conexión directa a PostgreSQL (`pg`). La usa el reemplazo atómico de categorías del aliado (`PUT /profiles/me/categories`, SCRUM-1071). Requerida en `qa`/`production`; en `development` sin ella el guardado cae a `supabase-js`, que **no** es transaccional, y el Core lo avisa al arrancar | *Secreto* |
 | `RULES_SERVICE_URL` | URL interna del motor de reglas Java | `http://rules-service:8080` |
 | `DISPATCH_SERVICE_URL`| URL interna del servicio de despacho .NET | `http://dispatch-service:5000` |
 
@@ -141,7 +142,7 @@ docker run -d -p 3000:3000 --name mani-core mani-node:local
 Infraestructura pendiente de aprovisionar (coordinar con **CFG-27/CFG-28**) antes de que el job de deploy funcione de punta a punta:
 1. Hosts DEV y QA con Docker instalado, accesibles por SSH desde GitHub Actions runners.
 2. GitHub Environments `dev` y `qa` (Settings → Environments), cada uno con estos secrets:
-   `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PORT` (opcional), `HOST_PORT` (opcional), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `HEALTHCHECK_URL` (ej. `http://<host>:<puerto>/health`).
+   `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PORT` (opcional), `HOST_PORT` (opcional), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `HEALTHCHECK_URL` (ej. `http://<host>:<puerto>/health`).
 3. (Recomendado) "Required reviewers" en el Environment `qa` para aprobar manualmente la promoción DEV → QA.
 
 Hasta que esos secrets existan, el job `build-and-push` sí publicará la imagen en GHCR; los jobs `deploy-dev`/`deploy-qa` fallarán al no encontrar host/credenciales, lo cual es esperado hasta completar el aprovisionamiento.
