@@ -12,13 +12,7 @@
     "test": "node --test \"tests/**/*.test.js\"",
     "test:watch": "node --test --watch \"tests/**/*.test.js\"",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "validate:openapi": "node scripts/validate-openapi.js",
-    "lint:openapi": "spectral lint docs/openapi/core.yaml",
-    "postman:generate": "node scripts/generate-postman-collection.js",
-    "postman:run": "newman run postman/MANI-Core.postman_collection.json -e",
-    "postman:run:dev": "npm run postman:run -- postman/environments/dev.postman_environment.json",
-    "postman:run:qa": "npm run postman:run -- postman/environments/qa.postman_environment.json"
+    "lint:fix": "eslint . --fix"
   },
   "keywords": [
     "mani",
@@ -38,13 +32,9 @@
     "multer": "^2.4.0"
   },
   "devDependencies": {
-    "@apidevtools/swagger-parser": "^13.1.0",
     "@eslint/js": "^9.13.0",
-    "@stoplight/spectral-cli": "^6.17.0",
     "eslint": "^9.13.0",
     "globals": "^15.11.0",
-    "newman": "^6.2.2",
-    "openapi-to-postmanv2": "^6.3.3",
     "supertest": "^7.0.0"
   }
 }
