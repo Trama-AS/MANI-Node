@@ -15,7 +15,10 @@
     "lint:fix": "eslint . --fix",
     "validate:openapi": "node scripts/validate-openapi.js",
     "lint:openapi": "spectral lint docs/openapi/core.yaml",
-    "postman:generate": "node scripts/generate-postman-collection.js"
+    "postman:generate": "node scripts/generate-postman-collection.js",
+    "postman:run": "newman run postman/MANI-Core.postman_collection.json -e",
+    "postman:run:dev": "npm run postman:run -- postman/environments/dev.postman_environment.json",
+    "postman:run:qa": "npm run postman:run -- postman/environments/qa.postman_environment.json"
   },
   "keywords": [
     "mani",
@@ -37,6 +40,7 @@
     "@stoplight/spectral-cli": "^6.17.0",
     "eslint": "^9.13.0",
     "globals": "^15.11.0",
+    "newman": "^6.2.2",
     "openapi-to-postmanv2": "^6.3.3",
     "supertest": "^7.0.0"
   }

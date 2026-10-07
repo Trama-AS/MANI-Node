@@ -1,7 +1,7 @@
 {
   "item": [
     {
-      "id": "5ff419fe-6525-43ef-b17d-720ea918d35d",
+      "id": "d5345b66-2bf3-44c1-921d-cb11fd8f135c",
       "name": "Ally Registration",
       "description": {
         "content": "Registro de Aliados persona natural",
@@ -9,7 +9,7 @@
       },
       "item": [
         {
-          "id": "8faa5329-0fc0-4f0c-ab9d-60134433888f",
+          "id": "ea7d8657-a399-4ef0-9e36-51be1790d134",
           "name": "Registra un nuevo Aliado persona natural",
           "request": {
             "name": "Registra un nuevo Aliado persona natural",
@@ -65,7 +65,7 @@
           },
           "response": [
             {
-              "id": "52f555e1-853a-4395-afba-61a8915926df",
+              "id": "0f30b0d6-b890-469d-b905-ff31faa58d64",
               "name": "Aliado registrado",
               "originalRequest": {
                 "url": {
@@ -101,7 +101,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"Ree3VpYdCcI9wIB@KRQHBccwZETSOrHPMSVyOSVLR.ccw\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
+                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"kqZogSUJo16C@DabmyTl.hss\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -117,12 +117,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"profile\": {\n    \"id\": \"string\",\n    \"tenantId\": \"trama-demo\",\n    \"role\": \"ADMIN\",\n    \"fullName\": \"string\",\n    \"status\": \"PENDING\"\n  },\n  \"tokens\": {\n    \"accessToken\": \"string\",\n    \"refreshToken\": \"string\",\n    \"expiresIn\": 3600\n  }\n}",
+              "body": "{\n  \"profile\": {\n    \"id\": \"string\",\n    \"tenantId\": \"trama-demo\",\n    \"role\": \"CLIENT\",\n    \"fullName\": \"string\",\n    \"status\": \"REJECTED\"\n  },\n  \"tokens\": {\n    \"accessToken\": \"string\",\n    \"refreshToken\": \"string\",\n    \"expiresIn\": 3600\n  }\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "cfb6e1a8-79cd-4584-8ffe-830a77e61cc7",
+              "id": "f9856b95-883e-4857-8ff6-fa4cd3f8e7a0",
               "name": "Body inválido (`VALIDATION_ERROR`) o tenant inexistente/inactivo (`TENANT_NOT_FOUND`)\n",
               "originalRequest": {
                 "url": {
@@ -158,7 +158,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"Ree3VpYdCcI9wIB@KRQHBccwZETSOrHPMSVyOSVLR.ccw\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
+                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"kqZogSUJo16C@DabmyTl.hss\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -174,12 +174,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "46d6dc89-158e-48df-8a26-5c7db3ac3dea",
+              "id": "61822555-acd9-44d2-98d8-696f12b4964b",
               "name": "Ya existe un usuario del tenant con ese email (`EMAIL_ALREADY_REGISTERED`) o ese número de documento (`DOCUMENT_ALREADY_REGISTERED`)\n",
               "originalRequest": {
                 "url": {
@@ -215,7 +215,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"Ree3VpYdCcI9wIB@KRQHBccwZETSOrHPMSVyOSVLR.ccw\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
+                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"kqZogSUJo16C@DabmyTl.hss\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -231,12 +231,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "69da899d-5598-4446-876d-9d5fb124f33c",
+              "id": "1ca00b4d-b630-4c99-be62-5631db2f509c",
               "name": "Error interno del servicio (`INTERNAL_ERROR`)",
               "originalRequest": {
                 "url": {
@@ -272,7 +272,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"Ree3VpYdCcI9wIB@KRQHBccwZETSOrHPMSVyOSVLR.ccw\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
+                  "raw": "{\n  \"fullName\": \"María Fernanda Rojas\",\n  \"email\": \"kqZogSUJo16C@DabmyTl.hss\",\n  \"password\": \"stringstring\",\n  \"phone\": \"+573001234567\",\n  \"documentType\": \"CE\",\n  \"documentNumber\": \"1020304050\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -288,7 +288,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             }
@@ -309,8 +309,43 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "function decodeJwtPayload(token) {",
+                  "  try {",
+                  "    const payload = token.split('.')[1];",
+                  "    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');",
+                  "    const padded = base64 + '==='.slice((base64.length + 3) % 4);",
+                  "    return JSON.parse(atob(padded));",
+                  "  } catch (e) {",
+                  "    return null;",
+                  "  }",
+                  "}",
+                  "",
+                  "pm.test('responde 201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('el body cumple el esquema RegisterAllyResponse', function () {",
+                  "  pm.response.to.have.jsonSchema({\"type\":\"object\",\"required\":[\"profile\",\"tokens\"],\"properties\":{\"profile\":{\"type\":\"object\",\"required\":[\"id\",\"tenantId\",\"role\",\"fullName\",\"status\"],\"properties\":{\"id\":{\"type\":\"string\"},\"tenantId\":{\"type\":\"string\"},\"role\":{\"type\":\"string\",\"enum\":[\"CLIENT\",\"ALLY\",\"ADMIN\"]},\"fullName\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"VERIFIED\",\"PENDING\",\"REJECTED\"]}}},\"tokens\":{\"type\":\"object\",\"required\":[\"accessToken\",\"refreshToken\",\"expiresIn\"],\"properties\":{\"accessToken\":{\"type\":\"string\"},\"refreshToken\":{\"type\":\"string\"},\"expiresIn\":{\"type\":\"integer\"}}}}});",
+                  "});",
+                  "",
                   "if (pm.response.code === 201) {",
                   "  const body = pm.response.json();",
+                  "",
+                  "  pm.test('el aliado queda en rol ALLY y estado PENDING', function () {",
+                  "    pm.expect(body.profile.role).to.eql('ALLY');",
+                  "    pm.expect(body.profile.status).to.eql('PENDING');",
+                  "  });",
+                  "",
+                  "  pm.test('propagación del claim de tenant: profile.tenantId === X-Tenant-Id enviado', function () {",
+                  "    pm.expect(body.profile.tenantId).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "  });",
+                  "",
+                  "  pm.test('propagación del claim de tenant: tenant_id del accessToken === X-Tenant-Id enviado', function () {",
+                  "    const claims = decodeJwtPayload(body.tokens.accessToken);",
+                  "    pm.expect(claims, 'accessToken debe ser un JWT decodificable').to.not.equal(null);",
+                  "    pm.expect(claims.tenant_id).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "  });",
+                  "",
                   "  pm.collectionVariables.set('accessToken', body.tokens.accessToken);",
                   "  pm.collectionVariables.set('refreshToken', body.tokens.refreshToken);",
                   "}"
@@ -326,7 +361,7 @@
       "event": []
     },
     {
-      "id": "6eb5361f-69c6-49ed-905b-8fc047d520de",
+      "id": "0c7a9997-7a56-4ed8-980e-4edc5bc0b78a",
       "name": "Auth",
       "description": {
         "content": "Autenticación e identidad de usuarios (Clientes, Aliados, Admins)",
@@ -334,7 +369,7 @@
       },
       "item": [
         {
-          "id": "ef95fd72-7435-4f1f-b230-81bef69468b0",
+          "id": "2b5df8d1-5dca-4be0-94c6-80b26cf70a32",
           "name": "Inicia sesión y obtiene tokens de acceso",
           "request": {
             "name": "Inicia sesión y obtiene tokens de acceso",
@@ -389,7 +424,7 @@
           },
           "response": [
             {
-              "id": "bffc139e-3a34-453e-a1e3-2d882a5fb7f7",
+              "id": "4441d2a9-17cf-41f3-b8e4-c94567bbe7ba",
               "name": "Credenciales válidas, sesión iniciada",
               "originalRequest": {
                 "url": {
@@ -424,7 +459,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"JuEBkxMeQ@DIiCDmYJCJuWaUzmnPinNmFsAkt.zgwz\",\n  \"password\": \"stringstring\"\n}",
+                  "raw": "{\n  \"email\": \"5iTlrnsd2XAFc@NvuJtfXZliUSjo.rh\",\n  \"password\": \"stringstring\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -440,12 +475,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"profile\": {\n    \"id\": \"string\",\n    \"tenantId\": \"trama-demo\",\n    \"role\": \"ADMIN\",\n    \"fullName\": \"string\",\n    \"status\": \"PENDING\"\n  },\n  \"tokens\": {\n    \"accessToken\": \"string\",\n    \"refreshToken\": \"string\",\n    \"expiresIn\": 3600\n  }\n}",
+              "body": "{\n  \"profile\": {\n    \"id\": \"string\",\n    \"tenantId\": \"trama-demo\",\n    \"role\": \"CLIENT\",\n    \"fullName\": \"string\",\n    \"status\": \"REJECTED\"\n  },\n  \"tokens\": {\n    \"accessToken\": \"string\",\n    \"refreshToken\": \"string\",\n    \"expiresIn\": 3600\n  }\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "1109b2c0-c41f-416e-b484-d0dcaa2b68e0",
+              "id": "d4d5c762-8e32-485d-b94b-873ceff87c30",
               "name": "Body inválido (`VALIDATION_ERROR`) o tenant inexistente/inactivo (`TENANT_NOT_FOUND`)\n",
               "originalRequest": {
                 "url": {
@@ -480,7 +515,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"JuEBkxMeQ@DIiCDmYJCJuWaUzmnPinNmFsAkt.zgwz\",\n  \"password\": \"stringstring\"\n}",
+                  "raw": "{\n  \"email\": \"5iTlrnsd2XAFc@NvuJtfXZliUSjo.rh\",\n  \"password\": \"stringstring\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -496,12 +531,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "616ec286-3fda-4262-895b-5501741b5040",
+              "id": "f9de978b-c6c1-4992-8337-5df72f2ea47a",
               "name": "Credenciales incorrectas (`INVALID_CREDENTIALS`)",
               "originalRequest": {
                 "url": {
@@ -536,7 +571,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"JuEBkxMeQ@DIiCDmYJCJuWaUzmnPinNmFsAkt.zgwz\",\n  \"password\": \"stringstring\"\n}",
+                  "raw": "{\n  \"email\": \"5iTlrnsd2XAFc@NvuJtfXZliUSjo.rh\",\n  \"password\": \"stringstring\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -552,12 +587,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "54f78d34-6399-454f-ab6f-23703086fad7",
+              "id": "6c55e559-df51-42cd-8773-fa4fcd7b5488",
               "name": "Error interno del servicio (`INTERNAL_ERROR`)",
               "originalRequest": {
                 "url": {
@@ -592,7 +627,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"JuEBkxMeQ@DIiCDmYJCJuWaUzmnPinNmFsAkt.zgwz\",\n  \"password\": \"stringstring\"\n}",
+                  "raw": "{\n  \"email\": \"5iTlrnsd2XAFc@NvuJtfXZliUSjo.rh\",\n  \"password\": \"stringstring\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -608,7 +643,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             }
@@ -619,8 +654,38 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "function decodeJwtPayload(token) {",
+                  "  try {",
+                  "    const payload = token.split('.')[1];",
+                  "    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');",
+                  "    const padded = base64 + '==='.slice((base64.length + 3) % 4);",
+                  "    return JSON.parse(atob(padded));",
+                  "  } catch (e) {",
+                  "    return null;",
+                  "  }",
+                  "}",
+                  "",
+                  "pm.test('responde 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('el body cumple el esquema LoginResponse', function () {",
+                  "  pm.response.to.have.jsonSchema({\"type\":\"object\",\"required\":[\"profile\",\"tokens\"],\"properties\":{\"profile\":{\"type\":\"object\",\"required\":[\"id\",\"tenantId\",\"role\",\"fullName\",\"status\"],\"properties\":{\"id\":{\"type\":\"string\"},\"tenantId\":{\"type\":\"string\"},\"role\":{\"type\":\"string\",\"enum\":[\"CLIENT\",\"ALLY\",\"ADMIN\"]},\"fullName\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"VERIFIED\",\"PENDING\",\"REJECTED\"]}}},\"tokens\":{\"type\":\"object\",\"required\":[\"accessToken\",\"refreshToken\",\"expiresIn\"],\"properties\":{\"accessToken\":{\"type\":\"string\"},\"refreshToken\":{\"type\":\"string\"},\"expiresIn\":{\"type\":\"integer\"}}}}});",
+                  "});",
+                  "",
                   "if (pm.response.code === 200) {",
                   "  const body = pm.response.json();",
+                  "",
+                  "  pm.test('propagación del claim de tenant: profile.tenantId === X-Tenant-Id enviado', function () {",
+                  "    pm.expect(body.profile.tenantId).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "  });",
+                  "",
+                  "  pm.test('propagación del claim de tenant: tenant_id del accessToken === X-Tenant-Id enviado', function () {",
+                  "    const claims = decodeJwtPayload(body.tokens.accessToken);",
+                  "    pm.expect(claims, 'accessToken debe ser un JWT decodificable').to.not.equal(null);",
+                  "    pm.expect(claims.tenant_id).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "  });",
+                  "",
                   "  pm.collectionVariables.set('accessToken', body.tokens.accessToken);",
                   "  pm.collectionVariables.set('refreshToken', body.tokens.refreshToken);",
                   "}"
@@ -633,7 +698,7 @@
           }
         },
         {
-          "id": "96b8b9d6-bfa7-4a79-8fe2-31190419c4f9",
+          "id": "00faa86c-45a6-4f9a-936e-23c0680d6147",
           "name": "Renueva el accessToken a partir de un refreshToken vigente",
           "request": {
             "name": "Renueva el accessToken a partir de un refreshToken vigente",
@@ -682,7 +747,7 @@
           },
           "response": [
             {
-              "id": "eeeb9363-56f8-40c4-8edb-f12842b7b602",
+              "id": "a40e72b7-2a75-41f1-88dd-36141ea5ba08",
               "name": "Token renovado",
               "originalRequest": {
                 "url": {
@@ -732,7 +797,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "b41bc214-0f97-42c9-ba29-5ef7dbcbd0aa",
+              "id": "2ffe2801-e310-4b1c-9af5-6510fd9c2841",
               "name": "Body inválido (`VALIDATION_ERROR`)",
               "originalRequest": {
                 "url": {
@@ -777,12 +842,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "ebbe9844-e887-4476-a2f0-a744d61b3b9d",
+              "id": "e44c51a5-f91a-4187-b4ec-d76333bbcc59",
               "name": "refreshToken inválido o expirado (`TOKEN_INVALID` / `TOKEN_EXPIRED`)",
               "originalRequest": {
                 "url": {
@@ -827,12 +892,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "85ebd3d6-8f8c-42ea-80b1-2f87930512cf",
+              "id": "37e6ebcb-dc7c-486d-ae4a-8041e84c65ae",
               "name": "Error interno del servicio (`INTERNAL_ERROR`)",
               "originalRequest": {
                 "url": {
@@ -877,7 +942,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             }
@@ -888,8 +953,35 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "function decodeJwtPayload(token) {",
+                  "  try {",
+                  "    const payload = token.split('.')[1];",
+                  "    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');",
+                  "    const padded = base64 + '==='.slice((base64.length + 3) % 4);",
+                  "    return JSON.parse(atob(padded));",
+                  "  } catch (e) {",
+                  "    return null;",
+                  "  }",
+                  "}",
+                  "",
+                  "pm.test('responde 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('el body cumple el esquema RefreshResponse', function () {",
+                  "  pm.response.to.have.jsonSchema({\"type\":\"object\",\"required\":[\"accessToken\",\"expiresIn\"],\"properties\":{\"accessToken\":{\"type\":\"string\"},\"expiresIn\":{\"type\":\"integer\"}}});",
+                  "});",
+                  "",
                   "if (pm.response.code === 200) {",
-                  "  pm.collectionVariables.set('accessToken', pm.response.json().accessToken);",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.test('propagación del claim de tenant: el refresh preserva tenant_id del token original', function () {",
+                  "    const claims = decodeJwtPayload(body.accessToken);",
+                  "    pm.expect(claims, 'accessToken debe ser un JWT decodificable').to.not.equal(null);",
+                  "    pm.expect(claims.tenant_id).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "  });",
+                  "",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
                   "}"
                 ]
               }
@@ -900,7 +992,7 @@
           }
         },
         {
-          "id": "1f3f7d57-48d2-4df0-92e8-48456a86843e",
+          "id": "8c49b827-da3a-4846-a88a-41b79b12b188",
           "name": "Cierra la sesión actual e invalida el refreshToken asociado",
           "request": {
             "name": "Cierra la sesión actual e invalida el refreshToken asociado",
@@ -944,7 +1036,7 @@
           },
           "response": [
             {
-              "id": "8ff92bbf-64f9-4a98-9a1a-91d4b4327f3b",
+              "id": "0dcd7053-a724-4936-b8b9-fc1a7aa4cf1f",
               "name": "Sesión cerrada correctamente",
               "originalRequest": {
                 "url": {
@@ -982,7 +1074,7 @@
               "_postman_previewlanguage": "text"
             },
             {
-              "id": "c702427a-549a-402d-94c6-ae87019d9338",
+              "id": "83aa60ee-986e-446a-b894-7e80b2ba53e0",
               "name": "accessToken ausente, inválido o expirado (`UNAUTHORIZED` / `TOKEN_INVALID` / `TOKEN_EXPIRED`)",
               "originalRequest": {
                 "url": {
@@ -1019,12 +1111,12 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "8577992e-fdaf-4406-9920-e36fbf5a0d1b",
+              "id": "8cbde736-6f9a-4bc9-8627-afc72508db3e",
               "name": "Error interno del servicio (`INTERNAL_ERROR`)",
               "originalRequest": {
                 "url": {
@@ -1061,12 +1153,45 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"INVALID_CREDENTIALS\"\n}",
+              "body": "{\n  \"error\": \"Credenciales inválidas\",\n  \"correlationId\": \"node-1791318617328\",\n  \"code\": \"TOKEN_INVALID\"\n}",
               "cookie": [],
               "_postman_previewlanguage": "json"
             }
           ],
-          "event": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function decodeJwtPayload(token) {",
+                  "  try {",
+                  "    const payload = token.split('.')[1];",
+                  "    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');",
+                  "    const padded = base64 + '==='.slice((base64.length + 3) % 4);",
+                  "    return JSON.parse(atob(padded));",
+                  "  } catch (e) {",
+                  "    return null;",
+                  "  }",
+                  "}",
+                  "",
+                  "pm.test('responde 204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.test('el body de 204 viene vacío', function () {",
+                  "  pm.expect(pm.response.text()).to.have.lengthOf(0);",
+                  "});",
+                  "",
+                  "pm.test('propagación del claim de tenant: el accessToken usado pertenecía al tenant de la sesión', function () {",
+                  "  const claims = decodeJwtPayload(pm.collectionVariables.get('accessToken'));",
+                  "  pm.expect(claims, 'accessToken debe ser un JWT decodificable').to.not.equal(null);",
+                  "  pm.expect(claims.tenant_id).to.eql(pm.collectionVariables.get('tenantId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
           "protocolProfileBehavior": {
             "disableBodyPruning": true
           }
@@ -1109,7 +1234,7 @@
     }
   ],
   "info": {
-    "_postman_id": "f79fbb17-1f9d-421a-9b62-600da9d4879e",
+    "_postman_id": "36a05dd1-7f7a-44a7-97b3-979234312e94",
     "name": "MANI-Core — Identidad y Registro de Aliado",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": {
