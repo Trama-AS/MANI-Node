@@ -58,11 +58,20 @@ npm run lint:openapi
 ```
 
 ### 📬 Colección Postman del flujo de identidad
-`postman/MANI-Core.postman_collection.json` se genera automáticamente desde `docs/openapi/core.yaml` (no se edita a mano) y recorre en secuencia: **1)** registrar Aliado persona natural, **2)** login con esas mismas credenciales, **3)** refrescar el accessToken, **4)** logout — encadenando `accessToken`/`refreshToken`/`allyEmail` entre pasos como variables de colección. Regenerar tras cualquier cambio al contrato:
+`postman/MANI-Core.postman_collection.json` se genera automáticamente desde `docs/openapi/core.yaml` (no se edita a mano) y recorre en secuencia: **1)** registrar Aliado persona natural, **2)** login con esas mismas credenciales, **3)** refrescar el accessToken, **4)** logout — encadenando `accessToken`/`refreshToken`/`allyEmail` entre pasos como variables de colección. Cada paso valida código de estado, esquema de respuesta y que el claim `tenant_id` se propague correctamente (del header `X-Tenant-Id` al JWT, y de JWT a JWT). Regenerar tras cualquier cambio al contrato:
 ```bash
 npm run postman:generate
 ```
-Los asserts de código de estado/esquema/propagación de tenant y la ejecución con Newman en terminal y CI son el siguiente paso de este pipeline (en curso).
+
+Ejecutar con Newman — el mismo comando, cambiando solo el archivo de ambiente:
+```bash
+npm run postman:run:dev   # contra postman/environments/dev.postman_environment.json
+npm run postman:run:qa    # contra postman/environments/qa.postman_environment.json
+```
+Los `baseUrl` de `dev`/`qa` son placeholders hasta que CFG-27/CFG-28 provisionen los hosts reales (ver sección CI/CD).
+
+### 🚦 Gate de contrato en CI
+El job `postman-contract-gate` (`.github/workflows/ci.yml`) levanta el Core en background, espera `/health`, y corre `npm run postman:run:dev` contra él en cada push/PR. Si el código deja de cumplir el contrato (status/esquema/tenant), Newman devuelve código de salida distinto de cero y **el build se rompe** — el reporte JUnit queda publicado como artifact (`newman-report`) para inspeccionar qué assertion falló. Hoy este job falla en rojo porque `/auth/*` todavía no está implementado en `src/`; eso es esperado hasta que se implemente esa parte del Core.
 
 ---
 
