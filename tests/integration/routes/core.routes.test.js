@@ -59,3 +59,101 @@ test('GET /ruta-inexistente responde 404', async () => {
 
   assert.equal(res.status, 404);
 });
+
+test('GET /api/v1/profiles/me/categories sin Authorization responde 401', async () => {
+  const res = await request(app).get('/api/v1/profiles/me/categories');
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body.error, 'Encabezado Authorization requerido');
+});
+
+test('GET /api/v1/profiles/me/categories con rol CLIENT responde 403 (MANI-CAT-403)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  const res = await request(app)
+    .get('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.code, 'MANI-CAT-403');
+});
+
+test('GET /api/v1/profiles/me/categories con rol ALLY responde 200 y retorna sus categorías', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .get('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body.categories));
+  assert.ok(res.body.categories.includes('cat-1'));
+});
+
+test('PUT /api/v1/profiles/me/categories con lista vacía responde 422 (MANI-CAT-422V)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .put('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ categories: [] });
+
+  assert.equal(res.status, 422);
+  assert.equal(res.body.code, 'MANI-CAT-422V');
+});
+
+test('PUT /api/v1/profiles/me/categories con categoría inexistente responde 422 (MANI-CAT-422C)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .put('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ categories: ['cat-1', 'cat-inexistente'] });
+
+  assert.equal(res.status, 422);
+  assert.equal(res.body.code, 'MANI-CAT-422C');
+});
+
+test('PUT /api/v1/profiles/me/categories con categoría inactiva responde 422 (MANI-CAT-422C)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .put('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ categories: ['cat-inactive'] });
+
+  assert.equal(res.status, 422);
+  assert.equal(res.body.code, 'MANI-CAT-422C');
+});
+
+test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exitosamente', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .put('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ categories: ['cat-1', 'cat-2'] });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.categories, ['cat-1', 'cat-2']);
+
+  // Verifica que GET posterior retorne las nuevas categorías
+  const getRes = await request(app)
+    .get('/api/v1/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(getRes.status, 200);
+  assert.deepEqual(getRes.body.categories, ['cat-1', 'cat-2']);
+});
+
+test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .post('/profiles/me/categories')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ categoriaIds: ['cat-2', 'cat-3'] });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.categories, ['cat-2', 'cat-3']);
+});

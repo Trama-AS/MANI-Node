@@ -13,6 +13,14 @@ class InMemoryProfileRepository extends IProfileRepository {
         status: 'VERIFIED',
         tenantId: 'trama-demo',
       }),
+      new Profile({
+        id: 'demo-ally-1',
+        userId: 'demo-ally-1',
+        role: 'ALLY',
+        fullName: 'Aliado Demo MANI',
+        status: 'VERIFIED',
+        tenantId: 'trama-demo',
+      }),
     ];
   }
 

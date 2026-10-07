@@ -4,6 +4,15 @@ class InMemoryAliadoRepository extends IAliadoRepository {
   constructor() {
     super();
     this.aliados = new Map(); // key: usuarioId
+    const demoAlly = {
+      id: 'demo-aliado-1',
+      usuarioId: 'demo-ally-1',
+      tenantId: 'trama-demo',
+      tipo: 'PERSONA_NATURAL',
+      nombreRazonSocial: 'Aliado Demo MANI',
+      estadoVerificacion: 'VERIFIED',
+    };
+    this.aliados.set(demoAlly.usuarioId, demoAlly);
   }
 
   async findByDocumentNumber(tenantId, documentNumber) {
@@ -14,9 +23,20 @@ class InMemoryAliadoRepository extends IAliadoRepository {
     );
   }
 
-  async create(aliado) {
-    this.aliados.set(aliado.usuarioId, aliado);
+  async findByUsuarioId(tenantId, usuarioId) {
+    const aliado = this.aliados.get(usuarioId);
+    if (!aliado) return null;
+    if (tenantId && aliado.tenantId !== tenantId) return null;
     return aliado;
+  }
+
+  async create(aliado) {
+    const record = {
+      id: aliado.id || `aliado-${aliado.usuarioId}`,
+      ...aliado,
+    };
+    this.aliados.set(aliado.usuarioId, record);
+    return record;
   }
 
   async deleteByUsuarioId(tenantId, usuarioId) {

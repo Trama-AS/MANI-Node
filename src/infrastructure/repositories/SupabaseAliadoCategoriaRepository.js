@@ -25,6 +25,53 @@ class SupabaseAliadoCategoriaRepository extends IAliadoCategoriaRepository {
     return data;
   }
 
+  async findByAliadoId(tenantId, aliadoId) {
+    const client = this.supabaseClientFactory.getClient();
+    let query = client
+      .from('aliado_categoria')
+      .select('categoria_id')
+      .eq('aliado_id', aliadoId);
+    if (tenantId) query = query.eq('tenant_id', tenantId);
+
+    const { data, error } = await query;
+    if (error) throw new DomainError(`Error consultando categorías del aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return (data || []).map((row) => row.categoria_id);
+  }
+
+  async setAliadoCategorias(tenantId, aliadoId, categoriaIds) {
+    const client = this.supabaseClientFactory.getClient();
+    const current = await this.findByAliadoId(tenantId, aliadoId);
+
+    const toDelete = current.filter((id) => !categoriaIds.includes(id));
+    const toInsert = categoriaIds.filter((id) => !current.includes(id));
+
+    if (toDelete.length > 0) {
+      let query = client
+        .from('aliado_categoria')
+        .delete()
+        .eq('aliado_id', aliadoId)
+        .in('categoria_id', toDelete);
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+
+      const { error: delError } = await query;
+      if (delError) throw new DomainError(`Error eliminando categorías anteriores: ${delError.message}`, 'INTERNAL_ERROR', 500);
+    }
+
+    if (toInsert.length > 0) {
+      const rows = toInsert.map((categoriaId) => ({
+        tenant_id: tenantId,
+        aliado_id: aliadoId,
+        categoria_id: categoriaId,
+      }));
+      const { error: insError } = await client
+        .from('aliado_categoria')
+        .insert(rows);
+      if (insError) throw new DomainError(`Error guardando categorías: ${insError.message}`, 'INTERNAL_ERROR', 500);
+    }
+
+    return this.findByAliadoId(tenantId, aliadoId);
+  }
+
   async deleteByAliadoId(tenantId, aliadoId) {
     const client = this.supabaseClientFactory.getClient();
     const { error } = await client

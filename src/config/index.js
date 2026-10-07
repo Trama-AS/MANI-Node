@@ -10,8 +10,8 @@ const ENVIRONMENTS = {
 const REQUIRED_VARS_BY_ENV = {
   development: [],
   test: [],
-  qa: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'SUPABASE_ANON_KEY'],
-  production: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'SUPABASE_ANON_KEY'],
+  qa: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'SUPABASE_ANON_KEY', 'DATABASE_URL'],
+  production: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'SUPABASE_ANON_KEY', 'DATABASE_URL'],
 };
 
 class ConfigurationError extends Error {
@@ -52,6 +52,9 @@ const config = {
   // Clave pública, usada SOLO para el cliente desechable de sign-in (ver
   // SupabaseAuthIdentityService) — nunca para operaciones con service-role.
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+  // Conexión directa a PostgreSQL (pg). Solo para operaciones que necesitan una
+  // transacción real, como el reemplazo atómico de categorías del aliado (SCRUM-1071).
+  databaseUrl: process.env.DATABASE_URL,
   supabaseJwtSecret:
     process.env.SUPABASE_JWT_SECRET || (allowInsecureDevSecret ? 'dev-jwt-secret-insecure-32chars!!' : ''),
   gatewayUrl: process.env.GATEWAY_URL,
