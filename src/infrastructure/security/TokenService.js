@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const ITokenService = require('../../domain/ports/ITokenService');
 const { UnauthorizedError } = require('../../domain/errors/DomainError');
 const config = require('../../config');
+const { claimRoleToDomain } = require('./claimRoleMap');
 
 class TokenService extends ITokenService {
   constructor({ jwtSecret = config.supabaseJwtSecret } = {}) {
@@ -11,7 +12,11 @@ class TokenService extends ITokenService {
 
   /**
    * Verifica criptográficamente la firma (HS256) y expiración del JWT, y extrae
-   * los claims del contrato OpenAPI (sub, tenant_id, role). No hay fallback a
+   * userId/tenantId/role. Los JWT reales de Supabase llevan tenant_id y el rol
+   * anidados bajo `app_metadata` (Custom Access Token Hook, CFG-12), con el rol
+   * en español minúscula ('aliado'/'cliente'/'admin_tenant'); se traduce al
+   * dominio en inglés. También acepta tenant_id/role en la raíz del payload
+   * (forma que usa InMemoryAuthIdentityService en DEV/test). No hay fallback a
    * un usuario demo: un token inválido o sin esos claims siempre falla.
    * @param {string} authHeader
    * @returns {{ userId: string, tenantId: string, role: string }}
@@ -34,9 +39,11 @@ class TokenService extends ITokenService {
     try {
       const payload = jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] });
 
+      const appMetadata = payload.app_metadata || {};
       const userId = payload.sub || payload.user_id;
-      const tenantId = payload.tenant_id;
-      const role = payload.role || 'CLIENT';
+      const tenantId = appMetadata.tenant_id || payload.tenant_id;
+      const rawRole = appMetadata.user_role || appMetadata.rol || payload.role;
+      const role = claimRoleToDomain(rawRole) || 'CLIENT';
 
       if (!userId || !tenantId) {
         throw new UnauthorizedError('Token no contiene los claims obligatorios (sub, tenant_id)', 'TOKEN_INVALID');

@@ -48,33 +48,8 @@ flowchart LR
 }
 ```
 
-### 📜 Contrato OpenAPI: Identidad y Registro de Aliado
-`docs/openapi/core.yaml` define el contrato Gateway ↔ Core para autenticación y registro de Aliado persona natural (`POST /auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/register/ally`): paths, métodos, esquemas de request/response, catálogo cerrado de códigos de error (`ErrorCode`) y la propagación del claim de tenant (`X-Tenant-Id` pre-auth → claim `tenant_id` en el JWT post-auth). Validar con:
-```bash
-# Validez estructural (resuelve $ref, chequea contra el meta-esquema OpenAPI 3.0)
-npm run validate:openapi
-
-# Reglas de estilo/buenas prácticas (Spectral, ruleset en .spectral.yaml)
-npm run lint:openapi
-```
-
-### 📬 Colección Postman del flujo de identidad
-`postman/MANI-Core.postman_collection.json` se genera automáticamente desde `docs/openapi/core.yaml` (no se edita a mano) y recorre en secuencia: **1)** registrar Aliado persona natural, **2)** login con esas mismas credenciales, **3)** refrescar el accessToken, **4)** logout — encadenando `accessToken`/`refreshToken`/`allyEmail` entre pasos como variables de colección. Cada paso valida código de estado, esquema de respuesta y que el claim `tenant_id` se propague correctamente (del header `X-Tenant-Id` al JWT, y de JWT a JWT). Regenerar tras cualquier cambio al contrato:
-```bash
-npm run postman:generate
-```
-
-Ejecutar con Newman — el mismo comando, cambiando solo el archivo de ambiente:
-```bash
-npm run postman:run:dev   # contra postman/environments/dev.postman_environment.json
-npm run postman:run:qa    # contra postman/environments/qa.postman_environment.json
-```
-Los `baseUrl` de `dev`/`qa` son placeholders hasta que CFG-27/CFG-28 provisionen los hosts reales (ver sección CI/CD).
-
-### 🚦 Gate de contrato en CI
-El job `postman-contract-gate` (`.github/workflows/ci.yml`) levanta el Core en background, espera `/health`, y corre `npm run postman:run:dev` contra él en cada push/PR. Si el código deja de cumplir el contrato (status/esquema/tenant), Newman devuelve código de salida distinto de cero y **el build se rompe** — el reporte JUnit queda publicado como artifact (`newman-report`) para inspeccionar qué assertion falló.
-
-Actualmente el gate corre con `--folder "Ally Registration"`, es decir, **solo** valida `POST /auth/register/ally` (ya implementado). El folder `Auth` (`login`/`refresh`/`logout`) queda fuera del gate a propósito: esos endpoints todavía no existen en `src/` y no son parte de esta historia (US-02.1.1-M2) — se reincorporan al gate cuando tengan su propia tarea de implementación. Quitar el `--folder` antes de eso rompería el build por algo fuera de alcance.
+### 📜 Contrato OpenAPI, colección Postman y gate de Newman
+Viven en **MANI-APIGateway** (`docs/openapi/core.yaml`, `postman/`, `.github/workflows/`), no en este repo: el Gateway es el límite público del contrato (CFG-16), Core solo lo implementa. Ver el README de ese repositorio para validarlo, regenerar la colección o correr Newman localmente.
 
 ---
 
@@ -182,9 +157,10 @@ Hasta que esos secrets existan, el job `build-and-push` sí publicará la imagen
 * En DEV/test sin credenciales de Supabase, el `container.js` cae automáticamente a `InMemory*Repository` + `InMemoryAuthIdentityService` (mismo patrón ya usado por tenants/catálogo/perfiles), que firma JWTs reales con el secreto de desarrollo — permite probar el flujo completo sin ninguna credencial real.
 
 ### ⚠️ Migración de base de datos pendiente de aplicar
-El contrato OpenAPI de CFG-16 pide `phone`, `documentType` y `documentNumber`, pero el esquema original (`MANI-Flutter/database/init/01-schema.sql`) no tenía columnas para guardarlos. `db/migrations/0001_add_identidad_aliado_core_node.sql` las agrega (`usuario.telefono`, `aliado.tipo_documento_identidad`, `aliado.numero_documento_identidad` + constraint UNIQUE por tenant). **Hay que correrla contra el proyecto de Supabase de QA** (SQL Editor o `psql`) antes de que `SupabaseAliadoRepository`/`SupabaseUsuarioRepository` funcionen contra una base real — sin ella, cualquier registro real en QA fallará con `INTERNAL_ERROR` al intentar escribir columnas que no existen. El archivo también documenta (sin ejecutarlo automáticamente) el `DROP TRIGGER on_auth_user_created` recomendado una vez validado el flujo, para que la BD no vuelva a correr la lógica vieja en paralelo.
+El contrato OpenAPI de CFG-16 acepta `phone`, `documentType` y `documentNumber` como opcionales, pero el esquema original (`MANI-APIGateway/database/init/01-schema.sql`) no tenía columnas para guardarlos si se envían. `MANI-APIGateway/database/migrations/008_identidad_aliado_core_node.sql` las agrega (`usuario.telefono`, `aliado.tipo_documento_identidad`, `aliado.numero_documento_identidad` + constraint UNIQUE por tenant) — ya verificada contra Postgres real. **Hay que aplicarla contra el proyecto de Supabase de QA** antes de que `SupabaseAliadoRepository`/`SupabaseUsuarioRepository` funcionen contra una base real — sin ella, cualquier registro real en QA fallará con `INTERNAL_ERROR` al intentar escribir columnas que no existen. El archivo también documenta (sin ejecutarlo automáticamente) el `DROP TRIGGER on_auth_user_created` recomendado una vez validado el flujo, para que la BD no vuelva a correr la lógica vieja en paralelo.
 
 ### 🐳 Probar el flujo completo con Docker (sin Supabase real)
+El registro es `multipart/form-data` (no JSON): Flutter manda `categoriaId` + al menos un documento KYC (campo = tipo de documento en minúsculas, p. ej. `cedula_ciudadania`), no `phone`/`documentType`/`documentNumber` (esos quedaron opcionales en el contrato).
 ```bash
 # Construir la imagen
 docker build -t mani-node:local .
@@ -195,23 +171,24 @@ docker run -d --name mani-core -p 3000:3000 -e NODE_ENV=development mani-node:lo
 # Ver que arrancó bien
 docker logs mani-core
 
+# Un archivo cualquiera sirve como "cédula" de prueba
+echo "contenido-fake" > /tmp/cedula.pdf
+
 # Registrar un Aliado persona natural
 curl -X POST http://localhost:3000/api/v1/auth/register/ally \
-  -H "Content-Type: application/json" \
   -H "X-Tenant-Id: trama-demo" \
-  -d '{
-        "fullName": "Maria Fernanda Rojas",
-        "email": "maria@mani.test",
-        "password": "Cambiar123!",
-        "phone": "+573001234567",
-        "documentType": "CC",
-        "documentNumber": "1020304050"
-      }'
+  -F "fullName=Maria Fernanda Rojas" \
+  -F "email=maria@mani.test" \
+  -F "password=Cambiar123!" \
+  -F "categoriaId=cat-1" \
+  -F "cedula_ciudadania=@/tmp/cedula.pdf"
 
 # Limpiar
 docker rm -f mani-core
 ```
-Respuesta esperada: `201 Created` con `profile.role = "ALLY"`, `profile.status = "PENDING"` y `tokens.accessToken`/`refreshToken` (JWT reales, firmados con el secreto de DEV). Repetir el mismo `curl` da `409 EMAIL_ALREADY_REGISTERED`; cambiar el email pero no `documentNumber` da `409 DOCUMENT_ALREADY_REGISTERED`; usar un `X-Tenant-Id` que no sea `trama-demo` da `400 TENANT_NOT_FOUND`.
+Respuesta esperada: `201 Created` con `profile.role = "ALLY"`, `profile.status = "PENDING"` y `tokens.accessToken`/`refreshToken` — JWT reales, firmados con el secreto de DEV, con claims bajo `app_metadata.{tenant_id,user_role}` (misma forma que un JWT real de Supabase tras el Custom Access Token Hook de CFG-12). Repetir el mismo `curl` da `409 EMAIL_ALREADY_REGISTERED`; usar `categoriaId=no-existe` da `400 CATEGORY_NOT_FOUND`; usar un `X-Tenant-Id` que no sea `trama-demo` da `400 TENANT_NOT_FOUND`; omitir el archivo da `400 VALIDATION_ERROR`.
+
+Para probar contra el Gateway real en vez de Core directo (recomendado — así se valida también el ruteo de NGINX), ver `MANI-APIGateway/README.md`: `docker compose up -d gateway core-service` y la misma petición a `http://localhost/api/v1/core/auth/register/ally`.
 
 ### 🐳 Probar contra Supabase real (QA)
 Requiere haber corrido la migración de arriba contra el proyecto de Supabase de QA:
@@ -223,7 +200,7 @@ docker run -d --name mani-core-qa -p 3000:3000 \
   -e SUPABASE_JWT_SECRET="<jwt-secret-del-proyecto>" \
   mani-node:local
 ```
-El mismo `curl` de arriba, pero contra credenciales reales, va a crear el usuario en Supabase Auth + las filas en `public.usuario`/`public.aliado`.
+El mismo `curl` de arriba, pero contra credenciales reales, va a crear el usuario en Supabase Auth, las filas en `public.usuario`/`public.aliado`/`public.aliado_categoria`/`public.documento_kyc`, y subir el archivo adjunto al bucket `kyc-documentos` bajo `{tenantId}/{usuarioId}/...` (layout exigido por la política RLS `kyc_isolation`).
 
 ---
 
