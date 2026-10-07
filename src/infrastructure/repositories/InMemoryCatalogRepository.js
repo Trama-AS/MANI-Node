@@ -13,6 +13,7 @@ class InMemoryCatalogRepository extends ICatalogRepository {
       new Category({ id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', name: 'Plomería y Redes Hidráulicas', active: true }),
       new Category({ id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', name: 'Electricidad Residencial', active: true }),
       new Category({ id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20', name: 'Cerrajería y Seguridad', active: true }),
+      new Category({ id: 'cat-inactive', name: 'Categoría Inactiva', active: false }),
     ];
   }
 

@@ -9,8 +9,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test \"tests/**/*.test.js\"",
-    "test:watch": "node --test --watch \"tests/**/*.test.js\"",
+    "test": "node --test tests/integration/**/*.test.js tests/unit/**/*.test.js tests/unit/**/**/*.test.js",
+    "test:watch": "node --test --watch tests/integration/**/*.test.js tests/unit/**/*.test.js tests/unit/**/**/*.test.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },

@@ -65,3 +65,28 @@ test('create lanza DomainError INTERNAL_ERROR si Supabase reporta error (p. ej. 
     }
   );
 });
+
+test('findByUsuarioId retorna el aliado cuando existe', async () => {
+  const client = makeFakeSupabaseClient({
+    fromResult: { data: { id: 'a1', usuario_id: 'u1', tenant_id: 't1' }, error: null },
+  });
+  const repo = new SupabaseAliadoRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  const result = await repo.findByUsuarioId('t1', 'u1');
+
+  assert.equal(result.id, 'a1');
+  assert.equal(result.usuario_id, 'u1');
+});
+
+test('findByUsuarioId lanza DomainError INTERNAL_ERROR si Supabase reporta error', async () => {
+  const client = makeFakeSupabaseClient({ fromResult: { data: null, error: { message: 'db error' } } });
+  const repo = new SupabaseAliadoRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  await assert.rejects(
+    () => repo.findByUsuarioId('t1', 'u1'),
+    (err) => {
+      assert.equal(err.code, 'INTERNAL_ERROR');
+      return true;
+    }
+  );
+});
