@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const healthRoutes = require('./routes/health.routes');
 const coreRoutes = require('./routes/core.routes');
+const employeesRoutes = require('./features/ally/presentation/employees.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +24,7 @@ app.use((req, res, next) => {
 // Rutas
 app.use(healthRoutes);
 app.use('/api/v1', coreRoutes);
+app.use('/api/v1/allies/employees', employeesRoutes);
 app.use('/', coreRoutes);
 
 // Manejador 404
