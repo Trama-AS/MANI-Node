@@ -49,6 +49,15 @@ class InMemoryAuthIdentityService extends IAuthIdentityService {
 
     return { accessToken, refreshToken, expiresIn: ACCESS_TOKEN_TTL_SECONDS };
   }
+
+  async deleteUser(userId) {
+    for (const [key, identity] of this.identities.entries()) {
+      if (identity.userId === userId) {
+        this.identities.delete(key);
+        return;
+      }
+    }
+  }
 }
 
 module.exports = InMemoryAuthIdentityService;

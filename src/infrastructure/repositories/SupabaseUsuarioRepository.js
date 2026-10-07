@@ -47,6 +47,12 @@ class SupabaseUsuarioRepository extends IUsuarioRepository {
     if (error) throw new DomainError(`Error creando usuario: ${error.message}`, 'INTERNAL_ERROR', 500);
     return data;
   }
+
+  async deleteById(tenantId, id) {
+    const client = this.supabaseClientFactory.getClient();
+    const { error } = await client.from('usuario').delete().eq('tenant_id', tenantId).eq('id', id);
+    if (error) throw new DomainError(`Error eliminando usuario: ${error.message}`, 'INTERNAL_ERROR', 500);
+  }
 }
 
 module.exports = SupabaseUsuarioRepository;

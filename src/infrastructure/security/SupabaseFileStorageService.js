@@ -26,6 +26,12 @@ class SupabaseFileStorageService extends IFileStorageService {
     if (error) throw new DomainError(`Error subiendo documento a Storage: ${error.message}`, 'INTERNAL_ERROR', 500);
     return { path: `${BUCKET}/${path}` };
   }
+
+  async delete(path) {
+    const client = this.supabaseClientFactory.getClient();
+    const { error } = await client.storage.from(BUCKET).remove([path]);
+    if (error) throw new DomainError(`Error eliminando documento de Storage: ${error.message}`, 'INTERNAL_ERROR', 500);
+  }
 }
 
 module.exports = SupabaseFileStorageService;

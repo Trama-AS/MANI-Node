@@ -11,6 +11,10 @@ class InMemoryFileStorageService extends IFileStorageService {
     this.files.set(path, buffer);
     return { path };
   }
+
+  async delete(path) {
+    this.files.delete(path);
+  }
 }
 
 module.exports = InMemoryFileStorageService;

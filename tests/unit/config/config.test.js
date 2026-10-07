@@ -93,3 +93,77 @@ test('assertValid pasa en qa cuando las variables requeridas existen', () => {
     }
   );
 });
+
+// B6: el secreto fijo de desarrollo solo es seguro sin un proyecto Supabase
+// real detrás; si SUPABASE_URL apunta a uno, usarlo permitiría falsificar
+// tokens válidos para ese proyecto con un secreto conocido en el repositorio.
+test('en development, si SUPABASE_URL está configurada, NO cae al secreto JWT inseguro', () => {
+  withEnv(
+    {
+      NODE_ENV: 'development',
+      SUPABASE_URL: 'https://real-project.supabase.co',
+      SUPABASE_JWT_SECRET: undefined,
+    },
+    (config) => {
+      assert.equal(config.supabaseJwtSecret, '');
+    }
+  );
+});
+
+test('en test, si SUPABASE_URL está configurada, NO cae al secreto JWT inseguro', () => {
+  withEnv(
+    {
+      NODE_ENV: 'test',
+      SUPABASE_URL: 'https://real-project.supabase.co',
+      SUPABASE_JWT_SECRET: undefined,
+    },
+    (config) => {
+      assert.equal(config.supabaseJwtSecret, '');
+    }
+  );
+});
+
+test('en development sin SUPABASE_URL, sí usa el secreto JWT inseguro fijo (modo 100% en memoria)', () => {
+  withEnv(
+    {
+      NODE_ENV: 'development',
+      SUPABASE_URL: undefined,
+      SUPABASE_JWT_SECRET: undefined,
+    },
+    (config) => {
+      assert.equal(config.supabaseJwtSecret, 'dev-jwt-secret-insecure-32chars!!');
+    }
+  );
+});
+
+test('assertValid exige SUPABASE_JWT_SECRET en development cuando SUPABASE_URL está configurada', () => {
+  withEnv(
+    {
+      NODE_ENV: 'development',
+      SUPABASE_URL: 'https://real-project.supabase.co',
+      SUPABASE_JWT_SECRET: undefined,
+    },
+    (config) => {
+      assert.throws(
+        () => config.assertValid(),
+        (err) => {
+          assert.match(err.message, /SUPABASE_JWT_SECRET/);
+          return true;
+        }
+      );
+    }
+  );
+});
+
+test('assertValid pasa en development cuando SUPABASE_URL y SUPABASE_JWT_SECRET están ambas configuradas', () => {
+  withEnv(
+    {
+      NODE_ENV: 'development',
+      SUPABASE_URL: 'https://real-project.supabase.co',
+      SUPABASE_JWT_SECRET: 'un-secreto-real',
+    },
+    (config) => {
+      assert.doesNotThrow(() => config.assertValid());
+    }
+  );
+});

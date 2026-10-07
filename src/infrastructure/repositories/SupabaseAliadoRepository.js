@@ -49,6 +49,16 @@ class SupabaseAliadoRepository extends IAliadoRepository {
     if (error) throw new DomainError(`Error creando aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
     return data;
   }
+
+  async deleteByUsuarioId(tenantId, usuarioId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { error } = await client
+      .from('aliado')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('usuario_id', usuarioId);
+    if (error) throw new DomainError(`Error eliminando aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
+  }
 }
 
 module.exports = SupabaseAliadoRepository;

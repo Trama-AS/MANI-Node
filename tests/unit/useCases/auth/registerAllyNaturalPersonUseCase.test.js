@@ -261,3 +261,145 @@ test('authenticate() se llama después de crear usuario/aliado (orden correcto p
 
   assert.deepEqual(calls, ['createUser', 'usuario', 'aliado', 'authenticate']);
 });
+
+// B3: sin compensación, un fallo a mitad del registro deja un usuario de
+// auth.users huérfano y filas de usuario/aliado que harían fallar un
+// reintento legítimo con 409 aunque el registro nunca se completó.
+test('B3: si falla el paso de documento_kyc, compensa (borra) todo lo creado antes y relanza el error original', async () => {
+  const calls = [];
+  const originalError = new Error('Storage caído');
+
+  const useCase = makeUseCase({
+    usuarioRepository: {
+      findByEmail: async () => null,
+      create: async (u) => { calls.push('usuario.create'); return u; },
+      deleteById: async () => { calls.push('usuario.deleteById'); },
+    },
+    aliadoRepository: {
+      findByDocumentNumber: async () => null,
+      create: async (a) => { calls.push('aliado.create'); return { id: 'aliado-1', ...a }; },
+      deleteByUsuarioId: async () => { calls.push('aliado.deleteByUsuarioId'); },
+    },
+    aliadoCategoriaRepository: {
+      create: async (ac) => { calls.push('aliadoCategoria.create'); return ac; },
+      deleteByAliadoId: async () => { calls.push('aliadoCategoria.deleteByAliadoId'); },
+    },
+    documentoKycRepository: {
+      createMany: async () => { calls.push('documentoKyc.createMany'); throw originalError; },
+      deleteByAliadoId: async () => { calls.push('documentoKyc.deleteByAliadoId'); },
+    },
+    fileStorageService: {
+      upload: async ({ path }) => { calls.push('file.upload'); return { path }; },
+      delete: async () => { calls.push('file.delete'); },
+    },
+    authIdentityService: {
+      createUser: async () => { calls.push('auth.createUser'); return { userId: 'user-1' }; },
+      authenticate: async () => { calls.push('auth.authenticate'); return { accessToken: 'a', refreshToken: 'b', expiresIn: 1 }; },
+      deleteUser: async () => { calls.push('auth.deleteUser'); },
+    },
+  });
+
+  await assert.rejects(() => useCase.execute(VALID_INPUT), (err) => err === originalError);
+
+  // No debe haberse autenticado nunca (el fallo ocurrió antes de ese paso).
+  assert.ok(!calls.includes('auth.authenticate'));
+  // Se compensó todo lo que sí se llegó a crear, incluyendo el archivo subido.
+  assert.ok(calls.includes('file.delete'));
+  assert.ok(calls.includes('aliadoCategoria.deleteByAliadoId'));
+  assert.ok(calls.includes('aliado.deleteByUsuarioId'));
+  assert.ok(calls.includes('usuario.deleteById'));
+  assert.ok(calls.includes('auth.deleteUser'));
+  // documento_kyc nunca llegó a crearse (createMany lanzó), así que no debe compensarse.
+  assert.ok(!calls.includes('documentoKyc.deleteByAliadoId'));
+});
+
+test('B3: un fallo de compensación individual no bloquea la limpieza del resto (Promise.allSettled)', async () => {
+  const calls = [];
+  const useCase = makeUseCase({
+    aliadoCategoriaRepository: {
+      create: async (ac) => ac,
+      deleteByAliadoId: async () => { throw new Error('No se pudo borrar aliado_categoria'); },
+    },
+    aliadoRepository: {
+      findByDocumentNumber: async () => null,
+      create: async (a) => ({ id: 'aliado-1', ...a }),
+      deleteByUsuarioId: async () => { calls.push('aliado.deleteByUsuarioId'); },
+    },
+    usuarioRepository: {
+      findByEmail: async () => null,
+      create: async (u) => u,
+      deleteById: async () => { calls.push('usuario.deleteById'); },
+    },
+    documentoKycRepository: {
+      createMany: async () => { throw new Error('KYC caído'); },
+      deleteByAliadoId: async () => {},
+    },
+    fileStorageService: {
+      upload: async ({ path }) => ({ path }),
+      delete: async () => { calls.push('file.delete'); },
+    },
+    authIdentityService: {
+      createUser: async () => ({ userId: 'user-1' }),
+      authenticate: async () => ({ accessToken: 'a', refreshToken: 'b', expiresIn: 1 }),
+      deleteUser: async () => { calls.push('auth.deleteUser'); },
+    },
+  });
+
+  await assert.rejects(() => useCase.execute(VALID_INPUT));
+
+  assert.ok(calls.includes('aliado.deleteByUsuarioId'));
+  assert.ok(calls.includes('usuario.deleteById'));
+  assert.ok(calls.includes('auth.deleteUser'));
+});
+
+test('B3: tras una falla compensada, un reintento con los mismos datos se registra limpio (sin 409 falso)', async () => {
+  const UsuarioRepoStub = require('../../../../src/infrastructure/repositories/InMemoryUsuarioRepository');
+  const AliadoRepoStub = require('../../../../src/infrastructure/repositories/InMemoryAliadoRepository');
+  const AliadoCategoriaRepoStub = require('../../../../src/infrastructure/repositories/InMemoryAliadoCategoriaRepository');
+  const DocumentoKycRepoStub = require('../../../../src/infrastructure/repositories/InMemoryDocumentoKycRepository');
+
+  const usuarioRepository = new UsuarioRepoStub();
+  const aliadoRepository = new AliadoRepoStub();
+  const aliadoCategoriaRepository = new AliadoCategoriaRepoStub();
+  const documentoKycRepository = new DocumentoKycRepoStub();
+  const identities = new Map();
+
+  let failUpload = true;
+  const fileStorageService = {
+    upload: async ({ path }) => {
+      if (failUpload) throw new Error('Storage caído (primer intento)');
+      return { path };
+    },
+    delete: async () => {},
+  };
+  const authIdentityService = {
+    createUser: async ({ email }) => {
+      const userId = `user-${identities.size + 1}`;
+      identities.set(userId, { email });
+      return { userId };
+    },
+    authenticate: async () => ({ accessToken: 'a', refreshToken: 'b', expiresIn: 1 }),
+    deleteUser: async (userId) => { identities.delete(userId); },
+  };
+
+  const useCase = makeUseCase({
+    usuarioRepository,
+    aliadoRepository,
+    aliadoCategoriaRepository,
+    documentoKycRepository,
+    fileStorageService,
+    authIdentityService,
+  });
+
+  await assert.rejects(() => useCase.execute(VALID_INPUT));
+
+  // El primer intento falló y debió compensarse por completo.
+  assert.equal(await usuarioRepository.findByEmail('trama-demo', VALID_INPUT.email), null);
+  assert.equal(identities.size, 0);
+
+  failUpload = false;
+  const result = await useCase.execute(VALID_INPUT);
+
+  assert.equal(result.profile.role, 'ALLY');
+  assert.equal(result.profile.status, 'PENDING');
+});

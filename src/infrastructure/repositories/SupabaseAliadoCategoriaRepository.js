@@ -24,6 +24,16 @@ class SupabaseAliadoCategoriaRepository extends IAliadoCategoriaRepository {
     if (error) throw new DomainError(`Error asociando categoría al aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
     return data;
   }
+
+  async deleteByAliadoId(tenantId, aliadoId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { error } = await client
+      .from('aliado_categoria')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('aliado_id', aliadoId);
+    if (error) throw new DomainError(`Error eliminando categorías del aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
+  }
 }
 
 module.exports = SupabaseAliadoCategoriaRepository;

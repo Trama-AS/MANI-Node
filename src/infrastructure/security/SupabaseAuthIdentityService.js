@@ -75,6 +75,12 @@ class SupabaseAuthIdentityService extends IAuthIdentityService {
       expiresIn: data.session.expires_in,
     };
   }
+
+  async deleteUser(userId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { error } = await client.auth.admin.deleteUser(userId);
+    if (error) throw new DomainError(`Error eliminando identidad de autenticación: ${error.message}`, 'INTERNAL_ERROR', 500);
+  }
 }
 
 module.exports = SupabaseAuthIdentityService;

@@ -33,6 +33,15 @@ function normalizeEnvironment(rawEnv) {
 
 const environment = normalizeEnvironment(process.env.NODE_ENV);
 
+// Si SUPABASE_URL está configurada, los JWT que emita Core (o los reales de
+// Supabase Auth) se verifican contra ese proyecto concreto. El secreto fijo
+// de desarrollo solo es seguro cuando NO hay un proyecto Supabase real detrás
+// (B6): usarlo con un SUPABASE_URL real permitiría falsificar tokens válidos
+// para ese proyecto con un secreto público conocido en el repositorio.
+const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL);
+const allowInsecureDevSecret =
+  !hasSupabaseUrl && (environment === 'development' || environment === 'test');
+
 const config = {
   environment,
   envLabel: ENVIRONMENTS[environment],
@@ -43,10 +52,8 @@ const config = {
   // Clave pública, usada SOLO para el cliente desechable de sign-in (ver
   // SupabaseAuthIdentityService) — nunca para operaciones con service-role.
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
-  // Solo development/test caen al secreto inseguro fijo; qa/production lo exigen vía assertValid().
   supabaseJwtSecret:
-    process.env.SUPABASE_JWT_SECRET ||
-    (environment === 'development' || environment === 'test' ? 'dev-jwt-secret-insecure-32chars!!' : ''),
+    process.env.SUPABASE_JWT_SECRET || (allowInsecureDevSecret ? 'dev-jwt-secret-insecure-32chars!!' : ''),
   gatewayUrl: process.env.GATEWAY_URL,
   rulesServiceUrl: process.env.RULES_SERVICE_URL,
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
@@ -55,7 +62,13 @@ const config = {
 // Valida que las variables requeridas por el ambiente actual estén presentes.
 // No expone valores: solo reporta qué nombres de variable faltan.
 function assertValid() {
-  const requiredVars = REQUIRED_VARS_BY_ENV[config.environment] || [];
+  const requiredVars = [...(REQUIRED_VARS_BY_ENV[config.environment] || [])];
+  // SUPABASE_URL puede configurarse en development/test (apuntando a un
+  // proyecto Supabase real) sin pasar por la lista qa/production; en ese caso
+  // el secreto JWT real sigue siendo obligatorio sin importar el ambiente.
+  if (hasSupabaseUrl && !requiredVars.includes('SUPABASE_JWT_SECRET')) {
+    requiredVars.push('SUPABASE_JWT_SECRET');
+  }
   const missing = requiredVars.filter((name) => !process.env[name]);
 
   if (missing.length > 0) {

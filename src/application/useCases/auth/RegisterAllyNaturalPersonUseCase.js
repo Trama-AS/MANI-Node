@@ -11,6 +11,20 @@ function sanitizeForPath(value) {
 }
 
 /**
+ * Ejecuta una limpieza de compensación (B3) sin dejar que un fallo —sea un
+ * throw sincrónico o una promesa rechazada— interrumpa el resto de los pasos
+ * de limpieza: el objetivo es el mejor esfuerzo posible, nunca todo o nada.
+ */
+async function safeRun(fn) {
+  try {
+    await fn();
+  } catch {
+    // Mejor esfuerzo: un fallo al compensar no debe ocultar el error original
+    // ni impedir que se compensen los demás pasos ya creados.
+  }
+}
+
+/**
  * Migración de registrar_aliado_persona_natural + handle_new_user + el upsert a
  * usuario (ADR-0022). Antes esta lógica vivía en PL/pgSQL, disparada por
  * supabase.auth.signUp() desde el cliente Flutter; ahora Core Node la ejecuta
@@ -115,35 +129,71 @@ class RegisterAllyNaturalPersonUseCase {
     // 1. Identidad en auth.users (sin iniciar sesión todavía).
     const { userId } = await this.authIdentityService.createUser({ tenantId, email, password, role: 'ALLY' });
 
-    // 2. Espejo de negocio — handle_new_user migrado explícitamente a Node.
-    await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'ALLY', estado: 'ACTIVE', phone });
+    // 2-4. Todo lo posterior a crear la identidad debe compensarse (B3): sin una
+    // transacción que abarque Auth + Postgres + Storage, un fallo a mitad de
+    // camino dejaría un usuario de auth.users huérfano y, peor, filas de
+    // usuario/aliado que harían fallar un reintento legítimo con 409 (email/
+    // documento "ya registrado") aunque el registro nunca se completó.
+    let usuarioCreado = false;
+    let aliadoCreado = false;
+    let aliadoCategoriaCreada = false;
+    let documentoKycCreado = false;
+    let aliadoId;
+    const uploadedPaths = [];
+    let tokens;
 
-    const aliado = await this.aliadoRepository.create({
-      tenantId,
-      usuarioId: userId,
-      tipo: 'PERSONA_NATURAL',
-      nombreRazonSocial: fullName,
-      estadoVerificacion: 'PENDING',
-      documentType,
-      documentNumber,
-    });
-    const aliadoId = aliado.id || aliado.usuarioId || userId;
+    try {
+      // 2. Espejo de negocio — handle_new_user migrado explícitamente a Node.
+      await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'ALLY', estado: 'ACTIVE', phone });
+      usuarioCreado = true;
 
-    await this.aliadoCategoriaRepository.create({ tenantId, aliadoId, categoriaId });
+      const aliado = await this.aliadoRepository.create({
+        tenantId,
+        usuarioId: userId,
+        tipo: 'PERSONA_NATURAL',
+        nombreRazonSocial: fullName,
+        estadoVerificacion: 'PENDING',
+        documentType,
+        documentNumber,
+      });
+      aliadoCreado = true;
+      aliadoId = aliado.id || aliado.usuarioId || userId;
 
-    // 3. KYC: subir cada archivo a kyc-documentos/{tenantId}/{userId}/... y
-    // registrar la fila en documento_kyc con la ruta resultante.
-    const documentosConRuta = [];
-    for (const doc of documentos) {
-      const filename = `${Date.now()}-${sanitizeForPath(doc.filename || doc.tipoDocumento)}`;
-      const path = `${tenantId}/${userId}/${filename}`;
-      await this.fileStorageService.upload({ path, buffer: doc.buffer, contentType: doc.contentType });
-      documentosConRuta.push({ tipoDocumento: doc.tipoDocumento, rutaStorage: path });
+      await this.aliadoCategoriaRepository.create({ tenantId, aliadoId, categoriaId });
+      aliadoCategoriaCreada = true;
+
+      // 3. KYC: subir cada archivo a kyc-documentos/{tenantId}/{userId}/... y
+      // registrar la fila en documento_kyc con la ruta resultante.
+      const documentosConRuta = [];
+      for (const doc of documentos) {
+        const filename = `${Date.now()}-${sanitizeForPath(doc.filename || doc.tipoDocumento)}`;
+        const path = `${tenantId}/${userId}/${filename}`;
+        await this.fileStorageService.upload({ path, buffer: doc.buffer, contentType: doc.contentType });
+        uploadedPaths.push(path);
+        documentosConRuta.push({ tipoDocumento: doc.tipoDocumento, rutaStorage: path });
+      }
+      await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
+      documentoKycCreado = true;
+
+      // 4. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
+      tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
+    } catch (err) {
+      if (documentoKycCreado) {
+        await safeRun(() => this.documentoKycRepository.deleteByAliadoId(tenantId, aliadoId));
+      }
+      await Promise.allSettled(uploadedPaths.map((path) => safeRun(() => this.fileStorageService.delete(path))));
+      if (aliadoCategoriaCreada) {
+        await safeRun(() => this.aliadoCategoriaRepository.deleteByAliadoId(tenantId, aliadoId));
+      }
+      if (aliadoCreado) {
+        await safeRun(() => this.aliadoRepository.deleteByUsuarioId(tenantId, userId));
+      }
+      if (usuarioCreado) {
+        await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
+      }
+      await safeRun(() => this.authIdentityService.deleteUser(userId));
+      throw err;
     }
-    await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
-
-    // 4. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
-    const tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
 
     const profile = new Profile({
       id: userId,

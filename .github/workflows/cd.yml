@@ -18,8 +18,14 @@ name: CD
 # firma/verifica con un secreto de desarrollo fijo e inseguro.
 
 on:
-  push:
+  # Se encadena al workflow CI (ci.yml) en vez de a push directo: así nunca se
+  # publica/despliega una imagen de un commit en main cuyo lint o pruebas
+  # fallaron (B6). `workflow_run` dispara sobre el estado FINAL de CI en el
+  # mismo SHA, incluso si CI corrió por el trigger `push: branches: ['**']`.
+  workflow_run:
+    workflows: ['CI']
     branches: [main]
+    types: [completed]
   workflow_dispatch:
     inputs:
       image_tag:
@@ -37,12 +43,18 @@ jobs:
   build-and-push:
     name: Build & Push a GHCR
     runs-on: ubuntu-latest
+    # Si el disparador fue CI (workflow_run), solo seguir cuando CI concluyó
+    # con éxito; workflow_dispatch (redeploy manual) no trae esa condición y
+    # siempre pasa.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       image: ${{ steps.vars.outputs.image }}
       tag: ${{ steps.vars.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Calcular nombre de imagen y tag
         id: vars
@@ -51,7 +63,8 @@ jobs:
           IMAGE="${{ env.REGISTRY }}/${OWNER_LOWER}/mani-node"
           TAG="${{ github.event.inputs.image_tag }}"
           if [ -z "$TAG" ]; then
-            TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+            SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            TAG="sha-$(echo "$SHA" | cut -c1-7)"
           fi
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
