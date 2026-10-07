@@ -151,6 +151,7 @@ function registerClientRequest(overrides = {}) {
       email: overrides.email ?? `cliente.${unique}@mani.test`,
       password: overrides.password ?? 'Cambiar123!',
       ...(overrides.phone !== undefined ? { phone: overrides.phone } : {}),
+      ...(overrides.direccionHogar !== undefined ? { direccionHogar: overrides.direccionHogar } : {}),
     });
 }
 
@@ -206,6 +207,14 @@ test('POST /api/v1/auth/register/client repetido con el mismo email responde 409
   const second = await registerClientRequest({ email });
   assert.equal(second.status, 409);
   assert.equal(second.body.code, 'EMAIL_ALREADY_REGISTERED');
+});
+
+test('POST /api/v1/auth/register/client con direccionHogar responde 201 (CA-1: guarda el sitio/hogar inicial)', async () => {
+  const res = await registerClientRequest({ direccionHogar: 'Calle 123 # 45-67' });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.profile.role, 'CLIENT');
+  assert.equal(res.body.profile.status, 'VERIFIED');
 });
 
 test('POST /api/v1/auth/register/client no acepta archivos (no hay multer montado en esta ruta)', async () => {

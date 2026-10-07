@@ -43,10 +43,11 @@ async function safeRun(fn) {
  * `public.usuario`, así que esa fila debe existir ANTES de authenticate().
  */
 class RegisterClientNaturalPersonUseCase {
-  constructor({ tenantRepository, usuarioRepository, clienteRepository, authIdentityService }) {
+  constructor({ tenantRepository, usuarioRepository, clienteRepository, sitioRepository, authIdentityService }) {
     this.tenantRepository = tenantRepository;
     this.usuarioRepository = usuarioRepository;
     this.clienteRepository = clienteRepository;
+    this.sitioRepository = sitioRepository;
     this.authIdentityService = authIdentityService;
   }
 
@@ -65,7 +66,7 @@ class RegisterClientNaturalPersonUseCase {
 
   async execute(input) {
     this._validate(input);
-    const { tenantSlug, fullName, email, password, phone } = input;
+    const { tenantSlug, fullName, email, password, phone, direccionHogar } = input;
 
     // ADR-0018 (CA-5): el tenant se resuelve por el slug público, nunca se
     // usa para autorizar -- la cuenta queda aislada en ESTE tenant y nada
@@ -98,6 +99,8 @@ class RegisterClientNaturalPersonUseCase {
     // con un falso 409 EMAIL_ALREADY_REGISTERED.
     let usuarioCreado = false;
     let clienteCreado = false;
+    let sitioCreado = false;
+    let clienteId;
     let tokens;
 
     try {
@@ -105,12 +108,41 @@ class RegisterClientNaturalPersonUseCase {
       await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
       usuarioCreado = true;
 
-      await this.clienteRepository.create({ tenantId, usuarioId: userId, tipo: 'PERSONA_NATURAL' });
+      const cliente = await this.clienteRepository.create({
+        tenantId,
+        usuarioId: userId,
+        tipo: 'PERSONA_NATURAL',
+      });
       clienteCreado = true;
+      clienteId = cliente.id || cliente.usuarioId || userId;
 
-      // 3. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
+      // 3. Si se envía dirección, crear el primer domicilio/hogar del
+      // cliente (migrado de registrar_cliente_persona_natural). `zona` es un
+      // catálogo global sin tenant_id: se toma cualquiera activa, igual que
+      // hacía la función PL/pgSQL legacy. Si no hay ninguna zona activa, se
+      // omite el sitio sin fallar el registro (mismo comportamiento legacy:
+      // el IF solo entra si v_zona_id no es null).
+      const direccion = direccionHogar && direccionHogar.trim();
+      if (direccion) {
+        const zonaId = await this.sitioRepository.findFirstActiveZonaId();
+        if (zonaId) {
+          await this.sitioRepository.create({
+            tenantId,
+            clienteId,
+            zonaId,
+            direccion,
+            reglas: { nombre_contacto: fullName, telefono: phone || null },
+          });
+          sitioCreado = true;
+        }
+      }
+
+      // 4. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
       tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
     } catch (err) {
+      if (sitioCreado) {
+        await safeRun(() => this.sitioRepository.deleteByClienteId(tenantId, clienteId));
+      }
       if (clienteCreado) {
         await safeRun(() => this.clienteRepository.deleteByUsuarioId(tenantId, userId));
       }

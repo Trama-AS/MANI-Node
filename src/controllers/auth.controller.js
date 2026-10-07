@@ -52,6 +52,7 @@ async function registerClientNaturalPerson(req, res, next) {
       email: req.body.email,
       password: req.body.password,
       phone: req.body.phone,
+      direccionHogar: req.body.direccionHogar,
     });
 
     res.status(201).json(result);

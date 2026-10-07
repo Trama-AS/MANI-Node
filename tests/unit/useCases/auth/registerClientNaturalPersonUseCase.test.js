@@ -15,7 +15,15 @@ function makeUseCase(overrides = {}) {
     findBySlug: async (slug) => ({ id: 'trama-demo', slug: slug || 'trama-demo', name: 'Demo', status: 'ACTIVE', isActive: () => true }),
   };
   const usuarioRepository = { findByEmail: async () => null, create: async (u) => u, deleteById: async () => {} };
-  const clienteRepository = { create: async (c) => c, deleteByUsuarioId: async () => {} };
+  const clienteRepository = {
+    create: async (c) => ({ id: 'cliente-1', ...c }),
+    deleteByUsuarioId: async () => {},
+  };
+  const sitioRepository = {
+    findFirstActiveZonaId: async () => 'zona-1',
+    create: async (s) => s,
+    deleteByClienteId: async () => {},
+  };
   const authIdentityService = {
     createUser: async () => ({ userId: 'user-1' }),
     authenticate: async () => ({ accessToken: 'at', refreshToken: 'rt', expiresIn: 3600 }),
@@ -26,6 +34,7 @@ function makeUseCase(overrides = {}) {
     tenantRepository,
     usuarioRepository,
     clienteRepository,
+    sitioRepository,
     authIdentityService,
     ...overrides,
   });
@@ -233,4 +242,116 @@ test('B3: tras una falla compensada, un reintento con los mismos datos se regist
 
   assert.equal(result.profile.role, 'CLIENT');
   assert.equal(result.profile.status, 'VERIFIED');
+});
+
+// --- sitio/direccionHogar (US-02.2.1-M2.2) ---
+
+test('con direccionHogar, crea el sitio (hogar) con la zona activa y las reglas de contacto', async () => {
+  const calls = [];
+  const useCase = makeUseCase({
+    clienteRepository: {
+      create: async (c) => { calls.push('cliente.create'); return { id: 'cliente-1', ...c }; },
+      deleteByUsuarioId: async () => {},
+    },
+    sitioRepository: {
+      findFirstActiveZonaId: async () => { calls.push('findFirstActiveZonaId'); return 'zona-1'; },
+      create: async (s) => { calls.push('sitio.create'); return { id: 'sitio-1', ...s }; },
+      deleteByClienteId: async () => {},
+    },
+  });
+
+  await useCase.execute({ ...VALID_INPUT, direccionHogar: '  Calle 1 # 2-3  ' });
+
+  assert.deepEqual(calls, ['cliente.create', 'findFirstActiveZonaId', 'sitio.create']);
+});
+
+test('el sitio creado usa clienteId, zonaId, dirección recortada y reglas con nombre_contacto/telefono', async () => {
+  let sitioCreado;
+  const useCase = makeUseCase({
+    sitioRepository: {
+      findFirstActiveZonaId: async () => 'zona-1',
+      create: async (s) => {
+        sitioCreado = s;
+        return { id: 'sitio-1', ...s };
+      },
+      deleteByClienteId: async () => {},
+    },
+  });
+
+  await useCase.execute({ ...VALID_INPUT, direccionHogar: '  Calle 1 # 2-3  ' });
+
+  assert.equal(sitioCreado.tenantId, 'trama-demo');
+  assert.equal(sitioCreado.clienteId, 'cliente-1');
+  assert.equal(sitioCreado.zonaId, 'zona-1');
+  assert.equal(sitioCreado.direccion, 'Calle 1 # 2-3');
+  assert.deepEqual(sitioCreado.reglas, { nombre_contacto: VALID_INPUT.fullName, telefono: VALID_INPUT.phone });
+});
+
+test('sin direccionHogar (o vacía/solo espacios), no se busca zona ni se crea sitio', async () => {
+  const calls = [];
+  const sitioRepository = {
+    findFirstActiveZonaId: async () => { calls.push('findFirstActiveZonaId'); return 'zona-1'; },
+    create: async (s) => { calls.push('sitio.create'); return s; },
+    deleteByClienteId: async () => {},
+  };
+
+  await makeUseCase({ sitioRepository }).execute(VALID_INPUT);
+  await makeUseCase({ sitioRepository }).execute({ ...VALID_INPUT, direccionHogar: '   ' });
+
+  assert.deepEqual(calls, []);
+});
+
+test('si no hay ninguna zona activa, el registro no falla y simplemente no crea el sitio', async () => {
+  const calls = [];
+  const useCase = makeUseCase({
+    sitioRepository: {
+      findFirstActiveZonaId: async () => null,
+      create: async (s) => { calls.push('sitio.create'); return s; },
+      deleteByClienteId: async () => {},
+    },
+  });
+
+  const result = await useCase.execute({ ...VALID_INPUT, direccionHogar: 'Calle 1' });
+
+  assert.equal(result.profile.role, 'CLIENT');
+  assert.deepEqual(calls, []);
+});
+
+test('B3: si falla crear el sitio, compensa (borra) sitio+cliente+usuario+identidad y relanza el error original', async () => {
+  const calls = [];
+  const originalError = new Error('Storage de sitios caído');
+
+  const useCase = makeUseCase({
+    usuarioRepository: {
+      findByEmail: async () => null,
+      create: async (u) => { calls.push('usuario.create'); return u; },
+      deleteById: async () => { calls.push('usuario.deleteById'); },
+    },
+    clienteRepository: {
+      create: async (c) => { calls.push('cliente.create'); return { id: 'cliente-1', ...c }; },
+      deleteByUsuarioId: async () => { calls.push('cliente.deleteByUsuarioId'); },
+    },
+    sitioRepository: {
+      findFirstActiveZonaId: async () => 'zona-1',
+      create: async () => { calls.push('sitio.create'); throw originalError; },
+      deleteByClienteId: async () => { calls.push('sitio.deleteByClienteId'); },
+    },
+    authIdentityService: {
+      createUser: async () => { calls.push('auth.createUser'); return { userId: 'user-1' }; },
+      authenticate: async () => { calls.push('auth.authenticate'); return { accessToken: 'a', refreshToken: 'b', expiresIn: 1 }; },
+      deleteUser: async () => { calls.push('auth.deleteUser'); },
+    },
+  });
+
+  await assert.rejects(
+    () => useCase.execute({ ...VALID_INPUT, direccionHogar: 'Calle 1' }),
+    (err) => err === originalError
+  );
+
+  assert.ok(!calls.includes('auth.authenticate'));
+  // El sitio nunca llegó a crearse (create() lanzó), así que no debe compensarse.
+  assert.ok(!calls.includes('sitio.deleteByClienteId'));
+  assert.ok(calls.includes('cliente.deleteByUsuarioId'));
+  assert.ok(calls.includes('usuario.deleteById'));
+  assert.ok(calls.includes('auth.deleteUser'));
 });

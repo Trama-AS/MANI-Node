@@ -7,6 +7,8 @@ function makeQueryBuilder(result) {
     ilike: () => builder,
     upsert: () => builder,
     delete: () => builder,
+    limit: () => builder,
+    insert: () => builder,
     maybeSingle: async () => result,
     single: async () => result,
     // Como el PostgrestFilterBuilder real, el builder es "thenable": permite
