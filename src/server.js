@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const healthRoutes = require('./routes/health.routes');
 const coreRoutes = require('./routes/core.routes');
+const authRoutes = require('./routes/auth.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +23,8 @@ app.use((req, res, next) => {
 
 // Rutas
 app.use(healthRoutes);
+app.use('/api/v1', authRoutes);
+app.use('/', authRoutes);
 app.use('/api/v1', coreRoutes);
 app.use('/', coreRoutes);
 

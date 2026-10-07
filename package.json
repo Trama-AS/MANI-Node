@@ -8,12 +8,18 @@
     "dev": "node --watch src/server.js",
     "test": "node --test"
   },
-  "keywords": ["mani", "backend", "core", "microservices"],
+  "keywords": [
+    "mani",
+    "backend",
+    "core",
+    "microservices"
+  ],
   "author": "TRAMA · Ingenieria de Software",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3"
   }
 }

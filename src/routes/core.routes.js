@@ -15,17 +15,26 @@ router.get('/tenants', (req, res) => {
 // Endpoint de perfiles (clientes y profesionales)
 router.get('/profiles/me', (req, res) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ error: 'Encabezado Authorization requerido' });
+  const tenantId = req.headers['x-tenant-id'];
+  const userRole = req.headers['x-user-role'];
+  const userId = req.headers['x-user-id'];
+
+  if (!authHeader && !tenantId) {
+    return res.status(401).json({
+      error: 'UNAUTHORIZED',
+      message: 'Petición no autenticada: falta token o contexto de tenant',
+      correlationId: req.headers['x-correlation-id'] || 'none',
+    });
   }
 
   res.status(200).json({
     message: 'Perfil de usuario autenticado',
     correlationId: req.headers['x-correlation-id'] || 'none',
     profile: {
-      id: 'demo-user-1',
-      role: 'CLIENT',
-      fullName: 'Usuario Demo MANI',
+      id: userId || 'demo-user-1',
+      tenantId: tenantId || 'trama-demo',
+      role: userRole || 'CLIENT',
+      fullName: 'Usuario Autenticado MANI',
       status: 'VERIFIED'
     }
   });
