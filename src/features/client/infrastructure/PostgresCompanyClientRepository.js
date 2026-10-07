@@ -10,10 +10,14 @@ const { ICompanyClientRepository } = require('../application/ICompanyClientRepos
  * Cuenta con un modo en memoria (fallback) para pruebas y ejecución local sin BD activa.
  */
 class PostgresCompanyClientRepository extends ICompanyClientRepository {
+  // Almacenamiento en memoria compartido entre instancias en entorno dev/test
+  static _sharedClients = new Map();
+  static _sharedSites = new Map();
+
   constructor() {
     super();
-    this._inMemoryClients = new Map(); // key: id -> CompanyClient
-    this._inMemorySites = new Map();   // key: id -> Site
+    this._inMemoryClients = PostgresCompanyClientRepository._sharedClients;
+    this._inMemorySites = PostgresCompanyClientRepository._sharedSites;
 
     try {
       const { Pool } = require('pg');
@@ -249,6 +253,67 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     );
 
     return rows.map((r) => this._rowToSite(r));
+  }
+
+  /**
+   * @param {string} siteId
+   * @param {string} tenantId
+   * @returns {Promise<Site|null>}
+   */
+  async findSiteById(siteId, tenantId) {
+    if (!this._pool) {
+      const site = this._inMemorySites.get(siteId);
+      if (site && site.tenantId === tenantId) {
+        return site;
+      }
+      return null;
+    }
+
+    const { rows } = await this._pool.query(
+      `SELECT id, tenant_id, cliente_id, zona_id, direccion, reglas, created_at
+       FROM sitio
+       WHERE id = $1 AND tenant_id = $2
+       LIMIT 1`,
+      [siteId, tenantId]
+    );
+
+    return rows.length > 0 ? this._rowToSite(rows[0]) : null;
+  }
+
+  /**
+   * @param {string} siteId
+   * @param {string} tenantId
+   * @param {import('../domain/SiteRules').SiteRules|object} rules
+   * @returns {Promise<Site>}
+   */
+  async updateSiteRules(siteId, tenantId, rules) {
+    if (!this._pool) {
+      const site = this._inMemorySites.get(siteId);
+      if (!site || site.tenantId !== tenantId) {
+        throw new Error(`Sitio con ID "${siteId}" no encontrado en tenant "${tenantId}".`);
+      }
+      site.setRules(rules);
+      this._inMemorySites.set(siteId, site);
+      return site;
+    }
+
+    const reglasJson = typeof rules.toJSON === 'function'
+      ? JSON.stringify(rules.toJSON())
+      : JSON.stringify(rules);
+
+    const { rows } = await this._pool.query(
+      `UPDATE sitio
+       SET reglas = $1
+       WHERE id = $2 AND tenant_id = $3
+       RETURNING id, tenant_id, cliente_id, zona_id, direccion, reglas, created_at`,
+      [reglasJson, siteId, tenantId]
+    );
+
+    if (rows.length === 0) {
+      throw new Error(`Sitio con ID "${siteId}" no encontrado en tenant "${tenantId}".`);
+    }
+
+    return this._rowToSite(rows[0]);
   }
 
   // ── Helpers en memoria ───────────────────────────────────────────────────

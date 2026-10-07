@@ -64,6 +64,27 @@ class ICompanyClientRepository {
   async findSitesByClientId(clienteId, tenantId) {
     throw new Error('Método findSitesByClientId() no implementado.');
   }
+
+  /**
+   * Busca un sitio por su ID y tenant.
+   * @param {string} siteId
+   * @param {string} tenantId
+   * @returns {Promise<import('../domain/Site').Site|null>}
+   */
+  async findSiteById(siteId, tenantId) {
+    throw new Error('Método findSiteById() no implementado.');
+  }
+
+  /**
+   * Actualiza las reglas contextuales asociadas a un sitio.
+   * @param {string} siteId
+   * @param {string} tenantId
+   * @param {import('../domain/SiteRules').SiteRules|object} rules
+   * @returns {Promise<import('../domain/Site').Site>}
+   */
+  async updateSiteRules(siteId, tenantId, rules) {
+    throw new Error('Método updateSiteRules() no implementado.');
+  }
 }
 
 module.exports = { ICompanyClientRepository };
