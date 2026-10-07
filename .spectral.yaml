@@ -1,0 +1,11 @@
+extends: spectral:oas
+
+rules:
+  # El contrato intencionalmente no lleva contacto/licencia propios: vive dentro
+  # del repo del Core y hereda la gobernanza de TRAMA (ver CONTRIBUTING.md).
+  info-contact: off
+  info-license: off
+  # TokenClaims documenta el payload decodificado del JWT (AuthTokens.accessToken
+  # es un string opaco a nivel de esquema): es deliberadamente de solo-documentación,
+  # no un $ref de ningún request/response body.
+  oas3-unused-component: off

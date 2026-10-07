@@ -3,17 +3,47 @@
   "version": "1.0.0",
   "description": "Servicio Core Backend del ecosistema MANI (Usuarios, Tenants, Perfiles, KYC, Catalogos)",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:watch": "node --test --watch \"tests/**/*.test.js\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "validate:openapi": "node scripts/validate-openapi.js",
+    "lint:openapi": "spectral lint docs/openapi/core.yaml",
+    "postman:generate": "node scripts/generate-postman-collection.js",
+    "postman:run": "newman run postman/MANI-Core.postman_collection.json -e",
+    "postman:run:dev": "npm run postman:run -- postman/environments/dev.postman_environment.json",
+    "postman:run:qa": "npm run postman:run -- postman/environments/qa.postman_environment.json"
   },
-  "keywords": ["mani", "backend", "core", "microservices"],
+  "keywords": [
+    "mani",
+    "backend",
+    "core",
+    "microservices"
+  ],
   "author": "TRAMA · Ingenieria de Software",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0",
+    "@eslint/js": "^9.13.0",
+    "@stoplight/spectral-cli": "^6.17.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0",
+    "newman": "^6.2.2",
+    "openapi-to-postmanv2": "^6.3.3",
+    "supertest": "^7.0.0"
   }
 }
