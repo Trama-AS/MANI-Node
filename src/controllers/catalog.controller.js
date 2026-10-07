@@ -36,11 +36,12 @@ async function getCategory(req, res, next) {
 
 async function createCategory(req, res, next) {
   try {
-    const { name, description } = req.body;
+    const { name, description, flujoOperativo } = req.body;
     const category = await container.createCategoryUseCase.execute({
       tenantId: req.tenantId,
       name,
       description,
+      flujoOperativo,
     });
     res.status(201).json({ category });
   } catch (err) {
@@ -50,12 +51,13 @@ async function createCategory(req, res, next) {
 
 async function updateCategory(req, res, next) {
   try {
-    const { name, description } = req.body;
+    const { name, description, flujoOperativo } = req.body;
     const category = await container.updateCategoryUseCase.execute({
       tenantId: req.tenantId,
       categoryId: req.params.id,
       name,
       description,
+      flujoOperativo,
     });
     res.status(200).json({ category });
   } catch (err) {

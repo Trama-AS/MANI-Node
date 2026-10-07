@@ -88,11 +88,12 @@ test('POST /api/v1/catalog/categories crea una categoría y queda aislada al ten
   const createRes = await request(app)
     .post('/api/v1/catalog/categories')
     .set('Authorization', `Bearer ${adminToken(tenantId)}`)
-    .send({ name: 'Peinados', description: 'Peinados para eventos' });
+    .send({ name: 'Peinados', description: 'Peinados para eventos', flujoOperativo: 'TARIFA_ESTANDAR' });
 
   assert.equal(createRes.status, 201);
   assert.equal(createRes.body.category.tenantId, tenantId);
   assert.equal(createRes.body.category.active, true);
+  assert.equal(createRes.body.category.flujoOperativo, 'TARIFA_ESTANDAR');
 
   const listRes = await request(app)
     .get('/api/v1/catalog/categories')
@@ -113,10 +114,36 @@ test('POST /api/v1/catalog/categories sin name responde 400 VALIDATION_ERROR', a
   const res = await request(app)
     .post('/api/v1/catalog/categories')
     .set('Authorization', `Bearer ${adminToken()}`)
-    .send({ description: 'sin nombre' });
+    .send({ description: 'sin nombre', flujoOperativo: 'TARIFA_ESTANDAR' });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/catalog/categories sin flujoOperativo responde 400 VALIDATION_ERROR', async () => {
+  const res = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken()}`)
+    .send({ name: 'Peinados' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/catalog/categories con nombre duplicado en el mismo tenant responde 409 CATEGORY_NAME_ALREADY_EXISTS', async () => {
+  const tenantId = 'tenant-categorias-duplicado';
+  await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+
+  const res = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ name: '  peinados  ', flujoOperativo: 'COTIZACION_PREVIA' });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'CATEGORY_NAME_ALREADY_EXISTS');
 });
 
 test('GET /api/v1/catalog/categories/:id responde 404 CATEGORY_NOT_FOUND si es de otro tenant', async () => {
@@ -124,7 +151,7 @@ test('GET /api/v1/catalog/categories/:id responde 404 CATEGORY_NOT_FOUND si es d
   const createRes = await request(app)
     .post('/api/v1/catalog/categories')
     .set('Authorization', `Bearer ${adminToken(tenantId)}`)
-    .send({ name: 'Peinados' });
+    .send({ name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
 
   const res = await request(app)
     .get(`/api/v1/catalog/categories/${createRes.body.category.id}`)
@@ -134,20 +161,21 @@ test('GET /api/v1/catalog/categories/:id responde 404 CATEGORY_NOT_FOUND si es d
   assert.equal(res.body.code, 'CATEGORY_NOT_FOUND');
 });
 
-test('PUT /api/v1/catalog/categories/:id actualiza name/description', async () => {
+test('PUT /api/v1/catalog/categories/:id actualiza name/description/flujoOperativo', async () => {
   const tenantId = 'tenant-categorias-update';
   const createRes = await request(app)
     .post('/api/v1/catalog/categories')
     .set('Authorization', `Bearer ${adminToken(tenantId)}`)
-    .send({ name: 'Peinados' });
+    .send({ name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
 
   const res = await request(app)
     .put(`/api/v1/catalog/categories/${createRes.body.category.id}`)
     .set('Authorization', `Bearer ${adminToken(tenantId)}`)
-    .send({ name: 'Peinados de Novia' });
+    .send({ name: 'Peinados de Novia', flujoOperativo: 'COTIZACION_PREVIA' });
 
   assert.equal(res.status, 200);
   assert.equal(res.body.category.name, 'Peinados de Novia');
+  assert.equal(res.body.category.flujoOperativo, 'COTIZACION_PREVIA');
 });
 
 test('PATCH /api/v1/catalog/categories/:id/deactivate y /activate alternan el flujo operativo', async () => {
@@ -155,7 +183,7 @@ test('PATCH /api/v1/catalog/categories/:id/deactivate y /activate alternan el fl
   const createRes = await request(app)
     .post('/api/v1/catalog/categories')
     .set('Authorization', `Bearer ${adminToken(tenantId)}`)
-    .send({ name: 'Peinados' });
+    .send({ name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
   const id = createRes.body.category.id;
 
   const deactivateRes = await request(app)

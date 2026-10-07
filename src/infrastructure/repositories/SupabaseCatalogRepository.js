@@ -1,8 +1,17 @@
 const ICatalogRepository = require('../../domain/ports/ICatalogRepository');
 const Category = require('../../domain/entities/Category');
-const { DomainError } = require('../../domain/errors/DomainError');
+const { DomainError, ConflictError } = require('../../domain/errors/DomainError');
 
-const SELECT_COLUMNS = 'id, nombre, estado, descripcion, tenant_id';
+// `categoria_servicio` no tiene columna `descripcion` (ver
+// MANI-APIGateway/database/init/01-schema.sql): solo id/tenant_id/nombre/
+// estado/flujo_operativo. Category.description queda siempre '' para filas
+// que vienen de Supabase hasta que una migración futura agregue esa columna.
+const SELECT_COLUMNS = 'id, nombre, estado, flujo_operativo, tenant_id';
+
+// SQLSTATE de Postgres para violación de restricción UNIQUE (acá,
+// ux_categoria_tenant_nombre de MANI-APIGateway/database/migrations/
+// 003_categorias_servicio.sql: (tenant_id, lower(btrim(nombre)))).
+const UNIQUE_VIOLATION_CODE = '23505';
 
 function toDomain(row) {
   if (!row) return null;
@@ -10,9 +19,17 @@ function toDomain(row) {
     id: row.id,
     name: row.nombre,
     active: row.estado === 'ACTIVO',
-    description: row.descripcion || '',
     tenantId: row.tenant_id,
+    flujoOperativo: row.flujo_operativo,
   });
+}
+
+function assertNoError(error, message) {
+  if (!error) return;
+  if (error.code === UNIQUE_VIOLATION_CODE) {
+    throw new ConflictError('Ya existe una categoría con ese nombre en este tenant', 'CATEGORY_NAME_ALREADY_EXISTS');
+  }
+  throw new DomainError(`${message}: ${error.message}`, 'INTERNAL_ERROR', 500);
 }
 
 class SupabaseCatalogRepository extends ICatalogRepository {
@@ -24,7 +41,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
   async findAllCategories() {
     const client = this.supabaseClientFactory.getClient();
     const { data, error } = await client.from('categoria_servicio').select(SELECT_COLUMNS);
-    if (error) throw new DomainError(`Error consultando categorías: ${error.message}`, 'INTERNAL_ERROR', 500);
+    assertNoError(error, 'Error consultando categorías');
     return data.map(toDomain);
   }
 
@@ -37,7 +54,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
       .eq('id', categoryId)
       .maybeSingle();
 
-    if (error) throw new DomainError(`Error consultando categoría: ${error.message}`, 'INTERNAL_ERROR', 500);
+    assertNoError(error, 'Error consultando categoría');
     return toDomain(data);
   }
 
@@ -47,27 +64,27 @@ class SupabaseCatalogRepository extends ICatalogRepository {
     if (onlyActive) query = query.eq('estado', 'ACTIVO');
 
     const { data, error } = await query;
-    if (error) throw new DomainError(`Error consultando categorías del tenant: ${error.message}`, 'INTERNAL_ERROR', 500);
+    assertNoError(error, 'Error consultando categorías del tenant');
     return data.map(toDomain);
   }
 
-  async create(tenantId, { name, description }) {
+  async create(tenantId, { name, flujoOperativo }) {
     const client = this.supabaseClientFactory.getClient();
     const { data, error } = await client
       .from('categoria_servicio')
-      .insert({ tenant_id: tenantId, nombre: name, descripcion: description || null, estado: 'ACTIVO' })
+      .insert({ tenant_id: tenantId, nombre: name, estado: 'ACTIVO', flujo_operativo: flujoOperativo })
       .select(SELECT_COLUMNS)
       .single();
 
-    if (error) throw new DomainError(`Error creando categoría: ${error.message}`, 'INTERNAL_ERROR', 500);
+    assertNoError(error, 'Error creando categoría');
     return toDomain(data);
   }
 
-  async update(tenantId, categoryId, { name, description }) {
+  async update(tenantId, categoryId, { name, flujoOperativo }) {
     const client = this.supabaseClientFactory.getClient();
     const payload = {};
     if (name !== undefined) payload.nombre = name;
-    if (description !== undefined) payload.descripcion = description;
+    if (flujoOperativo !== undefined) payload.flujo_operativo = flujoOperativo;
 
     const { data, error } = await client
       .from('categoria_servicio')
@@ -77,7 +94,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
       .select(SELECT_COLUMNS)
       .maybeSingle();
 
-    if (error) throw new DomainError(`Error actualizando categoría: ${error.message}`, 'INTERNAL_ERROR', 500);
+    assertNoError(error, 'Error actualizando categoría');
     return toDomain(data);
   }
 
@@ -91,9 +108,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
       .select(SELECT_COLUMNS)
       .maybeSingle();
 
-    if (error) {
-      throw new DomainError(`Error actualizando el estado de la categoría: ${error.message}`, 'INTERNAL_ERROR', 500);
-    }
+    assertNoError(error, 'Error actualizando el estado de la categoría');
     return toDomain(data);
   }
 }

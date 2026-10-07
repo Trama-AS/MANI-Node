@@ -3,8 +3,13 @@ const assert = require('node:assert/strict');
 const SupabaseCatalogRepository = require('../../../src/infrastructure/repositories/SupabaseCatalogRepository');
 const { makeFakeSupabaseClient, makeFakeClientFactory } = require('../../helpers/fakeSupabaseClient');
 
-test('findById traduce estado ACTIVO/INACTIVO a un Category de dominio', async () => {
-  const client = makeFakeSupabaseClient({ fromResult: { data: { id: 'c1', nombre: 'Plomería', estado: 'ACTIVO' }, error: null } });
+test('findById traduce estado ACTIVO/INACTIVO y flujo_operativo a un Category de dominio', async () => {
+  const client = makeFakeSupabaseClient({
+    fromResult: {
+      data: { id: 'c1', nombre: 'Plomería', estado: 'ACTIVO', flujo_operativo: 'COTIZACION_PREVIA', tenant_id: 't1' },
+      error: null,
+    },
+  });
   const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
 
   const category = await repo.findById('t1', 'c1');
@@ -12,6 +17,7 @@ test('findById traduce estado ACTIVO/INACTIVO a un Category de dominio', async (
   assert.equal(category.id, 'c1');
   assert.equal(category.name, 'Plomería');
   assert.equal(category.active, true);
+  assert.equal(category.flujoOperativo, 'COTIZACION_PREVIA');
 });
 
 test('findById retorna null cuando la categoría no existe', async () => {
@@ -38,7 +44,7 @@ test('findAllCategories mapea todas las filas a Category', async () => {
   const client = {
     from: () => ({
       select: async () => ({
-        data: [{ id: 'c1', nombre: 'Plomería', estado: 'ACTIVO' }],
+        data: [{ id: 'c1', nombre: 'Plomería', estado: 'ACTIVO', flujo_operativo: 'TARIFA_ESTANDAR', tenant_id: 't1' }],
         error: null,
       }),
     }),
@@ -64,24 +70,27 @@ test('findAllCategories lanza DomainError INTERNAL_ERROR si Supabase reporta err
   );
 });
 
+// --- Doble mínimo para encadenar select/eq/insert/update y resolver como
+// una promesa (await query) o vía .single()/.maybeSingle(), según el método
+// del repositorio que se esté probando.
 function makeChainableClient({ onFrom } = {}) {
   return {
     from: (table) => {
       const builder = {
         select: (...args) => {
-          onFrom && onFrom({ table, op: 'select', args });
+          if (onFrom) onFrom({ table, op: 'select', args });
           return builder;
         },
         eq: (...args) => {
-          onFrom && onFrom({ table, op: 'eq', args });
+          if (onFrom) onFrom({ table, op: 'eq', args });
           return builder;
         },
         insert: (payload) => {
-          onFrom && onFrom({ table, op: 'insert', payload });
+          if (onFrom) onFrom({ table, op: 'insert', payload });
           return builder;
         },
         update: (payload) => {
-          onFrom && onFrom({ table, op: 'update', payload });
+          if (onFrom) onFrom({ table, op: 'update', payload });
           return builder;
         },
         single: async () => ({ data: null, error: null }),
@@ -108,7 +117,7 @@ function withResult(client, table, result) {
 
 test('findAllByTenant filtra por tenant_id y mapea todas las filas', async () => {
   const client = withResult(makeChainableClient(), 'categoria_servicio', {
-    data: [{ id: 'c1', nombre: 'Peinados', estado: 'ACTIVO', descripcion: '', tenant_id: 't1' }],
+    data: [{ id: 'c1', nombre: 'Peinados', estado: 'ACTIVO', flujo_operativo: 'TARIFA_ESTANDAR', tenant_id: 't1' }],
     error: null,
   });
   const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
@@ -132,32 +141,58 @@ test('findAllByTenant lanza DomainError INTERNAL_ERROR si Supabase reporta error
   );
 });
 
-test('create inserta con tenant_id y estado ACTIVO, retorna la categoría creada', async () => {
+test('create inserta con tenant_id, estado ACTIVO y flujo_operativo, retorna la categoría creada', async () => {
   const calls = [];
   const client = withResult(
     makeChainableClient({ onFrom: (c) => calls.push(c) }),
     'categoria_servicio',
-    { data: { id: 'c1', nombre: 'Peinados', estado: 'ACTIVO', descripcion: null, tenant_id: 't1' }, error: null }
+    {
+      data: { id: 'c1', nombre: 'Peinados', estado: 'ACTIVO', flujo_operativo: 'TARIFA_ESTANDAR', tenant_id: 't1' },
+      error: null,
+    }
   );
   const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
 
-  const category = await repo.create('t1', { name: 'Peinados' });
+  const category = await repo.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
 
   assert.equal(category.id, 'c1');
   assert.equal(category.active, true);
+  assert.equal(category.flujoOperativo, 'TARIFA_ESTANDAR');
   const insertCall = calls.find((c) => c.op === 'insert');
   assert.equal(insertCall.payload.tenant_id, 't1');
   assert.equal(insertCall.payload.estado, 'ACTIVO');
+  assert.equal(insertCall.payload.flujo_operativo, 'TARIFA_ESTANDAR');
+  assert.equal(insertCall.payload.descripcion, undefined); // sin columna en el esquema real
 });
 
-test('create lanza DomainError INTERNAL_ERROR si Supabase reporta error', async () => {
-  const client = withResult(makeChainableClient(), 'categoria_servicio', { data: null, error: { message: 'down' } });
+test('create lanza DomainError INTERNAL_ERROR si Supabase reporta un error que no es violación de índice único', async () => {
+  const client = withResult(makeChainableClient(), 'categoria_servicio', {
+    data: null,
+    error: { code: '42703', message: 'column does not exist' },
+  });
   const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
 
   await assert.rejects(
-    () => repo.create('t1', { name: 'Peinados' }),
+    () => repo.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' }),
     (err) => {
       assert.equal(err.code, 'INTERNAL_ERROR');
+      return true;
+    }
+  );
+});
+
+test('create mapea la violación de índice único (23505) a ConflictError CATEGORY_NAME_ALREADY_EXISTS', async () => {
+  const client = withResult(makeChainableClient(), 'categoria_servicio', {
+    data: null,
+    error: { code: '23505', message: 'duplicate key value violates unique constraint "ux_categoria_tenant_nombre"' },
+  });
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  await assert.rejects(
+    () => repo.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' }),
+    (err) => {
+      assert.equal(err.code, 'CATEGORY_NAME_ALREADY_EXISTS');
+      assert.equal(err.statusCode, 409);
       return true;
     }
   );
@@ -170,8 +205,11 @@ test('update retorna null (sin lanzar) cuando maybeSingle no encuentra fila para
   assert.equal(await repo.update('t1', 'no-existe', { name: 'x' }), null);
 });
 
-test('update lanza DomainError INTERNAL_ERROR si Supabase reporta error', async () => {
-  const client = withResult(makeChainableClient(), 'categoria_servicio', { data: null, error: { message: 'down' } });
+test('update lanza DomainError INTERNAL_ERROR si Supabase reporta un error que no es violación de índice único', async () => {
+  const client = withResult(makeChainableClient(), 'categoria_servicio', {
+    data: null,
+    error: { message: 'down' },
+  });
   const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
 
   await assert.rejects(
@@ -183,12 +221,32 @@ test('update lanza DomainError INTERNAL_ERROR si Supabase reporta error', async 
   );
 });
 
+test('update mapea la violación de índice único (23505) a ConflictError CATEGORY_NAME_ALREADY_EXISTS (renombrar a uno ya usado)', async () => {
+  const client = withResult(makeChainableClient(), 'categoria_servicio', {
+    data: null,
+    error: { code: '23505', message: 'duplicate key value violates unique constraint "ux_categoria_tenant_nombre"' },
+  });
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  await assert.rejects(
+    () => repo.update('t1', 'c1', { name: 'Ya existe' }),
+    (err) => {
+      assert.equal(err.code, 'CATEGORY_NAME_ALREADY_EXISTS');
+      assert.equal(err.statusCode, 409);
+      return true;
+    }
+  );
+});
+
 test('setActive traduce active=false a estado INACTIVO', async () => {
   const calls = [];
   const client = withResult(
     makeChainableClient({ onFrom: (c) => calls.push(c) }),
     'categoria_servicio',
-    { data: { id: 'c1', nombre: 'Peinados', estado: 'INACTIVO', descripcion: null, tenant_id: 't1' }, error: null }
+    {
+      data: { id: 'c1', nombre: 'Peinados', estado: 'INACTIVO', flujo_operativo: 'TARIFA_ESTANDAR', tenant_id: 't1' },
+      error: null,
+    }
   );
   const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
 
