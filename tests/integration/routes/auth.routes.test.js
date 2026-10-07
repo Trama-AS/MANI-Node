@@ -9,7 +9,7 @@ function registerRequest(overrides = {}) {
   const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
   const req = request(app)
     .post('/api/v1/auth/register/ally')
-    .set('X-Tenant-Id', overrides.tenantId ?? 'trama-demo')
+    .set('X-Tenant-Slug', overrides.tenantSlug ?? 'trama-demo')
     .field('fullName', overrides.fullName ?? 'Maria Fernanda Rojas')
     .field('email', overrides.email ?? `aliado.${unique}@mani.test`)
     .field('password', overrides.password ?? 'Cambiar123!')
@@ -37,9 +37,34 @@ test('POST /api/v1/auth/register/ally responde 201 con profile ALLY/PENDING y to
   assert.equal(claims.app_metadata.user_role, 'aliado');
 });
 
-test('POST /api/v1/auth/register/ally sin X-Tenant-Id responde 400 VALIDATION_ERROR', async () => {
+test('POST /api/v1/auth/register/ally con slug real plomeria-express resuelve tenant_id uuid', async () => {
+  const res = await registerRequest({ tenantSlug: 'plomeria-express' });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.profile.role, 'ALLY');
+  assert.equal(res.body.profile.tenantId, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
+
+  const claims = jwt.verify(res.body.tokens.accessToken, config.supabaseJwtSecret, { algorithms: ['HS256'] });
+  assert.equal(claims.app_metadata.tenant_id, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
+});
+
+test('POST /api/v1/auth/register/ally sin X-Tenant-Slug responde 400 VALIDATION_ERROR', async () => {
   const res = await request(app)
     .post('/api/v1/auth/register/ally')
+    .field('fullName', 'x')
+    .field('email', 'x@mani.test')
+    .field('password', 'Cambiar123!')
+    .field('categoriaId', 'cat-1')
+    .attach('cedula_ciudadania', Buffer.from('x'), 'cedula.pdf');
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/auth/register/ally con solo X-Tenant-Id (sin X-Tenant-Slug) responde 400 VALIDATION_ERROR', async () => {
+  const res = await request(app)
+    .post('/api/v1/auth/register/ally')
+    .set('X-Tenant-Id', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')
     .field('fullName', 'x')
     .field('email', 'x@mani.test')
     .field('password', 'Cambiar123!')
@@ -58,7 +83,7 @@ test('POST /api/v1/auth/register/ally sin documentos KYC responde 400 VALIDATION
 });
 
 test('POST /api/v1/auth/register/ally con tenant inexistente responde 400 TENANT_NOT_FOUND', async () => {
-  const res = await registerRequest({ tenantId: 'tenant-que-no-existe' });
+  const res = await registerRequest({ tenantSlug: 'tenant-que-no-existe' });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'TENANT_NOT_FOUND');

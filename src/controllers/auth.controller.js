@@ -18,9 +18,9 @@ function extraerDocumentos(req) {
 
 async function registerAllyNaturalPerson(req, res, next) {
   try {
-    const tenantId = req.header('X-Tenant-Slug') || req.header('X-Tenant-Id');
+    const tenantSlug = req.header('X-Tenant-Slug');
     const result = await container.registerAllyNaturalPersonUseCase.execute({
-      tenantId,
+      tenantSlug,
       fullName: req.body.fullName,
       email: req.body.email,
       password: req.body.password,

@@ -12,7 +12,10 @@ test('Domain Entity: Tenant valida campos obligatorios y status', () => {
 
   const tenant = new Tenant({ id: 't-1', name: 'Tenant 1', status: 'ACTIVE' });
   assert.equal(tenant.isActive(), true);
-  assert.deepEqual(tenant.toJSON(), { id: 't-1', name: 'Tenant 1', status: 'ACTIVE' });
+  assert.deepEqual(tenant.toJSON(), { id: 't-1', slug: 't-1', name: 'Tenant 1', status: 'ACTIVE' });
+
+  const customTenant = new Tenant({ id: 't-2', slug: 'slug-especial', name: 'Tenant 2', status: 'ACTIVE' });
+  assert.equal(customTenant.slug, 'slug-especial');
 });
 
 test('Domain Entity: Profile valida roles y estados de dominio', () => {

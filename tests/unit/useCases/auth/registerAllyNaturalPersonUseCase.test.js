@@ -5,7 +5,7 @@ const RegisterAllyNaturalPersonUseCase = require('../../../../src/application/us
 const CEDULA = { tipoDocumento: 'CEDULA_CIUDADANIA', filename: 'cedula.pdf', contentType: 'application/pdf', buffer: Buffer.from('x') };
 
 const VALID_INPUT = {
-  tenantId: 'trama-demo',
+  tenantSlug: 'trama-demo',
   fullName: 'Maria Fernanda Rojas',
   email: 'maria@mani.test',
   password: 'Cambiar123!',
@@ -15,7 +15,9 @@ const VALID_INPUT = {
 };
 
 function makeUseCase(overrides = {}) {
-  const tenantRepository = { findById: async () => ({ id: 'trama-demo', name: 'Demo', status: 'ACTIVE' }) };
+  const tenantRepository = {
+    findBySlug: async (slug) => ({ id: 'trama-demo', slug: slug || 'trama-demo', name: 'Demo', status: 'ACTIVE', isActive: () => true }),
+  };
   const catalogRepository = { findById: async () => ({ id: 'cat-1', isActive: () => true }) };
   const usuarioRepository = { findByEmail: async () => null, create: async (u) => u };
   const aliadoRepository = { findByDocumentNumber: async () => null, create: async (a) => ({ id: 'aliado-1', ...a }) };
@@ -85,11 +87,11 @@ for (const field of ['fullName', 'email', 'password', 'categoriaId']) {
   });
 }
 
-test('VALIDATION_ERROR cuando falta tenantId (header X-Tenant-Id)', async () => {
+test('VALIDATION_ERROR cuando falta tenantSlug (header X-Tenant-Slug)', async () => {
   const useCase = makeUseCase();
 
   await assert.rejects(
-    () => useCase.execute({ ...VALID_INPUT, tenantId: undefined }),
+    () => useCase.execute({ ...VALID_INPUT, tenantSlug: undefined }),
     (err) => {
       assert.equal(err.code, 'VALIDATION_ERROR');
       return true;
@@ -134,7 +136,24 @@ test('VALIDATION_ERROR cuando el password tiene menos de 8 caracteres', async ()
 });
 
 test('TENANT_NOT_FOUND cuando el tenant no existe', async () => {
-  const useCase = makeUseCase({ tenantRepository: { findById: async () => null } });
+  const useCase = makeUseCase({ tenantRepository: { findBySlug: async () => null } });
+
+  await assert.rejects(
+    () => useCase.execute(VALID_INPUT),
+    (err) => {
+      assert.equal(err.code, 'TENANT_NOT_FOUND');
+      assert.equal(err.statusCode, 400);
+      return true;
+    }
+  );
+});
+
+test('TENANT_NOT_FOUND cuando el tenant está inactivo', async () => {
+  const useCase = makeUseCase({
+    tenantRepository: {
+      findBySlug: async () => ({ id: 'trama-demo', name: 'Demo', status: 'INACTIVE', isActive: () => false }),
+    },
+  });
 
   await assert.rejects(
     () => useCase.execute(VALID_INPUT),

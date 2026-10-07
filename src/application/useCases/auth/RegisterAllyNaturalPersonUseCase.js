@@ -42,8 +42,8 @@ class RegisterAllyNaturalPersonUseCase {
     this.authIdentityService = authIdentityService;
   }
 
-  _validate({ tenantId, fullName, email, password, categoriaId, documentos, documentType, documentNumber }) {
-    if (!tenantId) throw new ValidationError('Encabezado X-Tenant-Id requerido', 'VALIDATION_ERROR');
+  _validate({ tenantSlug, fullName, email, password, categoriaId, documentos, documentType, documentNumber }) {
+    if (!tenantSlug) throw new ValidationError('Encabezado X-Tenant-Slug requerido', 'VALIDATION_ERROR');
     if (!fullName || typeof fullName !== 'string') {
       throw new ValidationError('fullName es requerido', 'VALIDATION_ERROR');
     }
@@ -77,13 +77,20 @@ class RegisterAllyNaturalPersonUseCase {
 
   async execute(input) {
     this._validate(input);
-    const { tenantId, fullName, email, password, phone, categoriaId, documentos, documentType, documentNumber } =
+    const { tenantSlug, fullName, email, password, phone, categoriaId, documentos, documentType, documentNumber } =
       input;
 
-    const tenant = await this.tenantRepository.findById(tenantId);
+    // ADR-0018: resolución del tenant a partir del slug público.
+    const tenant = await this.tenantRepository.findBySlug(tenantSlug);
+
     if (!tenant) {
-      throw new ValidationError(`El tenant "${tenantId}" no existe`, 'TENANT_NOT_FOUND');
+      throw new ValidationError(`El tenant "${tenantSlug}" no existe`, 'TENANT_NOT_FOUND');
     }
+    if (!tenant.isActive()) {
+      throw new ValidationError(`El tenant "${tenantSlug}" no está activo`, 'TENANT_NOT_FOUND');
+    }
+
+    const tenantId = tenant.id;
 
     const categoria = await this.catalogRepository.findById(tenantId, categoriaId);
     if (!categoria || !categoria.isActive()) {

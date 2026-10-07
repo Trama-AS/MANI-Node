@@ -1,7 +1,7 @@
 const { ValidationError } = require('../errors/DomainError');
 
 class Tenant {
-  constructor({ id, name, status = 'ACTIVE', createdAt = new Date() }) {
+  constructor({ id, name, slug, status = 'ACTIVE', createdAt = new Date() }) {
     if (!id || typeof id !== 'string') {
       throw new ValidationError('Tenant id es requerido y debe ser una cadena');
     }
@@ -11,6 +11,7 @@ class Tenant {
 
     this.id = id;
     this.name = name;
+    this.slug = slug || id;
     this.status = status;
     this.createdAt = createdAt;
   }
@@ -23,6 +24,7 @@ class Tenant {
     return {
       id: this.id,
       name: this.name,
+      slug: this.slug,
       status: this.status,
     };
   }
