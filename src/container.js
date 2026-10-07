@@ -22,6 +22,8 @@ const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectio
 
 const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUseCase');
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
+const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
+const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
@@ -81,6 +83,17 @@ class Container {
 
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
+    });
+
+    this.getAllyCategoriesUseCase = new GetAllyCategoriesUseCase({
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+    });
+
+    this.declareAllyCategoriesUseCase = new DeclareAllyCategoriesUseCase({
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
     });
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({

@@ -27,6 +27,19 @@ class SupabaseAliadoRepository extends IAliadoRepository {
     return data;
   }
 
+  async findByUsuarioId(tenantId, usuarioId) {
+    const client = this.supabaseClientFactory.getClient();
+    let query = client
+      .from('aliado')
+      .select('id, tenant_id, usuario_id, tipo, nombre_razon_social, estado_verificacion')
+      .eq('usuario_id', usuarioId);
+    if (tenantId) query = query.eq('tenant_id', tenantId);
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw new DomainError(`Error consultando aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data;
+  }
+
   async create({ tenantId, usuarioId, tipo, nombreRazonSocial, estadoVerificacion, documentType, documentNumber }) {
     const client = this.supabaseClientFactory.getClient();
     const { data, error } = await client
