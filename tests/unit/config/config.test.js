@@ -62,11 +62,13 @@ test('assertValid exige SUPABASE_* y SUPABASE_JWT_SECRET en qa y reporta solo lo
       SUPABASE_SERVICE_ROLE_KEY: undefined,
       SUPABASE_JWT_SECRET: undefined,
       SUPABASE_ANON_KEY: undefined,
+      DATABASE_URL: undefined,
     },
     (config) => {
       assert.throws(
         () => config.assertValid(),
         (err) => {
+          assert.match(err.message, /DATABASE_URL/);
           assert.match(err.message, /SUPABASE_URL/);
           assert.match(err.message, /SUPABASE_SERVICE_ROLE_KEY/);
           assert.match(err.message, /SUPABASE_JWT_SECRET/);
@@ -87,11 +89,40 @@ test('assertValid pasa en qa cuando las variables requeridas existen', () => {
       SUPABASE_SERVICE_ROLE_KEY: 'qa-key',
       SUPABASE_JWT_SECRET: 'qa-jwt-secret',
       SUPABASE_ANON_KEY: 'qa-anon-key',
+      DATABASE_URL: 'postgresql://user:pass@localhost:5432/mani',
     },
     (config) => {
       assert.doesNotThrow(() => config.assertValid());
     }
   );
+});
+
+// SCRUM-1071: sin DATABASE_URL el guardado de categorías no sería atómico, así
+// que QA y producción deben fallar al arrancar en lugar de degradarse en silencio.
+test('assertValid falla en production si solo falta DATABASE_URL, sin exponer su valor', () => {
+  withEnv(
+    {
+      NODE_ENV: 'production',
+      SUPABASE_URL: 'https://prod-project.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'prod-key',
+      SUPABASE_JWT_SECRET: 'prod-jwt-secret',
+      SUPABASE_ANON_KEY: 'prod-anon-key',
+      DATABASE_URL: undefined,
+    },
+    (config) => {
+      assert.throws(() => config.assertValid(), /DATABASE_URL/);
+    }
+  );
+});
+
+test('en development DATABASE_URL es opcional y se expone cuando existe', () => {
+  withEnv({ NODE_ENV: 'development', SUPABASE_URL: undefined, DATABASE_URL: undefined }, (config) => {
+    assert.doesNotThrow(() => config.assertValid());
+    assert.equal(config.databaseUrl, undefined);
+  });
+  withEnv({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://u:p@localhost:5432/db' }, (config) => {
+    assert.equal(config.databaseUrl, 'postgresql://u:p@localhost:5432/db');
+  });
 });
 
 // B6: el secreto fijo de desarrollo solo es seguro sin un proyecto Supabase
