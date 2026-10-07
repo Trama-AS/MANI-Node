@@ -15,6 +15,15 @@ class InMemoryUsuarioRepository extends IUsuarioRepository {
     this.usuarios.set(`${record.tenantId}::${record.email}`, record);
     return record;
   }
+
+  async deleteById(tenantId, id) {
+    for (const [key, usuario] of this.usuarios.entries()) {
+      if (usuario.tenantId === tenantId && usuario.id === id) {
+        this.usuarios.delete(key);
+        return;
+      }
+    }
+  }
 }
 
 module.exports = InMemoryUsuarioRepository;

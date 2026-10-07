@@ -18,6 +18,11 @@ class IAuthIdentityService {
   async authenticate(_params) {
     throw new Error('Método authenticate() no implementado en IAuthIdentityService');
   }
+
+  /** Compensación (B3): deshace createUser() si un paso posterior del registro falla. */
+  async deleteUser(_userId) {
+    throw new Error('Método deleteUser() no implementado en IAuthIdentityService');
+  }
 }
 
 module.exports = IAuthIdentityService;

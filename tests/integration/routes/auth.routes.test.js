@@ -96,6 +96,36 @@ test('POST /api/v1/auth/register/ally con categoriaId inexistente responde 400 C
   assert.equal(res.body.code, 'CATEGORY_NOT_FOUND');
 });
 
+test('POST /api/v1/auth/register/ally con un campo de archivo fuera del whitelist responde 400 VALIDATION_ERROR', async () => {
+  const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  const res = await request(app)
+    .post('/api/v1/auth/register/ally')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .field('fullName', 'Campo No Permitido')
+    .field('email', `aliado.${unique}@mani.test`)
+    .field('password', 'Cambiar123!')
+    .field('categoriaId', 'cat-1')
+    .attach('lo_que_sea', Buffer.from('contenido'), 'archivo.pdf');
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/auth/register/ally con un MIME no permitido responde 400 VALIDATION_ERROR', async () => {
+  const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  const res = await request(app)
+    .post('/api/v1/auth/register/ally')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .field('fullName', 'MIME No Permitido')
+    .field('email', `aliado.${unique}@mani.test`)
+    .field('password', 'Cambiar123!')
+    .field('categoriaId', 'cat-1')
+    .attach('cedula_ciudadania', Buffer.from('<html></html>'), { filename: 'cedula.html', contentType: 'text/html' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
 test('POST /api/v1/auth/register/ally repetido con el mismo email responde 409 EMAIL_ALREADY_REGISTERED', async () => {
   const email = `aliado.dup.${Date.now()}@mani.test`;
 

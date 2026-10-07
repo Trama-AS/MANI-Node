@@ -11,6 +11,10 @@ class InMemoryDocumentoKycRepository extends IDocumentoKycRepository {
     this.rows.push(...created);
     return created;
   }
+
+  async deleteByAliadoId(tenantId, aliadoId) {
+    this.rows = this.rows.filter((r) => !(r.tenantId === tenantId && r.aliadoId === aliadoId));
+  }
 }
 
 module.exports = InMemoryDocumentoKycRepository;

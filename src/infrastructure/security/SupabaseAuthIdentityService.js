@@ -1,3 +1,4 @@
+const { createClient } = require('@supabase/supabase-js');
 const IAuthIdentityService = require('../../domain/ports/IAuthIdentityService');
 const { ConflictError, DomainError } = require('../../domain/errors/DomainError');
 
@@ -9,9 +10,17 @@ const { ConflictError, DomainError } = require('../../domain/errors/DomainError'
  * que si se autentica antes de que exista, la sesión sale con claims vacíos.
  */
 class SupabaseAuthIdentityService extends IAuthIdentityService {
-  constructor({ supabaseClientFactory }) {
+  /**
+   * `createDisposableClient` es inyectable (por defecto, `createClient` real
+   * de @supabase/supabase-js) para poder probar authenticate() con un doble
+   * sin pegarle a una red/proyecto real.
+   */
+  constructor({ supabaseClientFactory, supabaseUrl, supabaseAnonKey, createDisposableClient = createClient }) {
     super();
     this.supabaseClientFactory = supabaseClientFactory;
+    this.supabaseUrl = supabaseUrl;
+    this.supabaseAnonKey = supabaseAnonKey;
+    this.createDisposableClient = createDisposableClient;
   }
 
   async createUser({ email, password }) {
@@ -34,8 +43,23 @@ class SupabaseAuthIdentityService extends IAuthIdentityService {
   }
 
   async authenticate({ email, password }) {
-    const client = this.supabaseClientFactory.getClient();
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (!this.supabaseAnonKey) {
+      throw new DomainError('SUPABASE_ANON_KEY no está configurada', 'INTERNAL_ERROR', 500);
+    }
+
+    // Cliente DESCARTABLE, distinto del singleton de service-role: en
+    // supabase-js, signInWithPassword muta el estado de auth del cliente que
+    // lo invoca y ese cliente reutiliza esa sesión en TODAS sus peticiones
+    // posteriores. Si se llamara sobre el cliente de service-role compartido
+    // (container.supabaseClientFactory.getClient()), a partir de aquí todo
+    // insert/upload del Core -- incluso para otros aliados -- saldría firmado
+    // con el JWT de ESTE aliado, y kyc_isolation rechazaría la subida del
+    // siguiente con 500 (bug encontrado en revisión de código, B2).
+    const disposableClient = this.createDisposableClient(this.supabaseUrl, this.supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data, error } = await disposableClient.auth.signInWithPassword({ email, password });
 
     if (error || !data.session) {
       throw new DomainError(

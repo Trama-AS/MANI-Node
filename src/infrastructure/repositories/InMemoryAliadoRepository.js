@@ -18,6 +18,13 @@ class InMemoryAliadoRepository extends IAliadoRepository {
     this.aliados.set(aliado.usuarioId, aliado);
     return aliado;
   }
+
+  async deleteByUsuarioId(tenantId, usuarioId) {
+    const aliado = this.aliados.get(usuarioId);
+    if (aliado && aliado.tenantId === tenantId) {
+      this.aliados.delete(usuarioId);
+    }
+  }
 }
 
 module.exports = InMemoryAliadoRepository;

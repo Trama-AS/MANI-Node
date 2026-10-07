@@ -1,6 +1,7 @@
 const InMemoryTenantRepository = require('./infrastructure/repositories/InMemoryTenantRepository');
 const SupabaseTenantRepository = require('./infrastructure/repositories/SupabaseTenantRepository');
 const InMemoryProfileRepository = require('./infrastructure/repositories/InMemoryProfileRepository');
+const SupabaseProfileRepository = require('./infrastructure/repositories/SupabaseProfileRepository');
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
 const SupabaseCatalogRepository = require('./infrastructure/repositories/SupabaseCatalogRepository');
 const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemoryUsuarioRepository');
@@ -30,7 +31,6 @@ const config = require('./config');
 class Container {
   constructor() {
     // 1. Instancias de Infraestructura (Adaptadores Secundarios)
-    this.profileRepository = new InMemoryProfileRepository();
     this.tokenService = new TokenService();
 
     this.supabaseClientFactory = new SupabaseClientFactory({
@@ -45,6 +45,7 @@ class Container {
     // reales; sin configurar (DEV/test sin credenciales) cae a implementaciones
     // en memoria, igual que ya hacía el resto del container.
     if (this.supabaseClientFactory.isConfigured()) {
+      this.profileRepository = new SupabaseProfileRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.catalogRepository = new SupabaseCatalogRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
@@ -58,8 +59,11 @@ class Container {
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
+        supabaseUrl: config.supabaseUrl,
+        supabaseAnonKey: config.supabaseAnonKey,
       });
     } else {
+      this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
       this.catalogRepository = new InMemoryCatalogRepository();
       this.usuarioRepository = new InMemoryUsuarioRepository();

@@ -1,6 +1,6 @@
 const container = require('../container');
 
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -11,7 +11,7 @@ function authenticate(req, res, next) {
   }
 
   try {
-    const session = container.tokenService.verifyToken(authHeader);
+    const session = await container.tokenService.verifyToken(authHeader);
     req.user = session;
     req.tenantId = session.tenantId;
     next();
@@ -24,4 +24,3 @@ function authenticate(req, res, next) {
 }
 
 module.exports = authenticate;
-

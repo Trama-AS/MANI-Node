@@ -16,12 +16,17 @@ class InMemoryProfileRepository extends IProfileRepository {
     ];
   }
 
-  async findByUserId(userId, _tenantId = null) {
-    // Busca por userId o id. Para compatibilidad con tokens demo, si no se encuentra exacto retorna el demo user por defecto
-    const profile = this.profiles.find((p) => p.userId === userId || p.id === userId);
-    return profile || this.profiles[0];
+  /**
+   * Coincidencia exacta por userId Y tenantId (si se pasa tenantId). Sin
+   * fallback a un perfil demo: un userId que no corresponde a ningún perfil
+   * de ESE tenant debe dar 404, no filtrar datos de otro usuario/tenant (B4).
+   */
+  async findByUserId(userId, tenantId = null) {
+    const profile = this.profiles.find(
+      (p) => (p.userId === userId || p.id === userId) && (!tenantId || p.tenantId === tenantId)
+    );
+    return profile || null;
   }
 }
 
 module.exports = InMemoryProfileRepository;
-

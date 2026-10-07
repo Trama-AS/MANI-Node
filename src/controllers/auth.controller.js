@@ -1,19 +1,22 @@
 const container = require('../container');
 
 /**
- * Los archivos KYC llegan en `req.files` (multer, campo = tipoDocumento en
- * minúsculas, p. ej. "cedula_ciudadania") y los campos de texto en `req.body`
+ * Los archivos KYC llegan en `req.files` y los campos de texto en `req.body`
  * (multer con multipart/form-data, o express.json() si el caller manda JSON
- * puro sin archivos).
+ * puro sin archivos). `upload.fields()` (ver auth.routes.js) entrega
+ * `req.files` como OBJETO { nombreDeCampo: [archivo] }, no como array plano
+ * (eso era `upload.any()`, ya reemplazado por la whitelist de campos).
  */
 function extraerDocumentos(req) {
-  const archivos = req.files || [];
-  return archivos.map((f) => ({
-    tipoDocumento: f.fieldname.toUpperCase(),
-    filename: f.originalname,
-    contentType: f.mimetype,
-    buffer: f.buffer,
-  }));
+  const archivosPorCampo = req.files || {};
+  return Object.entries(archivosPorCampo).flatMap(([fieldname, archivos]) =>
+    archivos.map((f) => ({
+      tipoDocumento: fieldname.toUpperCase(),
+      filename: f.originalname,
+      contentType: f.mimetype,
+      buffer: f.buffer,
+    }))
+  );
 }
 
 async function registerAllyNaturalPerson(req, res, next) {

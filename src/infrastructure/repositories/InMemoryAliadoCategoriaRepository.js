@@ -10,6 +10,10 @@ class InMemoryAliadoCategoriaRepository extends IAliadoCategoriaRepository {
     this.rows.push(aliadoCategoria);
     return aliadoCategoria;
   }
+
+  async deleteByAliadoId(tenantId, aliadoId) {
+    this.rows = this.rows.filter((r) => !(r.tenantId === tenantId && r.aliadoId === aliadoId));
+  }
 }
 
 module.exports = InMemoryAliadoCategoriaRepository;

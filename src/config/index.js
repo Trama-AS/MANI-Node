@@ -10,8 +10,8 @@ const ENVIRONMENTS = {
 const REQUIRED_VARS_BY_ENV = {
   development: [],
   test: [],
-  qa: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET'],
-  production: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET'],
+  qa: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'SUPABASE_ANON_KEY'],
+  production: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'SUPABASE_ANON_KEY'],
 };
 
 class ConfigurationError extends Error {
@@ -40,6 +40,9 @@ const config = {
   port: Number(process.env.PORT) || 3000,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  // Clave pública, usada SOLO para el cliente desechable de sign-in (ver
+  // SupabaseAuthIdentityService) — nunca para operaciones con service-role.
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
   // Solo development/test caen al secreto inseguro fijo; qa/production lo exigen vía assertValid().
   supabaseJwtSecret:
     process.env.SUPABASE_JWT_SECRET ||

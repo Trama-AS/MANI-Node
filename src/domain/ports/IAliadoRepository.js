@@ -13,6 +13,11 @@ class IAliadoRepository {
   async create(_aliado) {
     throw new Error('Método create() no implementado en IAliadoRepository');
   }
+
+  /** Compensación (B3): deshace create() si un paso posterior del registro falla. */
+  async deleteByUsuarioId(_tenantId, _usuarioId) {
+    throw new Error('Método deleteByUsuarioId() no implementado en IAliadoRepository');
+  }
 }
 
 module.exports = IAliadoRepository;

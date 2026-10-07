@@ -10,7 +10,7 @@ async function getOwnProfile(req, res, next) {
   }
 
   try {
-    const session = req.user || container.tokenService.verifyToken(authHeader);
+    const session = req.user || (await container.tokenService.verifyToken(authHeader));
     const profile = await container.getOwnProfileUseCase.execute({
       userId: session.userId,
       tenantId: session.tenantId,

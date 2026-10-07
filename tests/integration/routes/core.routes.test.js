@@ -5,8 +5,11 @@ const jwt = require('jsonwebtoken');
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 
-function signTestToken(claims) {
-  return jwt.sign(claims, config.supabaseJwtSecret, { algorithm: 'HS256', expiresIn: '1h' });
+function signTestToken({ sub, tenantId, role }) {
+  return jwt.sign({ sub, app_metadata: { tenant_id: tenantId, user_role: role } }, config.supabaseJwtSecret, {
+    algorithm: 'HS256',
+    expiresIn: '1h',
+  });
 }
 
 test('GET /api/v1/tenants responde 200 con el listado de tenants', async () => {
@@ -25,7 +28,7 @@ test('GET /api/v1/profiles/me sin Authorization responde 401', async () => {
 });
 
 test('GET /api/v1/profiles/me con Authorization responde 200', async () => {
-  const token = signTestToken({ sub: 'demo-user-1', tenant_id: 'trama-demo', role: 'CLIENT' });
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
 
   const res = await request(app)
     .get('/api/v1/profiles/me')

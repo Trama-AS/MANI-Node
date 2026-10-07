@@ -10,6 +10,11 @@ class IFileStorageService {
   async upload(_params) {
     throw new Error('Método upload() no implementado en IFileStorageService');
   }
+
+  /** Compensación (B3): deshace upload() si un paso posterior del registro falla. */
+  async delete(_path) {
+    throw new Error('Método delete() no implementado en IFileStorageService');
+  }
 }
 
 module.exports = IFileStorageService;

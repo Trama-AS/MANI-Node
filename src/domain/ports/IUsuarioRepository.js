@@ -13,6 +13,11 @@ class IUsuarioRepository {
   async create(_usuario) {
     throw new Error('Método create() no implementado en IUsuarioRepository');
   }
+
+  /** Compensación (B3): deshace create() si un paso posterior del registro falla. */
+  async deleteById(_tenantId, _id) {
+    throw new Error('Método deleteById() no implementado en IUsuarioRepository');
+  }
 }
 
 module.exports = IUsuarioRepository;
