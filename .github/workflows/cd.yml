@@ -10,8 +10,12 @@ name: CD
 # Secrets esperados por ambiente (prefijo DEV_ / QA_):
 #   SSH_HOST, SSH_USER, SSH_KEY, SSH_PORT (opcional, default 22)
 #   HOST_PORT (opcional, default 3000)
-#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET
 #   HEALTHCHECK_URL (URL pública/interna del /health de ese ambiente)
+#
+# SUPABASE_JWT_SECRET es obligatorio en QA (config.assertValid() aborta el arranque
+# si falta, ver src/config/index.js) y recomendado también en DEV: sin él, el Core
+# firma/verifica con un secreto de desarrollo fijo e inseguro.
 
 on:
   push:
@@ -86,7 +90,7 @@ jobs:
           username: ${{ secrets.DEV_SSH_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
           port: ${{ secrets.DEV_SSH_PORT || 22 }}
-          envs: GITHUB_TOKEN,GITHUB_ACTOR,IMAGE,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,HOST_PORT
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,IMAGE,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_JWT_SECRET,HOST_PORT
           script: |
             set -e
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -99,6 +103,7 @@ jobs:
               -e PORT=3000 \
               -e SUPABASE_URL="$SUPABASE_URL" \
               -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+              -e SUPABASE_JWT_SECRET="$SUPABASE_JWT_SECRET" \
               "$IMAGE"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -106,6 +111,7 @@ jobs:
           IMAGE: ${{ needs.build-and-push.outputs.image }}:${{ needs.build-and-push.outputs.tag }}
           SUPABASE_URL: ${{ secrets.DEV_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DEV_SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.DEV_SUPABASE_JWT_SECRET }}
           HOST_PORT: ${{ secrets.DEV_HOST_PORT }}
 
       - name: Verificar /health en DEV
@@ -130,7 +136,7 @@ jobs:
           username: ${{ secrets.QA_SSH_USER }}
           key: ${{ secrets.QA_SSH_KEY }}
           port: ${{ secrets.QA_SSH_PORT || 22 }}
-          envs: GITHUB_TOKEN,GITHUB_ACTOR,IMAGE,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,HOST_PORT
+          envs: GITHUB_TOKEN,GITHUB_ACTOR,IMAGE,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_JWT_SECRET,HOST_PORT
           script: |
             set -e
             echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -143,6 +149,7 @@ jobs:
               -e PORT=3000 \
               -e SUPABASE_URL="$SUPABASE_URL" \
               -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+              -e SUPABASE_JWT_SECRET="$SUPABASE_JWT_SECRET" \
               "$IMAGE"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -150,6 +157,7 @@ jobs:
           IMAGE: ${{ needs.build-and-push.outputs.image }}:${{ needs.build-and-push.outputs.tag }}
           SUPABASE_URL: ${{ secrets.QA_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.QA_SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.QA_SUPABASE_JWT_SECRET }}
           HOST_PORT: ${{ secrets.QA_HOST_PORT }}
 
       - name: Verificar /health en QA

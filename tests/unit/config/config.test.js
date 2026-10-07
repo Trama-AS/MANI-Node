@@ -53,13 +53,14 @@ test('assertValid no exige SUPABASE_* en development', () => {
   );
 });
 
-test('assertValid exige SUPABASE_* en qa y reporta solo los nombres faltantes', () => {
+test('assertValid exige SUPABASE_* y SUPABASE_JWT_SECRET en qa y reporta solo los nombres faltantes', () => {
   withEnv(
     {
       NODE_ENV: 'qa',
       PORT: '3000',
       SUPABASE_URL: undefined,
       SUPABASE_SERVICE_ROLE_KEY: undefined,
+      SUPABASE_JWT_SECRET: undefined,
     },
     (config) => {
       assert.throws(
@@ -67,6 +68,7 @@ test('assertValid exige SUPABASE_* en qa y reporta solo los nombres faltantes', 
         (err) => {
           assert.match(err.message, /SUPABASE_URL/);
           assert.match(err.message, /SUPABASE_SERVICE_ROLE_KEY/);
+          assert.match(err.message, /SUPABASE_JWT_SECRET/);
           return true;
         }
       );
@@ -81,6 +83,7 @@ test('assertValid pasa en qa cuando las variables requeridas existen', () => {
       PORT: '3000',
       SUPABASE_URL: 'https://qa-project.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'qa-key',
+      SUPABASE_JWT_SECRET: 'qa-jwt-secret',
     },
     (config) => {
       assert.doesNotThrow(() => config.assertValid());

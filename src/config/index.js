@@ -10,8 +10,8 @@ const ENVIRONMENTS = {
 const REQUIRED_VARS_BY_ENV = {
   development: [],
   test: [],
-  qa: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'],
-  production: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'],
+  qa: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET'],
+  production: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET'],
 };
 
 class ConfigurationError extends Error {
@@ -40,6 +40,10 @@ const config = {
   port: Number(process.env.PORT) || 3000,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  // Solo development/test caen al secreto inseguro fijo; qa/production lo exigen vía assertValid().
+  supabaseJwtSecret:
+    process.env.SUPABASE_JWT_SECRET ||
+    (environment === 'development' || environment === 'test' ? 'dev-jwt-secret-insecure-32chars!!' : ''),
   gatewayUrl: process.env.GATEWAY_URL,
   rulesServiceUrl: process.env.RULES_SERVICE_URL,
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
