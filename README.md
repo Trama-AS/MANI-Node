@@ -57,6 +57,13 @@ npm run validate:openapi
 npm run lint:openapi
 ```
 
+### 📬 Colección Postman del flujo de identidad
+`postman/MANI-Core.postman_collection.json` se genera automáticamente desde `docs/openapi/core.yaml` (no se edita a mano) y recorre en secuencia: **1)** registrar Aliado persona natural, **2)** login con esas mismas credenciales, **3)** refrescar el accessToken, **4)** logout — encadenando `accessToken`/`refreshToken`/`allyEmail` entre pasos como variables de colección. Regenerar tras cualquier cambio al contrato:
+```bash
+npm run postman:generate
+```
+Los asserts de código de estado/esquema/propagación de tenant y la ejecución con Newman en terminal y CI son el siguiente paso de este pipeline (en curso).
+
 ---
 
 ## 🛠️ Stack Tecnológico
