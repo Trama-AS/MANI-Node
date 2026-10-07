@@ -14,6 +14,10 @@ class InMemoryCatalogRepository extends ICatalogRepository {
   async findAllCategories() {
     return [...this.categories];
   }
+
+  async findById(_tenantId, categoryId) {
+    return this.categories.find((c) => c.id === categoryId) || null;
+  }
 }
 
 module.exports = InMemoryCatalogRepository;
