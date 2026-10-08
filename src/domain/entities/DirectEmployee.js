@@ -17,7 +17,6 @@ class DirectEmployee {
     documentType = null,
     documentNumber = null,
     categoriaId = null,
-    zonaId = null,
     status = 'VERIFIED',
     tipo = 'EMPLEADO_DIRECTO',
     createdAt = new Date(),
@@ -41,7 +40,6 @@ class DirectEmployee {
     this.documentType = documentType;
     this.documentNumber = documentNumber;
     this.categoriaId = categoriaId;
-    this.zonaId = zonaId;
     this.status = status;
     this.tipo = tipo;
     this.createdAt = createdAt;
@@ -68,7 +66,6 @@ class DirectEmployee {
       documentType: this.documentType,
       documentNumber: this.documentNumber,
       categoriaId: this.categoriaId,
-      zonaId: this.zonaId,
       tipo: this.tipo,
       tipoAliado: this.tipo,
       estadoVerificacion: 'VERIFICADO',

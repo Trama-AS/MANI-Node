@@ -29,7 +29,6 @@ async function registerDirectEmployee(req, res, next) {
     documentNumber,
     numeroDocumento,
     categoriaId,
-    zonaId,
   } = req.body || {};
 
   try {
@@ -42,7 +41,6 @@ async function registerDirectEmployee(req, res, next) {
       documentType: documentType || tipoDocumento,
       documentNumber: documentNumber || numeroDocumento,
       categoriaId,
-      zonaId,
     });
 
     return res.status(201).json({

@@ -71,7 +71,7 @@ class RegisterDirectEmployeeUseCase {
     const rawPhone = input.phone || input.telefono;
     const rawDocType = input.documentType || input.tipoDocumento;
     const rawDocNumber = input.documentNumber || input.numeroDocumento;
-    const { tenantId, email, password, categoriaId, zonaId } = input;
+    const { tenantId, email, password, categoriaId } = input;
 
     this._validate({
       tenantId,
@@ -183,7 +183,6 @@ class RegisterDirectEmployeeUseCase {
       documentType: rawDocType,
       documentNumber: rawDocNumber,
       categoriaId: categoriaId || null,
-      zonaId: zonaId || null,
       status: 'VERIFIED',
       tipo: 'EMPLEADO_DIRECTO',
     });
