@@ -1,6 +1,7 @@
+const crypto = require('crypto');
 const { CompanyClient } = require('../domain/CompanyClient');
 const { Site } = require('../domain/Site');
-const { ValidationError } = require('../../../domain/errors/DomainError');
+const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
 
 /**
  * Caso de Uso: Registrar Cliente Empresa con Múltiples Sitios
@@ -41,7 +42,7 @@ class RegisterCompanyClientWithSitesUseCase {
    * @param {string} [input.password]
    * @param {Array<{ nombre?: string, direccion: string, zonaId: string, reglas?: object }>} [input.sitios]
    * @param {string} [input.correlationId]
-   * @returns {Promise<{ client: CompanyClient, sites: Site[], isNew: boolean }>}
+   * @returns {Promise<{ client: CompanyClient, sites: Site[], temporaryPassword?: string, isNew: boolean }>}
    */
   async execute(input) {
     const {
@@ -66,7 +67,18 @@ class RegisterCompanyClientWithSitesUseCase {
       }
     }
 
-    // 1. Construir y validar la entidad CompanyClient
+    // 1. Validar o generar contraseña segura (Políticas DevOps §15: prohibido contraseñas hardcodeadas)
+    let effectivePassword;
+    if (password) {
+      if (typeof password !== 'string' || password.length < 8) {
+        throw new ValidationError('password debe tener al menos 8 caracteres', 'VALIDATION_ERROR');
+      }
+      effectivePassword = password;
+    } else {
+      effectivePassword = `Cli-${crypto.randomBytes(8).toString('hex')}!Aa1`;
+    }
+
+    // 2. Construir y validar la entidad CompanyClient (tipo normalizado a PERSONA_JURIDICA)
     const companyClient = new CompanyClient({
       tenantId,
       razonSocial,
@@ -74,10 +86,11 @@ class RegisterCompanyClientWithSitesUseCase {
       email,
       telefono,
       nombreRepresentante,
+      tipo: 'PERSONA_JURIDICA',
     });
     companyClient.validate();
 
-    // 2. Construir y validar cada uno de los sitios asociados
+    // 3. Construir y validar cada uno de los sitios asociados
     const siteEntities = (sitios || []).map((s, index) => {
       const site = new Site({
         tenantId,
@@ -94,31 +107,26 @@ class RegisterCompanyClientWithSitesUseCase {
       return site;
     });
 
-    // 3. Comprobar existencia previa en el tenant (Idempotencia / No duplicar)
+    // 4. Comprobar existencia previa en el tenant (Prevenir duplicidad y exposición de datos, DoD §9.3)
     const existingByNit = await this.companyClientRepository.findByNitAndTenant(companyClient.nit, tenantId);
     if (existingByNit) {
-      const existingSites = await this.companyClientRepository.findSitesByClientId(existingByNit.id, tenantId);
-      return {
-        client: existingByNit,
-        sites: existingSites,
-        isNew: false,
-      };
+      throw new ConflictError(
+        'Ya existe un cliente empresa registrado con ese NIT en este tenant',
+        'NIT_ALREADY_REGISTERED'
+      );
     }
 
     const existingByEmail = await this.companyClientRepository.findByEmailAndTenant(companyClient.email, tenantId);
     if (existingByEmail) {
-      const existingSites = await this.companyClientRepository.findSitesByClientId(existingByEmail.id, tenantId);
-      return {
-        client: existingByEmail,
-        sites: existingSites,
-        isNew: false,
-      };
+      throw new ConflictError(
+        'Ya existe un cliente empresa registrado con ese email en este tenant',
+        'EMAIL_ALREADY_REGISTERED'
+      );
     }
 
-    // 4. Crear identidad en Supabase Auth si el servicio de autenticación está inyectado
+    // 5. Crear identidad en Supabase Auth si el servicio de autenticación está inyectado
     let userId = null;
     if (this.authIdentityService) {
-      const effectivePassword = password || 'ManiClient2026!';
       try {
         const authUser = await this.authIdentityService.createUser({
           tenantId,
@@ -128,19 +136,35 @@ class RegisterCompanyClientWithSitesUseCase {
         });
         userId = authUser.userId;
       } catch (authErr) {
-        // Si el usuario ya existe en Supabase Auth (e.g. creado previamente), se continúa
-        if (authErr.code !== 'EMAIL_ALREADY_REGISTERED') {
-          throw authErr;
+        if (authErr.code === 'EMAIL_ALREADY_REGISTERED') {
+          throw new ConflictError(
+            'Ya existe un usuario con ese email registrado en la plataforma',
+            'EMAIL_ALREADY_REGISTERED'
+          );
         }
+        throw authErr;
       }
     }
 
-    // 5. Guardar cliente y sus sitios en repositorio
-    const result = await this.companyClientRepository.save(companyClient, siteEntities, { userId });
+    // 6. Guardar cliente y sus sitios en repositorio con compensación SAGA
+    let result;
+    try {
+      result = await this.companyClientRepository.save(companyClient, siteEntities, { userId });
+    } catch (saveErr) {
+      if (userId && this.authIdentityService && typeof this.authIdentityService.deleteUser === 'function') {
+        try {
+          await this.authIdentityService.deleteUser(userId);
+        } catch (cleanupErr) {
+          console.error('[RegisterCompanyClientWithSitesUseCase] Error en compensación de usuario en Auth:', cleanupErr);
+        }
+      }
+      throw saveErr;
+    }
 
     return {
       client: result.client,
       sites: result.sites,
+      temporaryPassword: password ? undefined : effectivePassword,
       isNew: true,
     };
   }

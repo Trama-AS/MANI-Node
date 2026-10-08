@@ -98,4 +98,68 @@ describe('AddSiteToCompanyClientUseCase & GetCompanyClientSitesUseCase (RF-08 / 
       /no encontrado en tenant "tenant-B"/
     );
   });
+
+  it('Scenario 4: autorización - rechaza con 403 Forbidden si el usuario no es el propietario ni admin (DoD §9.3)', async () => {
+    const repository = new InMemoryCompanyClientRepository();
+    const registerUseCase = new RegisterCompanyClientWithSitesUseCase({
+      companyClientRepository: repository,
+      authIdentityService: { createUser: async () => ({ userId: 'propietario-user-id' }) },
+    });
+    const addSiteUseCase = new AddSiteToCompanyClientUseCase(repository);
+    const getSitesUseCase = new GetCompanyClientSitesUseCase(repository);
+
+    const { client } = await registerUseCase.execute({
+      tenantId: 'tenant-trama-1',
+      razonSocial: 'Empresa Privada S.A.S.',
+      nit: '900123999-5',
+      email: 'privada@empresa.com',
+      sitios: [{ direccion: 'Calle 1 # 2-3', zonaId: 'zona-1' }],
+    });
+
+    // Intentar agregar sede con usuario ajeno (rol CLIENTE)
+    await assert.rejects(
+      async () => {
+        await addSiteUseCase.execute({
+          clienteId: client.id,
+          tenantId: 'tenant-trama-1',
+          nombre: 'Sede No Autorizada',
+          direccion: 'Carrera 15 # 80-20',
+          zonaId: 'zona-1',
+          userId: 'intruso-user-id',
+          userRole: 'CLIENTE',
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.code, 'FORBIDDEN');
+        return true;
+      }
+    );
+
+    // Intentar consultar sedes con usuario ajeno (rol CLIENTE)
+    await assert.rejects(
+      async () => {
+        await getSitesUseCase.execute({
+          clienteId: client.id,
+          tenantId: 'tenant-trama-1',
+          userId: 'intruso-user-id',
+          userRole: 'CLIENTE',
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.code, 'FORBIDDEN');
+        return true;
+      }
+    );
+
+    // Como ADMIN de tenant sí puede consultar y agregar
+    const adminQuery = await getSitesUseCase.execute({
+      clienteId: client.id,
+      tenantId: 'tenant-trama-1',
+      userId: 'admin-user-id',
+      userRole: 'ADMIN_TENANT',
+    });
+    assert.strictEqual(adminQuery.sites.length, 1);
+  });
 });

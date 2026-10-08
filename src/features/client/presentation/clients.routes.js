@@ -22,6 +22,17 @@ async function handleRegisterCompany(req, res, next) {
   if (!tenantId) {
     return res.status(401).json({
       error: 'Sesión inválida: tenant_id no presente en el token',
+      code: 'UNAUTHORIZED',
+      correlationId,
+    });
+  }
+
+  // Autorización por rol dentro del tenant (DoD §9.3): los aliados no pueden registrar empresas
+  const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
+  if (userRole === 'ALLY' || userRole === 'ALIADO') {
+    return res.status(403).json({
+      error: 'Un aliado no tiene permisos para registrar clientes empresa',
+      code: 'FORBIDDEN',
       correlationId,
     });
   }
@@ -29,7 +40,7 @@ async function handleRegisterCompany(req, res, next) {
   const { razonSocial, nit, email, telefono, nombreRepresentante, password, sitios } = req.body ?? {};
 
   try {
-    const { client, sites, isNew } = await container.registerCompanyClientWithSitesUseCase.execute({
+    const { client, sites, temporaryPassword, isNew } = await container.registerCompanyClientWithSitesUseCase.execute({
       tenantId,
       razonSocial,
       nit,
@@ -41,14 +52,12 @@ async function handleRegisterCompany(req, res, next) {
       correlationId,
     });
 
-    const statusCode = isNew ? 201 : 200;
-    return res.status(statusCode).json({
-      message: isNew
-        ? 'Cliente empresa y sitios registrados exitosamente.'
-        : 'El cliente empresa ya existe para este tenant. Se retorna el registro y sus sitios.',
+    return res.status(201).json({
+      message: 'Cliente empresa y sitios registrados exitosamente.',
       correlationId,
       tenantId,
       isNew,
+      temporaryPassword,
       client: {
         id: client.id,
         tenantId: client.tenantId,
@@ -71,13 +80,19 @@ async function handleRegisterCompany(req, res, next) {
       })),
     });
   } catch (err) {
-    if (
+    const status = err.statusCode || (
+      err.code === 'VALIDATION_ERROR' ||
       err.message.includes('inválid') ||
       err.message.includes('requerid') ||
-      err.message.includes('debe') ||
-      err.code === 'VALIDATION_ERROR'
-    ) {
-      return res.status(400).json({ error: err.message, correlationId });
+      err.message.includes('debe') ? 400 : null
+    );
+
+    if (status) {
+      return res.status(status).json({
+        error: err.message,
+        code: err.code || 'ERROR',
+        correlationId,
+      });
     }
     next(err);
   }
@@ -99,6 +114,18 @@ router.post('/:id/sites', async (req, res, next) => {
   if (!tenantId) {
     return res.status(401).json({
       error: 'Sesión inválida: tenant_id no presente en el token',
+      code: 'UNAUTHORIZED',
+      correlationId,
+    });
+  }
+
+  // Autorización por rol dentro del tenant (DoD §9.3): los aliados no pueden gestionar sedes
+  const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
+  const userId = req.user?.userId || req.user?.sub;
+  if (userRole === 'ALLY' || userRole === 'ALIADO') {
+    return res.status(403).json({
+      error: 'Un aliado no tiene permisos para gestionar sedes de clientes empresa',
+      code: 'FORBIDDEN',
       correlationId,
     });
   }
@@ -113,6 +140,8 @@ router.post('/:id/sites', async (req, res, next) => {
       direccion,
       zonaId,
       reglas,
+      userId,
+      userRole,
       correlationId,
     });
 
@@ -129,15 +158,17 @@ router.post('/:id/sites', async (req, res, next) => {
       },
     });
   } catch (err) {
-    if (err.message.includes('no encontrado')) {
-      return res.status(404).json({ error: err.message, correlationId });
-    }
-    if (
-      err.message.includes('requerid') ||
-      err.message.includes('inválid') ||
-      err.code === 'VALIDATION_ERROR'
-    ) {
-      return res.status(400).json({ error: err.message, correlationId });
+    const status = err.statusCode || (
+      err.message.includes('no encontrado') ? 404 :
+      (err.code === 'VALIDATION_ERROR' || err.message.includes('requerid') || err.message.includes('inválid') ? 400 : null)
+    );
+
+    if (status) {
+      return res.status(status).json({
+        error: err.message,
+        code: err.code || 'ERROR',
+        correlationId,
+      });
     }
     next(err);
   }
@@ -156,6 +187,17 @@ router.get('/:id/sites', async (req, res, next) => {
   if (!tenantId) {
     return res.status(401).json({
       error: 'Sesión inválida: tenant_id no presente en el token',
+      code: 'UNAUTHORIZED',
+      correlationId,
+    });
+  }
+
+  const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
+  const userId = req.user?.userId || req.user?.sub;
+  if (userRole === 'ALLY' || userRole === 'ALIADO') {
+    return res.status(403).json({
+      error: 'Un aliado no tiene permisos para consultar sedes de clientes empresa',
+      code: 'FORBIDDEN',
       correlationId,
     });
   }
@@ -164,6 +206,8 @@ router.get('/:id/sites', async (req, res, next) => {
     const { client, sites } = await container.getCompanyClientSitesUseCase.execute({
       clienteId,
       tenantId,
+      userId,
+      userRole,
     });
 
     return res.status(200).json({
@@ -180,8 +224,13 @@ router.get('/:id/sites', async (req, res, next) => {
       })),
     });
   } catch (err) {
-    if (err.message.includes('no encontrado')) {
-      return res.status(404).json({ error: err.message, correlationId });
+    const status = err.statusCode || (err.message.includes('no encontrado') ? 404 : null);
+    if (status) {
+      return res.status(status).json({
+        error: err.message,
+        code: err.code || 'ERROR',
+        correlationId,
+      });
     }
     next(err);
   }

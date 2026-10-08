@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { CompanyClient } = require('../../../src/features/client/domain/CompanyClient');
 
 describe('CompanyClient Domain Entity', () => {
-  it('debe crear una instancia válida de cliente empresa con tipo EMPRESA', () => {
+  it('debe crear una instancia válida de cliente empresa con tipo PERSONA_JURIDICA (Migración 007)', () => {
     const client = new CompanyClient({
       tenantId: 'tenant-trama-1',
       razonSocial: 'Soluciones Integrales S.A.S.',
@@ -14,7 +14,7 @@ describe('CompanyClient Domain Entity', () => {
     });
 
     assert.doesNotThrow(() => client.validate());
-    assert.strictEqual(client.tipo, 'EMPRESA');
+    assert.strictEqual(client.tipo, 'PERSONA_JURIDICA');
     assert.strictEqual(client.estado, 'ACTIVO');
     assert.strictEqual(client.razonSocial, 'Soluciones Integrales S.A.S.');
   });

@@ -44,7 +44,7 @@ describe('RegisterCompanyClientWithSitesUseCase (US-02.2.2 / RF-08)', () => {
     assert.strictEqual(result.isNew, true);
     assert.strictEqual(result.client.razonSocial, 'Logística Nacional S.A.S.');
     assert.strictEqual(result.client.nit, '900123456-1');
-    assert.strictEqual(result.client.tipo, 'EMPRESA');
+    assert.strictEqual(result.client.tipo, 'PERSONA_JURIDICA');
     assert.strictEqual(result.client.usuarioId, 'auth-user-uuid-999');
     assert.strictEqual(result.sites.length, 2);
     assert.strictEqual(result.sites[0].nombre, 'Bodega Central Fontibón');
@@ -99,13 +99,13 @@ describe('RegisterCompanyClientWithSitesUseCase (US-02.2.2 / RF-08)', () => {
     );
   });
 
-  it('Scenario 4: idempotencia - si la empresa ya existe con el mismo NIT retorna el registro existente', async () => {
+  it('Scenario 4: prevención de fuga de datos - rechaza con 409 Conflict si el NIT ya existe (DoD §9.3)', async () => {
     const repository = new InMemoryCompanyClientRepository();
     const useCase = new RegisterCompanyClientWithSitesUseCase({
       companyClientRepository: repository,
     });
 
-    const primerRegistro = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-trama-1',
       razonSocial: 'Distribuciones SAS',
       nit: '900555666-1',
@@ -119,52 +119,151 @@ describe('RegisterCompanyClientWithSitesUseCase (US-02.2.2 / RF-08)', () => {
       ],
     });
 
-    assert.strictEqual(primerRegistro.isNew, true);
-
-    const segundoRegistro = await useCase.execute({
-      tenantId: 'tenant-trama-1',
-      razonSocial: 'Distribuciones SAS Duplicada',
-      nit: '900555666-1',
-      email: 'otro-correo@test.com',
-      sitios: [],
-    });
-
-    assert.strictEqual(segundoRegistro.isNew, false);
-    assert.strictEqual(segundoRegistro.client.id, primerRegistro.client.id);
-    assert.strictEqual(segundoRegistro.client.nit, '900555666-1');
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          tenantId: 'tenant-trama-1',
+          razonSocial: 'Distribuciones SAS Intruso',
+          nit: '900555666-1',
+          email: 'otro-correo@test.com',
+          sitios: [],
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 409);
+        assert.strictEqual(err.code, 'NIT_ALREADY_REGISTERED');
+        return true;
+      }
+    );
   });
 
-  it('Scenario 5: idempotencia - si la empresa ya existe con el mismo Email retorna el registro existente', async () => {
+  it('Scenario 5: prevención de fuga de datos - rechaza con 409 Conflict si el Email ya existe', async () => {
     const repository = new InMemoryCompanyClientRepository();
     const useCase = new RegisterCompanyClientWithSitesUseCase({
       companyClientRepository: repository,
     });
 
-    const primerRegistro = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-trama-1',
       razonSocial: 'Email SAS',
       nit: '900888999-1',
       email: 'repetido@test.com',
-      sitios: [
-        {
-          nombre: 'Sede A',
-          direccion: 'Calle 10 # 20-30',
-          zonaId: 'zona-1',
-        },
-      ],
-    });
-
-    assert.strictEqual(primerRegistro.isNew, true);
-
-    const segundoRegistro = await useCase.execute({
-      tenantId: 'tenant-trama-1',
-      razonSocial: 'Email SAS Dos',
-      nit: '900111222-1',
-      email: 'repetido@test.com',
       sitios: [],
     });
 
-    assert.strictEqual(segundoRegistro.isNew, false);
-    assert.strictEqual(segundoRegistro.client.id, primerRegistro.client.id);
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          tenantId: 'tenant-trama-1',
+          razonSocial: 'Email SAS Dos',
+          nit: '900111222-1',
+          email: 'repetido@test.com',
+          sitios: [],
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 409);
+        assert.strictEqual(err.code, 'EMAIL_ALREADY_REGISTERED');
+        return true;
+      }
+    );
+  });
+
+  it('Scenario 6: SAGA Compensation - elimina usuario creado en Auth si falla el guardado en repositorio', async () => {
+    let deletedUserId = null;
+    const mockAuthService = {
+      createUser: async () => ({ userId: 'auth-compensate-uuid' }),
+      deleteUser: async (id) => {
+        deletedUserId = id;
+      },
+    };
+    const failingRepo = {
+      findByNitAndTenant: async () => null,
+      findByEmailAndTenant: async () => null,
+      save: async () => {
+        throw new Error('Database connection lost');
+      },
+    };
+
+    const useCase = new RegisterCompanyClientWithSitesUseCase({
+      companyClientRepository: failingRepo,
+      authIdentityService: mockAuthService,
+    });
+
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          tenantId: 'tenant-trama-1',
+          razonSocial: 'Empresa Falla S.A.',
+          nit: '900999000-1',
+          email: 'falla@empresa.com',
+          sitios: [],
+        });
+      },
+      /Database connection lost/
+    );
+
+    assert.strictEqual(deletedUserId, 'auth-compensate-uuid');
+  });
+
+  it('Scenario 7: rechaza con 409 si el email ya existe en Supabase Auth', async () => {
+    const mockAuthService = {
+      createUser: async () => {
+        const err = new Error('User already registered');
+        err.code = 'EMAIL_ALREADY_REGISTERED';
+        throw err;
+      },
+    };
+    const repository = new InMemoryCompanyClientRepository();
+    const useCase = new RegisterCompanyClientWithSitesUseCase({
+      companyClientRepository: repository,
+      authIdentityService: mockAuthService,
+    });
+
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          tenantId: 'tenant-trama-1',
+          razonSocial: 'Empresa Auth Dup',
+          nit: '900888777-1',
+          email: 'dup@auth.com',
+          sitios: [],
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 409);
+        assert.strictEqual(err.code, 'EMAIL_ALREADY_REGISTERED');
+        return true;
+      }
+    );
+  });
+
+  it('Scenario 8: no contiene contraseña fija hardcodeada (Políticas DevOps §15)', async () => {
+    const repository = new InMemoryCompanyClientRepository();
+    let authUserPassword = null;
+    const mockAuthService = {
+      createUser: async ({ password }) => {
+        authUserPassword = password;
+        return { userId: 'auth-user-pwd' };
+      },
+    };
+
+    const useCase = new RegisterCompanyClientWithSitesUseCase({
+      companyClientRepository: repository,
+      authIdentityService: mockAuthService,
+    });
+
+    const res = await useCase.execute({
+      tenantId: 'tenant-trama-1',
+      razonSocial: 'Seguridad Sin Hardcode',
+      nit: '900777666-1',
+      email: 'seguridad@empresa.com',
+      sitios: [],
+    });
+
+    assert.ok(authUserPassword);
+    assert.notStrictEqual(authUserPassword, 'ManiClient2026!');
+    assert.strictEqual(res.temporaryPassword, authUserPassword);
+    assert.ok(authUserPassword.length >= 10);
   });
 });

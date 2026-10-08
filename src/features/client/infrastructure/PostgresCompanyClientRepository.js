@@ -54,10 +54,10 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
         [effectiveUserId, companyClient.tenantId, companyClient.email, companyClient.telefono]
       );
 
-      // 2. Insertar cliente empresa con columnas de organización
+      // 2. Insertar cliente empresa con columnas de organización (tipo PERSONA_JURIDICA per Migración 007)
       await clientConn.query(
         `INSERT INTO cliente (id, tenant_id, usuario_id, tipo, razon_social, nit, telefono, nombre_representante)
-         VALUES ($1, $2, $3, 'EMPRESA', $4, $5, $6, $7)`,
+         VALUES ($1, $2, $3, 'PERSONA_JURIDICA', $4, $5, $6, $7)`,
         [
           clientId,
           companyClient.tenantId,
@@ -104,7 +104,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
         email: companyClient.email,
         telefono: companyClient.telefono,
         nombreRepresentante: companyClient.nombreRepresentante,
-        tipo: 'EMPRESA',
+        tipo: 'PERSONA_JURIDICA',
         estado: 'ACTIVO',
       });
       savedClient.usuarioId = effectiveUserId;
@@ -121,10 +121,10 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   async findById(id, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
-      `SELECT c.id, c.tenant_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
+      `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
-       WHERE c.id = $1 AND c.tenant_id = $2 AND c.tipo = 'EMPRESA'
+       WHERE c.id = $1 AND c.tenant_id = $2 AND c.tipo IN ('PERSONA_JURIDICA', 'EMPRESA')
        LIMIT 1`,
       [id, tenantId]
     );
@@ -135,10 +135,10 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   async findByNitAndTenant(nit, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
-      `SELECT c.id, c.tenant_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
+      `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
-       WHERE c.nit = $1 AND c.tenant_id = $2 AND c.tipo = 'EMPRESA'
+       WHERE c.nit = $1 AND c.tenant_id = $2 AND c.tipo IN ('PERSONA_JURIDICA', 'EMPRESA')
        LIMIT 1`,
       [nit, tenantId]
     );
@@ -149,10 +149,10 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   async findByEmailAndTenant(email, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
-      `SELECT c.id, c.tenant_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
+      `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
-       WHERE LOWER(u.email) = LOWER($1) AND c.tenant_id = $2 AND c.tipo = 'EMPRESA'
+       WHERE LOWER(u.email) = LOWER($1) AND c.tenant_id = $2 AND c.tipo IN ('PERSONA_JURIDICA', 'EMPRESA')
        LIMIT 1`,
       [email, tenantId]
     );
@@ -198,13 +198,14 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   _rowToClient(row) {
     return new CompanyClient({
       id: row.id,
+      usuarioId: row.usuario_id,
       tenantId: row.tenant_id,
       razonSocial: row.razon_social || row.email,
       nit: row.nit || '000000000',
       email: row.email,
       telefono: row.telefono || null,
       nombreRepresentante: row.nombre_representante || null,
-      tipo: row.tipo || 'EMPRESA',
+      tipo: row.tipo || 'PERSONA_JURIDICA',
       estado: row.estado || 'ACTIVO',
     });
   }

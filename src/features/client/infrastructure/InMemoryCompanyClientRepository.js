@@ -26,7 +26,7 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
       email: companyClient.email,
       telefono: companyClient.telefono,
       nombreRepresentante: companyClient.nombreRepresentante,
-      tipo: companyClient.tipo || 'EMPRESA',
+      tipo: companyClient.tipo || 'PERSONA_JURIDICA',
       estado: companyClient.estado || 'ACTIVO',
       creadoEn: new Date(),
     });

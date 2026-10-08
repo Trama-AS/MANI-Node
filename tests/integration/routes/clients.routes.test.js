@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 
-function signToken({ userId = 'user-empresa-1', tenantId = 'trama-demo', role = 'cliente' } = {}) {
+function signToken({ userId = 'user-empresa-1', tenantId = 'trama-demo', role = 'admin_tenant' } = {}) {
   return jwt.sign(
     {
       sub: userId,
@@ -67,7 +67,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
     assert.strictEqual(res.body.tenantId, 'trama-demo');
     assert.strictEqual(res.body.client.razonSocial, 'Corporación Andina de Servicios S.A.');
     assert.strictEqual(res.body.client.nit, '901234567-9');
-    assert.strictEqual(res.body.client.tipo, 'EMPRESA');
+    assert.strictEqual(res.body.client.tipo, 'PERSONA_JURIDICA');
     assert.strictEqual(res.body.sitios.length, 2);
     assert.strictEqual(res.body.sitios[0].nombre, 'Sede Administrativa Salitre');
     assert.strictEqual(res.body.sitios[1].nombre, 'Centro Logístico Fontibón');
@@ -122,8 +122,69 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
     assert.ok(res.body.error);
   });
 
+  it('POST /api/v1/clients/company debe responder 409 Conflict si el NIT ya existe (sin exponer sedes, DoD §9.3)', async () => {
+    const token = signToken({ tenantId: 'trama-demo' });
+
+    const payload = {
+      razonSocial: 'Empresa Para Dup NIT S.A.S.',
+      nit: '900888111-9',
+      email: 'original@dup-nit.com',
+      sitios: [{ direccion: 'Calle 1 # 2-3', zonaId: 'zona-1' }],
+    };
+
+    const res1 = await request(app)
+      .post('/api/v1/clients/company')
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload);
+    assert.strictEqual(res1.status, 201);
+
+    const res2 = await request(app)
+      .post('/api/v1/clients/company')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        razonSocial: 'Intruso Que Pide Mismo NIT',
+        nit: '900888111-9',
+        email: 'intruso@dup-nit.com',
+        sitios: [],
+      });
+
+    assert.strictEqual(res2.status, 409);
+    assert.strictEqual(res2.body.code, 'NIT_ALREADY_REGISTERED');
+    assert.strictEqual(res2.body.sitios, undefined);
+  });
+
+  it('RBAC: un usuario con rol ALIADO / ALLY recibe 403 Forbidden al intentar registrar empresas o gestionar sedes', async () => {
+    const allyToken = signToken({ tenantId: 'trama-demo', role: 'aliado' });
+
+    // 1. Intentar registrar empresa como aliado
+    const regRes = await request(app)
+      .post('/api/v1/clients/company')
+      .set('Authorization', `Bearer ${allyToken}`)
+      .send({
+        razonSocial: 'Empresa Intento Aliado',
+        nit: '900999888-1',
+        email: 'aliado-intento@empresa.com',
+        sitios: [],
+      });
+    assert.strictEqual(regRes.status, 403);
+    assert.strictEqual(regRes.body.code, 'FORBIDDEN');
+
+    // 2. Intentar agregar sede como aliado
+    const addSiteRes = await request(app)
+      .post('/api/v1/clients/any-id/sites')
+      .set('Authorization', `Bearer ${allyToken}`)
+      .send({ direccion: 'Calle 10 # 20-30', zonaId: 'zona-1' });
+    assert.strictEqual(addSiteRes.status, 403);
+
+    // 3. Intentar consultar sedes como aliado
+    const getSitesRes = await request(app)
+      .get('/api/v1/clients/any-id/sites')
+      .set('Authorization', `Bearer ${allyToken}`);
+    assert.strictEqual(getSitesRes.status, 403);
+  });
+
   it('POST /api/v1/clients/:id/sites y GET /api/v1/clients/:id/sites con aislamiento cross-tenant estricto', async () => {
-    const tokenTenantA = signToken({ tenantId: 'trama-demo' });
+    const tokenTenantA = signToken({ tenantId: 'trama-demo', userId: 'user-dueno-hoteles' });
     const tokenTenantB = signToken({ tenantId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' });
 
     // 1. Registrar empresa en tenant-A
