@@ -104,7 +104,12 @@ class SiteRules {
       };
     }
 
-    const date = new Date(fechaHoraPropuesta);
+    const hasOffset = typeof fechaHoraPropuesta === 'string' && /(Z|[+-]\d{2}(:?\d{2})?)$/i.test(fechaHoraPropuesta);
+    const normalizedInput = typeof fechaHoraPropuesta === 'string' && !hasOffset
+      ? `${fechaHoraPropuesta}-05:00`
+      : fechaHoraPropuesta;
+
+    const date = new Date(normalizedInput);
     if (isNaN(date.getTime())) {
       throw new ValidationError(`fechaHoraPropuesta inválida: "${fechaHoraPropuesta}"`, 'VALIDATION_ERROR');
     }

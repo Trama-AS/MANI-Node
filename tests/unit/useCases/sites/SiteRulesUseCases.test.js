@@ -63,7 +63,7 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     const resAprobado = await useCase.execute({
       siteId: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23',
       tenantId: 'trama-demo',
-      fechaHoraPropuesta: '2026-10-14T10:00:00',
+      fechaHoraPropuesta: '2026-10-14T10:00:00-05:00',
     });
     assert.strictEqual(resAprobado.estadoValidacion, 'APROBADO');
 
@@ -71,7 +71,7 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     const resRequerido = await useCase.execute({
       siteId: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23',
       tenantId: 'trama-demo',
-      fechaHoraPropuesta: '2026-10-14T19:00:00',
+      fechaHoraPropuesta: '2026-10-14T19:00:00-05:00',
     });
     assert.strictEqual(resRequerido.estadoValidacion, 'REQUIERE_JUSTIFICACION');
 
@@ -79,7 +79,7 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     const resJustificado = await useCase.execute({
       siteId: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23',
       tenantId: 'trama-demo',
-      fechaHoraPropuesta: '2026-10-14T19:00:00',
+      fechaHoraPropuesta: '2026-10-14T19:00:00-05:00',
       justificacion: 'Reparación de tubería de emergencia con autorización de gerencia.',
     });
     assert.strictEqual(resJustificado.estadoValidacion, 'APROBADO_CON_JUSTIFICACION');

@@ -135,7 +135,7 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     const res = await request(app)
       .post(`/api/v1/sites/${demoSiteId}/validate-schedule`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ fechaHoraPropuesta: '2026-10-14T10:00:00' });
+      .send({ fechaHoraPropuesta: '2026-10-14T10:00:00-05:00' });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.estadoValidacion, 'APROBADO');
@@ -149,7 +149,7 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     const res = await request(app)
       .post(`/api/v1/sites/${demoSiteId}/validate-schedule`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ fechaHoraPropuesta: '2026-10-14T19:00:00' });
+      .send({ fechaHoraPropuesta: '2026-10-14T19:00:00-05:00' });
 
     assert.strictEqual(res.status, 422);
     assert.strictEqual(res.body.estadoValidacion, 'REQUIERE_JUSTIFICACION');
