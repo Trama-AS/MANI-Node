@@ -82,4 +82,53 @@ describe('RegisterUserConsentUseCase', () => {
     });
     assert.strictEqual(secondTime.length, 0);
   });
+
+  test('lanza NotFoundError si el documento legal no existe', async () => {
+    const consentRepo = new InMemoryUserConsentRepository();
+    const legalRepo = new InMemoryLegalDocumentRepository();
+    const useCase = new RegisterUserConsentUseCase({
+      userConsentRepository: consentRepo,
+      legalDocumentRepository: legalRepo,
+    });
+
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          usuarioId: 'user-789',
+          documentoLegalIds: ['documento-inexistente-xyz'],
+        });
+      },
+      (err) => err.code === 'LEGAL_DOCUMENT_NOT_FOUND' && err.statusCode === 404
+    );
+  });
+
+  test('lanza NotFoundError si el documento legal pertenece a otro tenant (aislamiento cross-tenant)', async () => {
+    const consentRepo = new InMemoryUserConsentRepository();
+    const legalRepo = new InMemoryLegalDocumentRepository();
+    await legalRepo.create(
+      new LegalDocument({
+        id: 'doc-tenant-b',
+        tenantId: 'tenant-b-id',
+        tipo: 'TERMS',
+        version: '1.0',
+        contenido: 'Términos de Tenant B',
+      })
+    );
+
+    const useCase = new RegisterUserConsentUseCase({
+      userConsentRepository: consentRepo,
+      legalDocumentRepository: legalRepo,
+    });
+
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          tenantId: 'tenant-a-id',
+          usuarioId: 'user-789',
+          documentoLegalIds: ['doc-tenant-b'],
+        });
+      },
+      (err) => err.code === 'LEGAL_DOCUMENT_NOT_FOUND' && err.statusCode === 404
+    );
+  });
 });

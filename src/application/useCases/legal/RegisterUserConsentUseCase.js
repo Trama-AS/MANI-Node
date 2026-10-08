@@ -1,4 +1,4 @@
-const { ValidationError } = require('../../../domain/errors/DomainError');
+const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
 const UserConsent = require('../../../domain/entities/UserConsent');
 const LegalDocument = require('../../../domain/entities/LegalDocument');
 
@@ -39,7 +39,13 @@ class RegisterUserConsentUseCase {
           doc = await this.legalDocumentRepository.findById(docId);
         }
         if (!doc) {
-          doc = DEFAULT_GLOBAL_DOCS.find((d) => d.id === docId) || new LegalDocument({ id: docId, tipo: 'CUSTOM' });
+          doc = DEFAULT_GLOBAL_DOCS.find((d) => d.id === docId);
+        }
+        if (!doc) {
+          throw new NotFoundError(`Documento legal "${docId}" no existe`, 'LEGAL_DOCUMENT_NOT_FOUND');
+        }
+        if (doc.tenantId && doc.tenantId !== tenantId) {
+          throw new NotFoundError(`Documento legal "${docId}" no pertenece al tenant`, 'LEGAL_DOCUMENT_NOT_FOUND');
         }
         targetDocs.push(doc);
       }
