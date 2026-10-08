@@ -45,6 +45,8 @@ class RegisterAllyNaturalPersonUseCase {
     documentoKycRepository,
     fileStorageService,
     authIdentityService,
+    registerUserConsentUseCase,
+    userConsentRepository,
   }) {
     this.tenantRepository = tenantRepository;
     this.catalogRepository = catalogRepository;
@@ -54,10 +56,15 @@ class RegisterAllyNaturalPersonUseCase {
     this.documentoKycRepository = documentoKycRepository;
     this.fileStorageService = fileStorageService;
     this.authIdentityService = authIdentityService;
+    this.registerUserConsentUseCase = registerUserConsentUseCase;
+    this.userConsentRepository = userConsentRepository;
   }
 
-  _validate({ tenantSlug, fullName, email, password, categoriaId, documentos, documentType, documentNumber }) {
+  _validate({ tenantSlug, fullName, email, password, categoriaId, documentos, documentType, documentNumber, acceptsTerms }) {
     if (!tenantSlug) throw new ValidationError('Encabezado X-Tenant-Slug requerido', 'VALIDATION_ERROR');
+    if (acceptsTerms === false || acceptsTerms === 'false') {
+      throw new ValidationError('Debe aceptar los términos y condiciones', 'TERMS_NOT_ACCEPTED');
+    }
     if (!fullName || typeof fullName !== 'string') {
       throw new ValidationError('fullName es requerido', 'VALIDATION_ERROR');
     }
@@ -91,8 +98,20 @@ class RegisterAllyNaturalPersonUseCase {
 
   async execute(input) {
     this._validate(input);
-    const { tenantSlug, fullName, email, password, phone, categoriaId, documentos, documentType, documentNumber } =
-      input;
+    const {
+      tenantSlug,
+      fullName,
+      email,
+      password,
+      phone,
+      categoriaId,
+      documentos,
+      documentType,
+      documentNumber,
+      acceptsTerms,
+      ipAddress,
+      userAgent,
+    } = input;
 
     // ADR-0018: resolución del tenant a partir del slug público.
     const tenant = await this.tenantRepository.findBySlug(tenantSlug);
@@ -138,6 +157,7 @@ class RegisterAllyNaturalPersonUseCase {
     let aliadoCreado = false;
     let aliadoCategoriaCreada = false;
     let documentoKycCreado = false;
+    let consentimientoCreado = false;
     let aliadoId;
     const uploadedPaths = [];
     let tokens;
@@ -175,9 +195,23 @@ class RegisterAllyNaturalPersonUseCase {
       await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
       documentoKycCreado = true;
 
-      // 4. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
+      // 4. Consentimiento de términos y condiciones (SCRUM-856) DENTRO de la compensación
+      if (this.registerUserConsentUseCase && acceptsTerms !== false && acceptsTerms !== 'false') {
+        await this.registerUserConsentUseCase.execute({
+          tenantId,
+          usuarioId: userId,
+          ipAddress: ipAddress || 'unknown',
+          userAgent: userAgent || 'unknown',
+        });
+        consentimientoCreado = true;
+      }
+
+      // 5. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
       tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
     } catch (err) {
+      if (consentimientoCreado && this.userConsentRepository) {
+        await safeRun(() => this.userConsentRepository.deleteByUsuarioId(tenantId, userId));
+      }
       if (documentoKycCreado) {
         await safeRun(() => this.documentoKycRepository.deleteByAliadoId(tenantId, aliadoId));
       }
