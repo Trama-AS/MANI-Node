@@ -1,5 +1,5 @@
 const SiteRules = require('../../../domain/entities/SiteRules');
-const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
+const { ValidationError, NotFoundError, ForbiddenError } = require('../../../domain/errors/DomainError');
 
 /**
  * Caso de Uso: Configurar Reglas Contextuales del Sitio (SCRUM-853 / US-02.2.3 / RF-09)
@@ -10,12 +10,14 @@ class ConfigureSiteRulesUseCase {
   /**
    * @param {object} dependencies
    * @param {import('../../../domain/ports/ISiteRepository')} dependencies.siteRepository
+   * @param {import('../../../domain/ports/IClientRepository')} [dependencies.clientRepository]
    */
-  constructor({ siteRepository } = {}) {
+  constructor({ siteRepository, clientRepository } = {}) {
     if (!siteRepository) {
       throw new Error('siteRepository es requerido en ConfigureSiteRulesUseCase');
     }
     this.siteRepository = siteRepository;
+    this.clientRepository = clientRepository;
   }
 
   /**
@@ -23,9 +25,11 @@ class ConfigureSiteRulesUseCase {
    * @param {string} input.siteId
    * @param {string} input.tenantId
    * @param {object} input.reglas
+   * @param {string} [input.userId]
+   * @param {string} [input.role]
    * @returns {Promise<{ site: import('../../../domain/entities/Site'), reglas: SiteRules }>}
    */
-  async execute({ siteId, tenantId, reglas }) {
+  async execute({ siteId, tenantId, reglas, userId, role = 'ADMIN' }) {
     if (!siteId) throw new ValidationError('siteId es requerido', 'VALIDATION_ERROR');
     if (!tenantId) throw new ValidationError('tenantId es requerido', 'VALIDATION_ERROR');
     if (!reglas || typeof reglas !== 'object') {
@@ -38,11 +42,25 @@ class ConfigureSiteRulesUseCase {
       throw new NotFoundError(`Sitio con ID "${siteId}" no encontrado en tenant "${tenantId}".`, 'SITE_NOT_FOUND');
     }
 
-    // 2. Construir y validar las reglas en el dominio
+    // 2. Control de Acceso basado en Roles (DoD §9.3 / QA feedback)
+    // Solo el cliente dueño de la sede o el admin del tenant configuran reglas
+    if (role !== 'ADMIN') {
+      const duenoId = this.clientRepository
+        ? await this.clientRepository.findUsuarioIdByClientId(tenantId, existingSite.clientId || existingSite.clienteId)
+        : null;
+      if (role !== 'CLIENT' || duenoId !== userId) {
+        throw new ForbiddenError(
+          'Solo el cliente dueño de la sede o el admin del tenant configuran reglas',
+          'FORBIDDEN'
+        );
+      }
+    }
+
+    // 3. Construir y validar las reglas en el dominio
     const siteRules = new SiteRules(reglas);
     siteRules.validate();
 
-    // 3. Persistir en la infraestructura
+    // 4. Persistir en la infraestructura
     const updatedSite = await this.siteRepository.updateRules(siteId, tenantId, siteRules);
 
     return {

@@ -16,6 +16,9 @@ async function configureSiteRules(req, res, next) {
     });
   }
 
+  const userId = req.user?.userId || req.user?.sub;
+  const role = req.user?.role || req.user?.user_role || req.user?.rol;
+
   const {
     horario,
     permisosRequeridos,
@@ -29,6 +32,8 @@ async function configureSiteRules(req, res, next) {
     const { site, reglas } = await container.configureSiteRulesUseCase.execute({
       siteId,
       tenantId,
+      userId,
+      role,
       reglas: {
         horario,
         permisosRequeridos,

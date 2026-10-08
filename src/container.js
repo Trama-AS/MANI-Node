@@ -34,6 +34,8 @@ const GetSiteRulesForAllyUseCase = require('./application/useCases/sites/GetSite
 const ValidateAllyScheduleUseCase = require('./application/useCases/sites/ValidateAllyScheduleUseCase');
 const InMemorySiteRepository = require('./infrastructure/repositories/InMemorySiteRepository');
 const PostgresSiteRepository = require('./infrastructure/repositories/PostgresSiteRepository');
+const InMemoryClientRepository = require('./infrastructure/repositories/InMemoryClientRepository');
+const PostgresClientRepository = require('./infrastructure/repositories/PostgresClientRepository');
 
 const config = require('./config');
 
@@ -86,8 +88,10 @@ class Container {
       });
       if (this.pgPoolFactory.isConfigured()) {
         this.siteRepository = new PostgresSiteRepository({ pgPoolFactory: this.pgPoolFactory });
+        this.clientRepository = new PostgresClientRepository({ pgPoolFactory: this.pgPoolFactory });
       } else {
         this.siteRepository = new InMemorySiteRepository();
+        this.clientRepository = new InMemoryClientRepository();
       }
     } else {
       this.profileRepository = new InMemoryProfileRepository();
@@ -100,6 +104,7 @@ class Container {
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
       this.siteRepository = new InMemorySiteRepository();
+      this.clientRepository = new InMemoryClientRepository();
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -133,6 +138,7 @@ class Container {
 
     this.configureSiteRulesUseCase = new ConfigureSiteRulesUseCase({
       siteRepository: this.siteRepository,
+      clientRepository: this.clientRepository,
     });
 
     this.getSiteRulesForAllyUseCase = new GetSiteRulesForAllyUseCase({

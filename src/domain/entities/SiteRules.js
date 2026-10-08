@@ -12,6 +12,8 @@
 const DIAS_VALIDOS = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+const { ValidationError } = require('../errors/DomainError');
+
 class SiteRules {
   /**
    * @param {object} [data]
@@ -43,13 +45,15 @@ class SiteRules {
         }
       : null;
 
+    this.rawPermisosRequeridos = permisosRequeridos;
     this.permisosRequeridos = Array.isArray(permisosRequeridos)
-      ? permisosRequeridos.map((p) => p.trim())
-      : [];
+      ? permisosRequeridos.map((p) => (typeof p === 'string' ? p.trim() : p))
+      : permisosRequeridos;
 
+    this.rawElementosProteccion = elementosProteccion;
     this.elementosProteccion = Array.isArray(elementosProteccion)
-      ? elementosProteccion.map((e) => e.trim())
-      : [];
+      ? elementosProteccion.map((e) => (typeof e === 'string' ? e.trim() : e))
+      : elementosProteccion;
 
     this.instruccionesIngreso = instruccionesIngreso ? instruccionesIngreso.trim() : null;
     this.requiereAprobacionPrevia = Boolean(requiereAprobacionPrevia);
@@ -64,20 +68,29 @@ class SiteRules {
   validate() {
     if (this.horario) {
       if (!TIME_REGEX.test(this.horario.inicio)) {
-        throw new Error(`horario.inicio inválido ("${this.horario.inicio}"). Formato esperado: HH:mm (24h)`);
+        throw new ValidationError(`horario.inicio inválido ("${this.horario.inicio}"). Formato esperado: HH:mm (24h)`, 'VALIDATION_ERROR');
       }
       if (!TIME_REGEX.test(this.horario.fin)) {
-        throw new Error(`horario.fin inválido ("${this.horario.fin}"). Formato esperado: HH:mm (24h)`);
+        throw new ValidationError(`horario.fin inválido ("${this.horario.fin}"). Formato esperado: HH:mm (24h)`, 'VALIDATION_ERROR');
       }
       if (this.horario.inicio >= this.horario.fin) {
-        throw new Error('horario.inicio debe ser estrictamente menor que horario.fin');
+        throw new ValidationError('horario.inicio debe ser estrictamente menor que horario.fin', 'VALIDATION_ERROR');
       }
       for (const dia of this.horario.diasPermitidos) {
         if (!DIAS_VALIDOS.includes(dia)) {
-          throw new Error(`Día no permitido ("${dia}"). Días válidos: ${DIAS_VALIDOS.join(', ')}`);
+          throw new ValidationError(`Día no permitido ("${dia}"). Días válidos: ${DIAS_VALIDOS.join(', ')}`, 'VALIDATION_ERROR');
         }
       }
     }
+
+    if (!Array.isArray(this.permisosRequeridos) || !this.permisosRequeridos.every((p) => typeof p === 'string')) {
+      throw new ValidationError('permisosRequeridos debe ser un arreglo de strings', 'VALIDATION_ERROR');
+    }
+
+    if (!Array.isArray(this.elementosProteccion) || !this.elementosProteccion.every((e) => typeof e === 'string')) {
+      throw new ValidationError('elementosProteccion debe ser un arreglo de strings', 'VALIDATION_ERROR');
+    }
+
     return true;
   }
 
@@ -93,11 +106,25 @@ class SiteRules {
 
     const date = new Date(fechaHoraPropuesta);
     if (isNaN(date.getTime())) {
-      throw new Error(`fechaHoraPropuesta inválida: "${fechaHoraPropuesta}"`);
+      throw new ValidationError(`fechaHoraPropuesta inválida: "${fechaHoraPropuesta}"`, 'VALIDATION_ERROR');
     }
 
-    const diasSemanaMap = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
-    const diaPropuesto = diasSemanaMap[date.getDay()];
+    // Evaluación en zona horaria America/Bogota (evita desfases del servidor UTC en contenedores)
+    const TZ = 'America/Bogota';
+    const partes = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      })
+        .formatToParts(date)
+        .map((p) => [p.type, p.value])
+    );
+    const DIA = { Sun: 'DOM', Mon: 'LUN', Tue: 'MAR', Wed: 'MIE', Thu: 'JUE', Fri: 'VIE', Sat: 'SAB' };
+    const diaPropuesto = DIA[partes.weekday];
+    const horaPropuesta = `${partes.hour}:${partes.minute}`;
 
     if (!this.horario.diasPermitidos.includes(diaPropuesto)) {
       return {
@@ -107,10 +134,6 @@ class SiteRules {
         advertencia: `El agendamiento en día ${diaPropuesto} no está dentro de los días autorizados (${this.horario.diasPermitidos.join(', ')}).`,
       };
     }
-
-    const horas = String(date.getHours()).padStart(2, '0');
-    const minutos = String(date.getMinutes()).padStart(2, '0');
-    const horaPropuesta = `${horas}:${minutos}`;
 
     if (horaPropuesta < this.horario.inicio || horaPropuesta > this.horario.fin) {
       return {

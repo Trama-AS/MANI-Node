@@ -30,8 +30,8 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     assert.strictEqual(res.status, 401);
   });
 
-  it('PATCH /api/v1/sites/:id/rules con token configura reglas retornando 200', async () => {
-    const token = signToken({ tenantId: 'trama-demo' });
+  it('PATCH /api/v1/sites/:id/rules con token admin_tenant configura reglas retornando 200', async () => {
+    const token = signToken({ tenantId: 'trama-demo', role: 'admin_tenant' });
 
     const payload = {
       horario: {
@@ -55,6 +55,49 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     assert.strictEqual(res.body.sitioId, demoSiteId);
     assert.strictEqual(res.body.reglas.horario.inicio, '07:30');
     assert.strictEqual(res.body.vistaAliado.totalRequisitos, 5);
+  });
+
+  it('PATCH /api/v1/sites/:id/rules con rol aliado responde 403 Forbidden (DoD §9.3)', async () => {
+    const tokenAliado = signToken({ tenantId: 'trama-demo', role: 'aliado' });
+
+    const res = await request(app)
+      .patch(`/api/v1/sites/${demoSiteId}/rules`)
+      .set('Authorization', `Bearer ${tokenAliado}`)
+      .send({ horario: { inicio: '08:00', fin: '17:00' } });
+
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(res.body.code, 'FORBIDDEN');
+  });
+
+  it('PATCH /api/v1/sites/:id/rules con cliente que no es dueño responde 403 Forbidden (DoD §9.3)', async () => {
+    const tokenOtroCliente = signToken({
+      tenantId: 'trama-demo',
+      role: 'cliente',
+      userId: 'cliente-ajeno-no-dueno',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/sites/${demoSiteId}/rules`)
+      .set('Authorization', `Bearer ${tokenOtroCliente}`)
+      .send({ horario: { inicio: '08:00', fin: '17:00' } });
+
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(res.body.code, 'FORBIDDEN');
+  });
+
+  it('PATCH /api/v1/sites/:id/rules con cliente dueño de la sede responde 200 OK', async () => {
+    const tokenDueno = signToken({
+      tenantId: 'trama-demo',
+      role: 'cliente',
+      userId: 'cliente-dueno-1',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/sites/${demoSiteId}/rules`)
+      .set('Authorization', `Bearer ${tokenDueno}`)
+      .send({ horario: { inicio: '08:00', fin: '17:00' } });
+
+    assert.strictEqual(res.status, 200);
   });
 
   it('GET /api/v1/sites/:id/rules sin Authorization responde 401', async () => {

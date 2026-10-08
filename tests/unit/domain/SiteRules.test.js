@@ -89,4 +89,44 @@ describe('SiteRules Value Object (RF-09 / QS-06)', () => {
     assert.ok(view.alertas.some((a) => a.tipo === 'EPP' && a.severidad === 'ALTA'));
     assert.ok(view.alertas.some((a) => a.tipo === 'HORARIO'));
   });
+
+  it('debe evaluar correctamente la zona horaria America/Bogota (evita desfases en servidores UTC)', () => {
+    const rules = new SiteRules({
+      horario: {
+        inicio: '08:00',
+        fin: '17:00',
+        diasPermitidos: ['LUN', 'MAR', 'MIE', 'JUE', 'VIE'],
+      },
+    });
+
+    // 8 de octubre de 2026 es jueves (JUE)
+    // Caso 1: 16:20 en Bogotá (dentro de horario)
+    const resDentro = rules.evaluateSchedule('2026-10-08T16:20:00-05:00');
+    assert.strictEqual(resDentro.cumpleHorario, true);
+    assert.strictEqual(resDentro.fueraDeHorario, false);
+
+    // Caso 2: 06:00 en Bogotá (fuera de horario)
+    const resFuera = rules.evaluateSchedule('2026-10-08T06:00:00-05:00');
+    assert.strictEqual(resFuera.cumpleHorario, false);
+    assert.strictEqual(resFuera.fueraDeHorario, true);
+    assert.strictEqual(resFuera.requiereJustificacion, true);
+  });
+
+  it('debe rechazar con ValidationError si permisosRequeridos o elementosProteccion no son arreglos de strings', () => {
+    const rulesPermisosInvalidos = new SiteRules({
+      permisosRequeridos: [123, null],
+    });
+    assert.throws(
+      () => rulesPermisosInvalidos.validate(),
+      (err) => err.code === 'VALIDATION_ERROR' && err.statusCode === 400
+    );
+
+    const rulesEppInvalidos = new SiteRules({
+      elementosProteccion: 'no-es-arreglo',
+    });
+    assert.throws(
+      () => rulesEppInvalidos.validate(),
+      (err) => err.code === 'VALIDATION_ERROR' && err.statusCode === 400
+    );
+  });
 });

@@ -3,7 +3,6 @@
 -- =====================================================================
 
 ALTER TABLE sitio ADD COLUMN IF NOT EXISTS nombre TEXT;
-ALTER TABLE sitio ADD COLUMN IF NOT EXISTS reglas JSONB;
 
 CREATE INDEX IF NOT EXISTS idx_sitio_tenant_id ON sitio (tenant_id, id);
 
