@@ -29,6 +29,7 @@ const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/De
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
 
 const config = require('./config');
 
@@ -128,6 +129,15 @@ class Container {
       aliadoCategoriaRepository: this.aliadoCategoriaRepository,
       documentoKycRepository: this.documentoKycRepository,
       fileStorageService: this.fileStorageService,
+      authIdentityService: this.authIdentityService,
+    });
+
+    this.registerDirectEmployeeUseCase = new RegisterDirectEmployeeUseCase({
+      tenantRepository: this.tenantRepository,
+      catalogRepository: this.catalogRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
       authIdentityService: this.authIdentityService,
     });
   }
