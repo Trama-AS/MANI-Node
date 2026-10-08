@@ -33,11 +33,35 @@ test('Domain Entity: Profile valida roles y estados de dominio', () => {
 });
 
 test('Domain Entity: Category valida identificador y activo', () => {
-  assert.throws(() => new Category({ id: '', name: 'Manicura' }), ValidationError);
+  assert.throws(() => new Category({ id: '', name: 'Manicura', flujoOperativo: 'TARIFA_ESTANDAR' }), ValidationError);
 
-  const category = new Category({ id: 'c-1', name: 'Acrílicas', active: true });
+  const category = new Category({ id: 'c-1', name: 'Acrílicas', active: true, flujoOperativo: 'TARIFA_ESTANDAR' });
   assert.equal(category.isActive(), true);
   assert.equal(category.toJSON().name, 'Acrílicas');
+});
+
+test('Domain Entity: Category valida el nombre (3-60 caracteres, al menos una letra)', () => {
+  const base = { id: 'c-1', flujoOperativo: 'TARIFA_ESTANDAR' };
+
+  assert.throws(() => new Category({ ...base, name: 'AB' }), ValidationError); // < 3
+  assert.throws(() => new Category({ ...base, name: 'A'.repeat(61) }), ValidationError); // > 60
+  assert.throws(() => new Category({ ...base, name: '123456' }), ValidationError); // sin letras
+  assert.throws(() => new Category({ ...base, name: '' }), ValidationError);
+
+  // Colapsa espacios internos repetidos, igual que crear_categoria_servicio().
+  const category = new Category({ ...base, name: '  Uñas   Acrílicas  ' });
+  assert.equal(category.name, 'Uñas Acrílicas');
+});
+
+test('Domain Entity: Category valida flujoOperativo (COTIZACION_PREVIA | TARIFA_ESTANDAR)', () => {
+  assert.throws(
+    () => new Category({ id: 'c-1', name: 'Manicura', flujoOperativo: 'OTRO' }),
+    ValidationError
+  );
+  assert.throws(() => new Category({ id: 'c-1', name: 'Manicura' }), ValidationError); // sin default
+
+  const cotizacion = new Category({ id: 'c-1', name: 'Plomería', flujoOperativo: 'COTIZACION_PREVIA' });
+  assert.equal(cotizacion.toJSON().flujoOperativo, 'COTIZACION_PREVIA');
 });
 
 test('Domain Errors tienen códigos de error y statusCodes adecuados', () => {

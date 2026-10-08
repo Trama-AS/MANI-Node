@@ -27,6 +27,11 @@ const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProf
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
+const ListCategoriesForTenantUseCase = require('./application/useCases/catalog/ListCategoriesForTenantUseCase');
+const GetCategoryUseCase = require('./application/useCases/catalog/GetCategoryUseCase');
+const CreateCategoryUseCase = require('./application/useCases/catalog/CreateCategoryUseCase');
+const UpdateCategoryUseCase = require('./application/useCases/catalog/UpdateCategoryUseCase');
+const SetCategoryStatusUseCase = require('./application/useCases/catalog/SetCategoryStatusUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 
@@ -114,6 +119,14 @@ class Container {
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
     });
+
+    this.listCategoriesForTenantUseCase = new ListCategoriesForTenantUseCase({
+      catalogRepository: this.catalogRepository,
+    });
+    this.getCategoryUseCase = new GetCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.createCategoryUseCase = new CreateCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.updateCategoryUseCase = new UpdateCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.setCategoryStatusUseCase = new SetCategoryStatusUseCase({ catalogRepository: this.catalogRepository });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
