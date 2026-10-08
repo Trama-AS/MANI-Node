@@ -13,7 +13,8 @@ function registerRequest(overrides = {}) {
     .field('fullName', overrides.fullName ?? 'Maria Fernanda Rojas')
     .field('email', overrides.email ?? `aliado.${unique}@mani.test`)
     .field('password', overrides.password ?? 'Cambiar123!')
-    .field('categoriaId', overrides.categoriaId ?? 'cat-1');
+    .field('categoriaId', overrides.categoriaId ?? 'cat-1')
+    .field('acceptsTerms', overrides.acceptsTerms ?? 'true');
 
   if (overrides.attachCedula !== false) {
     req.attach('cedula_ciudadania', Buffer.from('contenido-fake-cedula'), 'cedula.pdf');
@@ -73,6 +74,13 @@ test('POST /api/v1/auth/register/ally con solo X-Tenant-Id (sin X-Tenant-Slug) r
 
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/auth/register/ally sin acceptsTerms responde 400 TERMS_NOT_ACCEPTED (DoD §9.3)', async () => {
+  const res = await registerRequest({ acceptsTerms: 'false' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'TERMS_NOT_ACCEPTED');
 });
 
 test('POST /api/v1/auth/register/ally sin documentos KYC responde 400 VALIDATION_ERROR', async () => {

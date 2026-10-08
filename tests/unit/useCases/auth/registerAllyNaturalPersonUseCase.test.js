@@ -12,6 +12,7 @@ const VALID_INPUT = {
   phone: '+573001234567',
   categoriaId: 'cat-1',
   documentos: [CEDULA],
+  acceptsTerms: true,
 };
 
 function makeUseCase(overrides = {}) {
@@ -402,4 +403,28 @@ test('B3: tras una falla compensada, un reintento con los mismos datos se regist
 
   assert.equal(result.profile.role, 'ALLY');
   assert.equal(result.profile.status, 'PENDING');
+});
+
+test('TERMS_NOT_ACCEPTED cuando falta acceptsTerms o no es true (DoD §9.3 - Prohibido consentimiento por omision)', async () => {
+  const useCase = makeUseCase();
+
+  // Caso 1: acceptsTerms no provisto (omisión)
+  const inputSinTerms = { ...VALID_INPUT, acceptsTerms: undefined };
+  await assert.rejects(
+    async () => useCase.execute(inputSinTerms),
+    (err) => {
+      assert.equal(err.code, 'TERMS_NOT_ACCEPTED');
+      return true;
+    }
+  );
+
+  // Caso 2: acceptsTerms false explícito
+  const inputFalse = { ...VALID_INPUT, acceptsTerms: false };
+  await assert.rejects(
+    async () => useCase.execute(inputFalse),
+    (err) => {
+      assert.equal(err.code, 'TERMS_NOT_ACCEPTED');
+      return true;
+    }
+  );
 });

@@ -62,8 +62,8 @@ class RegisterAllyNaturalPersonUseCase {
 
   _validate({ tenantSlug, fullName, email, password, categoriaId, documentos, documentType, documentNumber, acceptsTerms }) {
     if (!tenantSlug) throw new ValidationError('Encabezado X-Tenant-Slug requerido', 'VALIDATION_ERROR');
-    if (acceptsTerms === false || acceptsTerms === 'false') {
-      throw new ValidationError('Debe aceptar los términos y condiciones', 'TERMS_NOT_ACCEPTED');
+    if (acceptsTerms !== true && acceptsTerms !== 'true') {
+      throw new ValidationError('Debe aceptar los términos y condiciones explícitamente', 'TERMS_NOT_ACCEPTED');
     }
     if (!fullName || typeof fullName !== 'string') {
       throw new ValidationError('fullName es requerido', 'VALIDATION_ERROR');

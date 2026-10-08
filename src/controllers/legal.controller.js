@@ -1,5 +1,7 @@
 const container = require('../container');
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /**
  * Controlador HTTP para Documentos Legales y Consentimientos (Habeas Data / Ley 1581 / SCRUM-856)
  */
@@ -7,8 +9,17 @@ async function getActiveDocuments(req, res, next) {
   const correlationId = req.correlationId || res.getHeader('X-Correlation-ID') || `node-${Date.now()}`;
 
   // ADR-0018: el Gateway propaga X-Tenant-Slug (o query param).
-  const tenantSlug = req.headers['x-tenant-slug'] || req.query.tenantSlug || req.query.slug;
-  const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+  let tenantSlug = req.headers['x-tenant-slug'] || req.query.tenantSlug || req.query.slug;
+  const rawTenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+  let tenantId = null;
+
+  if (rawTenantId) {
+    if (UUID_REGEX.test(rawTenantId)) {
+      tenantId = rawTenantId;
+    } else if (!tenantSlug) {
+      tenantSlug = rawTenantId;
+    }
+  }
 
   try {
     const docs = await container.getActiveLegalDocumentsUseCase.execute({
@@ -30,7 +41,8 @@ async function registerConsent(req, res, next) {
 
   // Seguridad: el usuario y tenant se extraen EXCLUSIVAMENTE de la sesión autenticada (JWT claim)
   const usuarioId = req.user?.userId;
-  const tenantId = req.user?.tenantId;
+  const rawTenantId = req.user?.tenantId;
+  const tenantId = (rawTenantId && UUID_REGEX.test(rawTenantId)) ? rawTenantId : null;
 
   if (!usuarioId) {
     return res.status(401).json({
