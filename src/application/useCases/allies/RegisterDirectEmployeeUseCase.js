@@ -112,7 +112,8 @@ class RegisterDirectEmployeeUseCase {
       }
     }
 
-    const finalPassword = password || `Emp-${crypto.randomUUID().slice(0, 8)}!Aa1`;
+    const generated = !password;
+    const finalPassword = password || `${crypto.randomBytes(12).toString('base64url')}!Aa1`;
 
     // 1. Identidad en auth.users
     const { userId } = await this.authIdentityService.createUser({
@@ -189,7 +190,7 @@ class RegisterDirectEmployeeUseCase {
 
     return {
       employee: directEmployee.toJSON(),
-      temporaryPassword: finalPassword,
+      ...(generated && { temporaryPassword: finalPassword }),
     };
   }
 }

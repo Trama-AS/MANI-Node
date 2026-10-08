@@ -87,7 +87,7 @@ test('acepta atributos en español (nombre, telefono, numeroDocumento) transpare
   assert.equal(result.employee.documentNumber, '987654');
 });
 
-test('respeta el password proporcionado por el administrador', async () => {
+test('respeta el password proporcionado por el administrador y no retorna temporaryPassword', async () => {
   const useCase = makeUseCase();
 
   const result = await useCase.execute({
@@ -97,7 +97,7 @@ test('respeta el password proporcionado por el administrador', async () => {
     password: 'PasswordSeguro123!',
   });
 
-  assert.equal(result.temporaryPassword, 'PasswordSeguro123!');
+  assert.equal(result.temporaryPassword, undefined);
 });
 
 test('asocia categoria si se proporciona categoriaId activa', async () => {
@@ -193,6 +193,30 @@ test('CATEGORY_NOT_FOUND si la categoría no existe o está inactiva', async () 
     () => useCase.execute({ tenantId: 't-1', fullName: 'Pedro', email: 'p@m.com', categoriaId: 'cat-inactiva' }),
     (err) => err instanceof ValidationError && err.code === 'CATEGORY_NOT_FOUND'
   );
+});
+
+test('CATEGORY_NOT_FOUND si la categoría pertenece a otro tenant (filtra por tenant del token)', async () => {
+  let queriedTenantId = null;
+  const useCase = makeUseCase({
+    catalogRepository: {
+      findById: async (tId, catId) => {
+        queriedTenantId = tId;
+        if (tId !== 'tenant-autorizado') return null;
+        return { id: catId, name: 'Categoría X', isActive: () => true };
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => useCase.execute({
+      tenantId: 'tenant-intruso',
+      fullName: 'Carlos',
+      email: 'carlos@empresa.com',
+      categoriaId: 'cat-otro-tenant',
+    }),
+    (err) => err instanceof ValidationError && err.code === 'CATEGORY_NOT_FOUND'
+  );
+  assert.equal(queriedTenantId, 'tenant-intruso');
 });
 
 test('EMAIL_ALREADY_REGISTERED si el email ya existe en el tenant', async () => {

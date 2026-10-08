@@ -196,3 +196,30 @@ test('POST /api/v1/allies/employees con email duplicado responde 409', async () 
   assert.equal(res2.status, 409);
   assert.equal(res2.body.code, 'EMAIL_ALREADY_REGISTERED');
 });
+
+test('POST /api/v1/allies/employees con token expirado responde 401', async () => {
+  const token = jwt.sign(
+    { sub: 'admin-1', app_metadata: { tenant_id: 'trama-demo', user_role: 'admin_tenant' } },
+    config.supabaseJwtSecret,
+    { algorithm: 'HS256', expiresIn: -60 }
+  );
+  const res = await request(app)
+    .post('/api/v1/allies/employees')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ fullName: 'Ana Pérez', email: 'ana@x.com' });
+  assert.equal(res.status, 401);
+});
+
+test('POST /api/v1/allies/employees con token firmado con secreto distinto responde 401', async () => {
+  const token = jwt.sign(
+    { sub: 'admin-1', app_metadata: { tenant_id: 'trama-demo', user_role: 'admin_tenant' } },
+    'otro-secreto-invalido',
+    { algorithm: 'HS256', expiresIn: '1h' }
+  );
+  const res = await request(app)
+    .post('/api/v1/allies/employees')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ fullName: 'Ana Pérez', email: 'ana@x.com' });
+  assert.equal(res.status, 401);
+});
+
