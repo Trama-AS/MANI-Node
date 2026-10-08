@@ -1,3 +1,5 @@
+const { ValidationError } = require('../errors/DomainError');
+
 /**
  * Entidad de Dominio: Sitio de Servicio (Site)
  * Representa una sede, sucursal o dirección asociada a un cliente (RF-08 / RF-09 / US-02.2.2).
@@ -16,7 +18,7 @@ class Site {
    * @param {string} data.direccion    - Dirección física del inmueble
    * @param {string} data.zonaId       - Zona de cobertura geográfica (RF-09: obligatoria)
    * @param {object} [data.reglas]     - Reglas de acceso / operativas (horarios, EPIs, etc.)
-   * @Date   [data.creadoEn]
+   * @param {Date}   [data.creadoEn]
    */
   constructor({
     id,
@@ -40,17 +42,17 @@ class Site {
 
   /**
    * Valida las reglas de negocio de la sede o sitio.
-   * @throws {Error} si falta algún campo obligatorio.
+   * @throws {ValidationError} si falta algún campo obligatorio.
    */
   validate() {
     if (!this.tenantId) {
-      throw new Error('tenantId es requerido para el sitio');
+      throw new ValidationError('tenantId es requerido para el sitio', 'VALIDATION_ERROR');
     }
     if (!this.direccion || this.direccion.length < 5) {
-      throw new Error('direccion del sitio es requerida (mínimo 5 caracteres)');
+      throw new ValidationError('direccion del sitio es requerida (mínimo 5 caracteres)', 'VALIDATION_ERROR');
     }
     if (!this.zonaId) {
-      throw new Error('zonaId es requerida (RF-09: todo sitio debe pertenecer a una zona del catálogo)');
+      throw new ValidationError('zonaId es requerida (RF-09: todo sitio debe pertenecer a una zona del catálogo)', 'VALIDATION_ERROR');
     }
     return true;
   }

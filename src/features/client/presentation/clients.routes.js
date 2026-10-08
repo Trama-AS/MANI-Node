@@ -9,14 +9,12 @@ router.use(authenticate);
 
 /**
  * POST /api/v1/clients/company
- * POST /api/v1/clients (alias)
- * Registra un cliente empresa con múltiples sitios de servicio asociados (RF-08 / US-02.2.2).
+ * Registra una organización cliente con sucursales/sedes iniciales (US-02.2.2 / RF-08).
+ * Requiere autenticación JWT obligatoria y extrae el tenant del claim (ADR-0018).
  */
 async function handleRegisterCompany(req, res, next) {
   const correlationId =
     res.getHeader('X-Correlation-ID') || req.headers['x-correlation-id'] || `node-${Date.now()}`;
-
-  // ADR-0018: El tenant se extrae EXCLUSIVAMENTE del claim del token JWT verificado
   const tenantId = req.user?.tenantId;
 
   if (!tenantId) {
@@ -27,11 +25,11 @@ async function handleRegisterCompany(req, res, next) {
     });
   }
 
-  // Autorización por rol dentro del tenant (DoD §9.3): los aliados no pueden registrar empresas
+  // Autorización con lista de roles permitidos (DoD §9.3): solo clientes o administradores del tenant
   const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
-  if (userRole === 'ALLY' || userRole === 'ALIADO') {
+  if (!['CLIENT', 'CLIENTE', 'ADMIN', 'ADMIN_TENANT'].includes(userRole)) {
     return res.status(403).json({
-      error: 'Un aliado no tiene permisos para registrar clientes empresa',
+      error: 'Rol no autorizado',
       code: 'FORBIDDEN',
       correlationId,
     });
@@ -80,15 +78,8 @@ async function handleRegisterCompany(req, res, next) {
       })),
     });
   } catch (err) {
-    const status = err.statusCode || (
-      err.code === 'VALIDATION_ERROR' ||
-      err.message.includes('inválid') ||
-      err.message.includes('requerid') ||
-      err.message.includes('debe') ? 400 : null
-    );
-
-    if (status) {
-      return res.status(status).json({
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
         error: err.message,
         code: err.code || 'ERROR',
         correlationId,
@@ -119,12 +110,11 @@ router.post('/:id/sites', async (req, res, next) => {
     });
   }
 
-  // Autorización por rol dentro del tenant (DoD §9.3): los aliados no pueden gestionar sedes
   const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
   const userId = req.user?.userId || req.user?.sub;
-  if (userRole === 'ALLY' || userRole === 'ALIADO') {
+  if (!['CLIENT', 'CLIENTE', 'ADMIN', 'ADMIN_TENANT'].includes(userRole)) {
     return res.status(403).json({
-      error: 'Un aliado no tiene permisos para gestionar sedes de clientes empresa',
+      error: 'Rol no autorizado',
       code: 'FORBIDDEN',
       correlationId,
     });
@@ -146,7 +136,7 @@ router.post('/:id/sites', async (req, res, next) => {
     });
 
     return res.status(201).json({
-      message: 'Sitio registrado exitosamente y asociado al cliente empresa.',
+      message: 'Sitio agregado exitosamente.',
       correlationId,
       sitio: {
         id: savedSite.id,
@@ -158,13 +148,8 @@ router.post('/:id/sites', async (req, res, next) => {
       },
     });
   } catch (err) {
-    const status = err.statusCode || (
-      err.message.includes('no encontrado') ? 404 :
-      (err.code === 'VALIDATION_ERROR' || err.message.includes('requerid') || err.message.includes('inválid') ? 400 : null)
-    );
-
-    if (status) {
-      return res.status(status).json({
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
         error: err.message,
         code: err.code || 'ERROR',
         correlationId,
@@ -194,9 +179,9 @@ router.get('/:id/sites', async (req, res, next) => {
 
   const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
   const userId = req.user?.userId || req.user?.sub;
-  if (userRole === 'ALLY' || userRole === 'ALIADO') {
+  if (!['CLIENT', 'CLIENTE', 'ADMIN', 'ADMIN_TENANT'].includes(userRole)) {
     return res.status(403).json({
-      error: 'Un aliado no tiene permisos para consultar sedes de clientes empresa',
+      error: 'Rol no autorizado',
       code: 'FORBIDDEN',
       correlationId,
     });
@@ -224,9 +209,8 @@ router.get('/:id/sites', async (req, res, next) => {
       })),
     });
   } catch (err) {
-    const status = err.statusCode || (err.message.includes('no encontrado') ? 404 : null);
-    if (status) {
-      return res.status(status).json({
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
         error: err.message,
         code: err.code || 'ERROR',
         correlationId,

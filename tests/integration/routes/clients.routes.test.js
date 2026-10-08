@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 
-function signToken({ userId = 'user-empresa-1', tenantId = 'trama-demo', role = 'admin_tenant' } = {}) {
+function signToken({ userId = 'user-empresa-1', tenantId = 'trama-demo', role = 'admin_tenant', expiresIn = '1h' } = {}) {
   return jwt.sign(
     {
       sub: userId,
@@ -15,7 +15,7 @@ function signToken({ userId = 'user-empresa-1', tenantId = 'trama-demo', role = 
       },
     },
     config.supabaseJwtSecret,
-    { algorithm: 'HS256', expiresIn: '1h' }
+    { algorithm: 'HS256', expiresIn }
   );
 }
 
@@ -249,5 +249,58 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
     assert.strictEqual(getSitesRes.body.totalSitios, 2);
     assert.strictEqual(getSitesRes.body.sitios[0].nombre, 'Hotel Parque 93');
     assert.strictEqual(getSitesRes.body.sitios[1].nombre, 'Hotel Calle 100');
+  });
+
+  it('Petición con token expirado responde 401 Unauthorized (Políticas §13.4)', async () => {
+    const expiredToken = signToken({ expiresIn: -60 });
+    const res = await request(app)
+      .get('/api/v1/clients/any-id/sites')
+      .set('Authorization', `Bearer ${expiredToken}`);
+
+    assert.strictEqual(res.status, 401);
+  });
+
+  it('Otro cliente del mismo tenant recibe 403 Forbidden al consultar o agregar sitios a empresa ajena', async () => {
+    const ownerToken = signToken({ userId: 'cliente-dueno-1', role: 'cliente', tenantId: 'trama-demo' });
+    const otherClientToken = signToken({ userId: 'otro-cliente-ajeno', role: 'cliente', tenantId: 'trama-demo' });
+
+    // 1. Crear empresa con el cliente dueño
+    const createRes = await request(app)
+      .post('/api/v1/clients/company')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        razonSocial: 'Empresa Privada Dueño 1 S.A.S.',
+        nit: '900998877-1',
+        email: 'dueno1@empresa.com',
+        sitios: [
+          {
+            nombre: 'Sede Principal',
+            direccion: 'Carrera 7 # 72-10',
+            zonaId: 'zona-bogota-centro',
+          },
+        ],
+      });
+
+    assert.strictEqual(createRes.status, 201);
+    const clienteId = createRes.body.client.id;
+
+    // 2. Otro cliente del MISMO tenant intenta leer sedes -> Espera 403 Forbidden
+    const getRes = await request(app)
+      .get(`/api/v1/clients/${clienteId}/sites`)
+      .set('Authorization', `Bearer ${otherClientToken}`);
+
+    assert.strictEqual(getRes.status, 403);
+
+    // 3. Otro cliente del MISMO tenant intenta agregar sedes -> Espera 403 Forbidden
+    const postRes = await request(app)
+      .post(`/api/v1/clients/${clienteId}/sites`)
+      .set('Authorization', `Bearer ${otherClientToken}`)
+      .send({
+        nombre: 'Sede Infiltrada',
+        direccion: 'Calle Intruso 456',
+        zonaId: 'zona-bogota-centro',
+      });
+
+    assert.strictEqual(postRes.status, 403);
   });
 });
