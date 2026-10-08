@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { requireRole } = require('../../../src/middlewares/authorize.middleware');
+const { requireRole } = require('../../../src/middlewares/auth.middleware');
 
 function mockRes() {
   const res = {

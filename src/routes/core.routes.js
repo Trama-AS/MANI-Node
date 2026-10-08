@@ -3,15 +3,20 @@ const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
 const authenticate = require('../middlewares/auth.middleware');
-const { requireRole } = require('../middlewares/authorize.middleware');
+const { requireRole } = require('../middlewares/auth.middleware');
 
 const router = Router();
 
 router.get('/tenants', tenantsController.listTenants);
 router.get('/profiles/me', profilesController.getOwnProfile);
+router.get('/profiles/me/categories', profilesController.getAllyCategories);
+router.put('/profiles/me/categories', profilesController.declareAllyCategories);
+router.post('/profiles/me/categories', profilesController.declareAllyCategories);
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
-// aliado, pre-auth): devuelve categorías globales de todos los tenants.
+// aliado, pre-auth): devuelve las categorías globales de fixtures más las
+// del tenant resuelto desde X-Tenant-Slug (si el caller lo envía). Sin ese
+// encabezado solo se ven las globales, nunca las de otro tenant.
 router.get('/catalog', catalogController.listCategories);
 
 // Gestión de categoría de servicio (US-03.1.1-M2.1), aislada por tenant:

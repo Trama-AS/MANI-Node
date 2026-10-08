@@ -2,7 +2,14 @@ const container = require('../container');
 
 async function listCategories(req, res, next) {
   try {
-    const categories = await container.listCatalogCategoriesUseCase.execute();
+    // Vitrina pre-auth (ADR-0018): sin JWT todavía, el único dato de tenant
+    // disponible es X-Tenant-Slug. Si no llega, o no resuelve a un tenant
+    // real, solo se devuelven las categorías globales de fixtures (nunca
+    // las de otro tenant) en vez de fallar la vitrina completa.
+    const tenantSlug = req.header('X-Tenant-Slug');
+    const tenant = tenantSlug ? await container.tenantRepository.findBySlug(tenantSlug) : null;
+
+    const categories = await container.listCatalogCategoriesUseCase.execute({ tenantId: tenant?.id ?? null });
     res.status(200).json({ categories });
   } catch (err) {
     next(err);

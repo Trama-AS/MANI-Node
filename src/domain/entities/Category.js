@@ -23,7 +23,17 @@ class Category {
   // creada vía el CRUD de Backoffice (US-03.1.1-M2.1) lleva un tenantId real.
   // flujoOperativo es OBLIGATORIO (sin default): es un dato de negocio que el
   // Backoffice debe elegir explícitamente, igual que exige la migración 003.
-  constructor({ id, name, active = true, description = '', tenantId = null, flujoOperativo }) {
+  //
+  // `fromPersistence = true` identifica una fila YA existente en BD que se
+  // está rehidratando a entidad (toDomain de los repositorios), nunca un
+  // dato nuevo entrando por el CRUD de Backoffice. flujoOperativo no se
+  // revalida en ese camino: filas previas a US-03.1.1-M2.1 (fixtures de
+  // seed QA, columna NOT VALID) pueden tener flujo_operativo NULL en BD, y
+  // Category no puede romper la lectura de datos que ella misma no creó.
+  // CreateCategoryUseCase/UpdateCategoryUseCase ya exigen un flujoOperativo
+  // válido ANTES de llamar al repositorio, así que la regla sigue aplicando
+  // en el único lugar donde de verdad hay un dato nuevo.
+  constructor({ id, name, active = true, description = '', tenantId = null, flujoOperativo, fromPersistence = false }) {
     if (!id || typeof id !== 'string') {
       throw new ValidationError('Category id es requerido');
     }
@@ -41,7 +51,7 @@ class Category {
     if (description && description.length > DESCRIPTION_MAX_LENGTH) {
       throw new ValidationError(`Category description no puede superar los ${DESCRIPTION_MAX_LENGTH} caracteres`);
     }
-    if (!VALID_FLUJO_OPERATIVO.includes(flujoOperativo)) {
+    if (!fromPersistence && !VALID_FLUJO_OPERATIVO.includes(flujoOperativo)) {
       throw new ValidationError(
         `flujoOperativo inválido: "${flujoOperativo}". Valores permitidos: ${VALID_FLUJO_OPERATIVO.join(', ')}`
       );

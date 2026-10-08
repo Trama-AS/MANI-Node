@@ -21,6 +21,12 @@ function toDomain(row) {
     active: row.estado === 'ACTIVO',
     tenantId: row.tenant_id,
     flujoOperativo: row.flujo_operativo,
+    // Esta fila viene de una SELECT (incluida la que devuelven create/update
+    // tras el INSERT/UPDATE): puede ser una categoría de seed anterior a
+    // US-03.1.1-M2.1 con flujo_operativo NULL. No volver a exigir el enum
+    // aquí; CreateCategoryUseCase/UpdateCategoryUseCase ya lo validaron
+    // antes de llegar al repositorio cuando el dato es realmente nuevo.
+    fromPersistence: true,
   });
 }
 
