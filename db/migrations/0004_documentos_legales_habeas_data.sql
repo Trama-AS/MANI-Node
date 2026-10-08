@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0002 (Core Node) — Soporte para Términos y Condiciones / Habeas Data (SCRUM-856 / Ley 1581)
+-- Migración 0004 (Core Node) — Soporte para Términos y Condiciones / Habeas Data (SCRUM-856 / Ley 1581)
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS documento_legal (
@@ -54,5 +54,5 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('mani-node-0002', 'Tablas documento_legal y consentimiento_usuario para Habeas Data (SCRUM-856)')
+VALUES ('mani-node-0004', 'Tablas documento_legal y consentimiento_usuario para Habeas Data (SCRUM-856)')
 ON CONFLICT (version) DO NOTHING;
