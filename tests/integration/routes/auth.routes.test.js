@@ -209,6 +209,18 @@ test('POST /api/v1/auth/register/client repetido con el mismo email responde 409
   assert.equal(second.body.code, 'EMAIL_ALREADY_REGISTERED');
 });
 
+test('POST /api/v1/auth/register/client permite el mismo email en tenants distintos (aislamiento cross-tenant)', async () => {
+  const email = `cliente.crosstenant.${Date.now()}@mani.test`;
+
+  const res1 = await registerClientRequest({ tenantSlug: 'trama-demo', email });
+  assert.equal(res1.status, 201);
+  assert.equal(res1.body.profile.tenantId, 'trama-demo');
+
+  const res2 = await registerClientRequest({ tenantSlug: 'plomeria-express', email });
+  assert.equal(res2.status, 201);
+  assert.equal(res2.body.profile.tenantId, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
+});
+
 test('POST /api/v1/auth/register/client con direccionHogar responde 201 (CA-1: guarda el sitio/hogar inicial)', async () => {
   const res = await registerClientRequest({ direccionHogar: 'Calle 123 # 45-67' });
 
