@@ -21,6 +21,14 @@ class InMemoryCatalogRepository extends ICatalogRepository {
     return [...this.categories];
   }
 
+  // El catálogo en memoria (DEV/test sin Supabase) es de un único tenant de demo,
+  // así que no filtra por tenant; solo por estado y orden.
+  async findActiveByTenant(_tenantId) {
+    return this.categories
+      .filter((c) => c.isActive())
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
+
   async findById(_tenantId, categoryId) {
     return this.categories.find((c) => c.id === categoryId) || null;
   }

@@ -35,6 +35,9 @@ flowchart LR
 | `GET` | `/api/v1/core/health` | Estado del servicio y tiempo de actividad. | No |
 | `GET` | `/api/v1/core/tenants` | Catálogo de empresas / tenants activos. | Sí |
 | `GET` | `/api/v1/core/profiles/me` | Información del perfil del usuario autenticado. | Sí (JWT) |
+| `GET` | `/api/v1/core/profiles/me/categories` | IDs de las categorías que atiende el aliado autenticado (rol ALLY). | Sí (JWT) |
+| `PUT` | `/api/v1/core/profiles/me/categories` | Reemplaza de forma atómica el conjunto de categorías del aliado. Body: `{ "categoryIds": [...] }`. 422 `MANI-CAT-422V` (vacío) o `MANI-CAT-422C` (inactiva, inexistente o de otro tenant). | Sí (JWT) |
+| `GET` | `/api/v1/core/profiles/me/categories/available` | Categorías ACTIVO del tenant del aliado (`[{ id, name }]`, ordenadas por nombre). El tenant sale del JWT. | Sí (JWT) |
 | `GET` | `/api/v1/core/catalog` | Catálogo de servicios de manicura disponibles. | No |
 | `POST` | `/api/v1/core/auth/register/ally` | Registro de Aliado persona natural (ADR-0022 / US-02.1.1-M2). | No (pre-auth; requiere `X-Tenant-Id`) |
 
