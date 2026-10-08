@@ -32,6 +32,9 @@ async function registerAllyNaturalPerson(req, res, next) {
       documentType: req.body.documentType,
       documentNumber: req.body.documentNumber,
       documentos: extraerDocumentos(req),
+      acceptsTerms: req.body.acceptsTerms,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+      userAgent: req.headers['user-agent'] || 'unknown',
     });
 
     res.status(201).json(result);

@@ -29,6 +29,12 @@ const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/De
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const GetActiveLegalDocumentsUseCase = require('./application/useCases/legal/GetActiveLegalDocumentsUseCase');
+const RegisterUserConsentUseCase = require('./application/useCases/legal/RegisterUserConsentUseCase');
+const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/InMemoryLegalDocumentRepository');
+const SupabaseLegalDocumentRepository = require('./infrastructure/repositories/SupabaseLegalDocumentRepository');
+const InMemoryUserConsentRepository = require('./infrastructure/repositories/InMemoryUserConsentRepository');
+const SupabaseUserConsentRepository = require('./infrastructure/repositories/SupabaseUserConsentRepository');
 
 const config = require('./config');
 
@@ -79,6 +85,12 @@ class Container {
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
+      this.legalDocumentRepository = new SupabaseLegalDocumentRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
+      this.userConsentRepository = new SupabaseUserConsentRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
@@ -89,6 +101,8 @@ class Container {
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+      this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
+      this.userConsentRepository = new InMemoryUserConsentRepository();
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -120,6 +134,16 @@ class Container {
       envLabel: config.envLabel,
     });
 
+    this.getActiveLegalDocumentsUseCase = new GetActiveLegalDocumentsUseCase({
+      legalDocumentRepository: this.legalDocumentRepository,
+      tenantRepository: this.tenantRepository,
+    });
+
+    this.registerUserConsentUseCase = new RegisterUserConsentUseCase({
+      legalDocumentRepository: this.legalDocumentRepository,
+      userConsentRepository: this.userConsentRepository,
+    });
+
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
       tenantRepository: this.tenantRepository,
       catalogRepository: this.catalogRepository,
@@ -129,6 +153,8 @@ class Container {
       documentoKycRepository: this.documentoKycRepository,
       fileStorageService: this.fileStorageService,
       authIdentityService: this.authIdentityService,
+      registerUserConsentUseCase: this.registerUserConsentUseCase,
+      userConsentRepository: this.userConsentRepository,
     });
   }
 }
