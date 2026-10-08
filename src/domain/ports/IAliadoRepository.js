@@ -7,6 +7,10 @@ class IAliadoRepository {
     throw new Error('Método findByDocumentNumber() no implementado en IAliadoRepository');
   }
 
+  async findByUsuarioId(_tenantId, _usuarioId) {
+    throw new Error('Método findByUsuarioId() no implementado en IAliadoRepository');
+  }
+
   /**
    * Upsert por usuarioId (igual semántica que `handle_new_user`: ON CONFLICT (usuario_id) DO UPDATE).
    */
