@@ -29,6 +29,13 @@ const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/De
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const ConfigureSiteRulesUseCase = require('./application/useCases/sites/ConfigureSiteRulesUseCase');
+const GetSiteRulesForAllyUseCase = require('./application/useCases/sites/GetSiteRulesForAllyUseCase');
+const ValidateAllyScheduleUseCase = require('./application/useCases/sites/ValidateAllyScheduleUseCase');
+const InMemorySiteRepository = require('./infrastructure/repositories/InMemorySiteRepository');
+const PostgresSiteRepository = require('./infrastructure/repositories/PostgresSiteRepository');
+const InMemoryClientRepository = require('./infrastructure/repositories/InMemoryClientRepository');
+const PostgresClientRepository = require('./infrastructure/repositories/PostgresClientRepository');
 
 const config = require('./config');
 
@@ -79,6 +86,13 @@ class Container {
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
+      if (this.pgPoolFactory.isConfigured()) {
+        this.siteRepository = new PostgresSiteRepository({ pgPoolFactory: this.pgPoolFactory });
+        this.clientRepository = new PostgresClientRepository({ pgPoolFactory: this.pgPoolFactory });
+      } else {
+        this.siteRepository = new InMemorySiteRepository();
+        this.clientRepository = new InMemoryClientRepository();
+      }
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
@@ -89,6 +103,8 @@ class Container {
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+      this.siteRepository = new InMemorySiteRepository();
+      this.clientRepository = new InMemoryClientRepository();
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -118,6 +134,19 @@ class Container {
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
       envLabel: config.envLabel,
+    });
+
+    this.configureSiteRulesUseCase = new ConfigureSiteRulesUseCase({
+      siteRepository: this.siteRepository,
+      clientRepository: this.clientRepository,
+    });
+
+    this.getSiteRulesForAllyUseCase = new GetSiteRulesForAllyUseCase({
+      siteRepository: this.siteRepository,
+    });
+
+    this.validateAllyScheduleUseCase = new ValidateAllyScheduleUseCase({
+      siteRepository: this.siteRepository,
     });
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
