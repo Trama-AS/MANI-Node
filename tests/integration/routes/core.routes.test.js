@@ -90,6 +90,40 @@ test('GET /api/v1/profiles/me/categories con rol ALLY responde 200 y retorna sus
   assert.ok(res.body.categories.includes('cat-1'));
 });
 
+test('GET /api/v1/profiles/me/categories/available sin Authorization responde 401', async () => {
+  const res = await request(app).get('/api/v1/profiles/me/categories/available');
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body.error, 'Encabezado Authorization requerido');
+});
+
+test('GET /api/v1/profiles/me/categories/available con rol CLIENT responde 403 (MANI-CAT-403)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  const res = await request(app)
+    .get('/api/v1/profiles/me/categories/available')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.code, 'MANI-CAT-403');
+});
+
+test('GET /api/v1/profiles/me/categories/available con rol ALLY lista solo categorías activas, ordenadas, con id y name', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .get('/api/v1/profiles/me/categories/available')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const ids = res.body.categories.map((c) => c.id);
+  assert.ok(ids.includes('cat-1'));
+  assert.ok(!ids.includes('cat-inactive'), 'una categoría inactiva no debe ofrecerse');
+  for (const c of res.body.categories) assert.deepEqual(Object.keys(c).sort(), ['id', 'name']);
+  const names = res.body.categories.map((c) => c.name);
+  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b, 'es')));
+});
+
 test('PUT /api/v1/profiles/me/categories con lista vacía responde 422 (MANI-CAT-422V)', async () => {
   const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
 
