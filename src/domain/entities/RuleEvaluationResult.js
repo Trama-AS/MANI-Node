@@ -1,15 +1,13 @@
 const { ValidationError } = require('../errors/DomainError');
 
 /**
- * Forma del resultado que `IRuleEvaluationService.evaluateCategoryRules()`
- * deberá devolver una vez implementado (US-03.1.1-M2.2: contrato declarado,
- * SIN implementación todavía). Documenta la forma de datos esperada del
- * Rules Service (MANI-Java) para que, cuando exista, cualquier adaptador
- * HTTP real y cualquier caso de uso que lo consuma compartan la misma forma,
- * en vez de que cada implementación futura invente su propio shape.
+ * Resultado de `IRuleEvaluationService.evaluateCategoryRules()`: la forma que
+ * devuelve el Rules Service (MANI-Java, POST /api/v1/rules/categories/evaluate).
+ * `normalized` trae el nombre y el flujo tal como deben persistirse, para que
+ * Core no reimplemente la normalización que decide Rules.
  */
 class RuleEvaluationResult {
-  constructor({ allowed, ruleSetVersion, violations = [] }) {
+  constructor({ allowed, ruleSetVersion, violations = [], normalized = null }) {
     if (typeof allowed !== 'boolean') {
       throw new ValidationError('RuleEvaluationResult.allowed es requerido y debe ser booleano');
     }
@@ -23,6 +21,7 @@ class RuleEvaluationResult {
     this.allowed = allowed;
     this.ruleSetVersion = ruleSetVersion;
     this.violations = violations;
+    this.normalized = normalized || {};
   }
 
   toJSON() {

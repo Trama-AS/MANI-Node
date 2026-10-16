@@ -32,6 +32,15 @@ class ValidationError extends DomainError {
   }
 }
 
+// Reglas de negocio incumplidas según el Rules Service: conserva el 400
+// VALIDATION_ERROR que Core ya devolvía y agrega el detalle de cada regla.
+class RuleViolationError extends ValidationError {
+  constructor(violations, message = 'La categoría no cumple las reglas de negocio') {
+    super(message);
+    this.violations = violations;
+  }
+}
+
 class ConflictError extends DomainError {
   constructor(message = 'Conflicto en la operación', code = 'CONFLICT') {
     super(message, code, 409);
@@ -44,6 +53,7 @@ module.exports = {
   UnauthorizedError,
   ForbiddenError,
   ValidationError,
+  RuleViolationError,
   ConflictError,
 };
 

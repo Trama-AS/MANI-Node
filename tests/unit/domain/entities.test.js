@@ -40,28 +40,21 @@ test('Domain Entity: Category valida identificador y activo', () => {
   assert.equal(category.toJSON().name, 'Acrílicas');
 });
 
-test('Domain Entity: Category valida el nombre (3-60 caracteres, al menos una letra)', () => {
-  const base = { id: 'c-1', flujoOperativo: 'TARIFA_ESTANDAR' };
+test('Domain Entity: Category solo exige forma mínima; las reglas de negocio las decide Rules (US-03.1.1-M6)', () => {
+  assert.throws(() => new Category({ id: 'c-1', name: '' }), ValidationError);
+  assert.throws(() => new Category({ id: 'c-1', name: '   ' }), ValidationError);
+  assert.throws(() => new Category({ id: 'c-1', name: 'Manicura', description: 'x'.repeat(501) }), ValidationError);
 
-  assert.throws(() => new Category({ ...base, name: 'AB' }), ValidationError); // < 3
-  assert.throws(() => new Category({ ...base, name: 'A'.repeat(61) }), ValidationError); // > 60
-  assert.throws(() => new Category({ ...base, name: '123456' }), ValidationError); // sin letras
-  assert.throws(() => new Category({ ...base, name: '' }), ValidationError);
-
-  // Colapsa espacios internos repetidos, igual que crear_categoria_servicio().
-  const category = new Category({ ...base, name: '  Uñas   Acrílicas  ' });
-  assert.equal(category.name, 'Uñas Acrílicas');
+  // Longitud, letras y flujo ya no se validan aquí: un cambio de reglas en
+  // Rules no debe exigir desplegar Core.
+  assert.equal(new Category({ id: 'c-1', name: 'AB', flujoOperativo: 'TARIFA_ESTANDAR' }).name, 'AB');
+  assert.equal(new Category({ id: 'c-1', name: 'Manicura', flujoOperativo: 'NUEVO_FLUJO' }).flujoOperativo, 'NUEVO_FLUJO');
 });
 
-test('Domain Entity: Category valida flujoOperativo (COTIZACION_PREVIA | TARIFA_ESTANDAR)', () => {
-  assert.throws(
-    () => new Category({ id: 'c-1', name: 'Manicura', flujoOperativo: 'OTRO' }),
-    ValidationError
-  );
-  assert.throws(() => new Category({ id: 'c-1', name: 'Manicura' }), ValidationError); // sin default
-
-  const cotizacion = new Category({ id: 'c-1', name: 'Plomería', flujoOperativo: 'COTIZACION_PREVIA' });
-  assert.equal(cotizacion.toJSON().flujoOperativo, 'COTIZACION_PREVIA');
+test('Domain Entity: Category rehidrata filas históricas con flujo_operativo NULL (seed QA)', () => {
+  const legacy = new Category({ id: 'c-1', name: 'Plomeria', tenantId: 't1', flujoOperativo: null });
+  assert.equal(legacy.toJSON().flujoOperativo, null);
+  assert.equal(new Category({ id: 'c-2', name: 'Electricidad' }).flujoOperativo, null);
 });
 
 test('Domain Errors tienen códigos de error y statusCodes adecuados', () => {

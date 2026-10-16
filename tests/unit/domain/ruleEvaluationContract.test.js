@@ -4,10 +4,8 @@ const RuleEvaluationResult = require('../../../src/domain/entities/RuleEvaluatio
 const IRuleEvaluationService = require('../../../src/domain/ports/IRuleEvaluationService');
 const { ValidationError } = require('../../../src/domain/errors/DomainError');
 
-// US-03.1.1-M2.2: estas pruebas documentan el CONTRATO (forma de datos +
-// comportamiento "no implementado") de la frontera hacia el Rules Service.
-// No prueban ninguna integración real porque, a propósito, no existe
-// ninguna todavía.
+// Contrato de la frontera hacia el Rules Service (declarado en US-03.1.1-M2.2,
+// implementado en US-03.1.1-M6 por RulesServiceHttpClient).
 
 test('RuleEvaluationResult valida allowed/ruleSetVersion/violations', () => {
   assert.throws(() => new RuleEvaluationResult({ ruleSetVersion: 'v1' }), ValidationError); // falta allowed
@@ -30,15 +28,22 @@ test('RuleEvaluationResult.violations por defecto es un arreglo vacío', () => {
   assert.deepEqual(result.violations, []);
 });
 
-test('IRuleEvaluationService.evaluateCategoryRules() NO está implementado: siempre rechaza', async () => {
+test('IRuleEvaluationService es un puerto abstracto: el puerto base siempre rechaza', async () => {
   const service = new IRuleEvaluationService();
 
   await assert.rejects(
     () => service.evaluateCategoryRules({ tenantId: 't1', categoryId: 'c1' }),
-    (err) => {
-      assert.match(err.message, /sin implementación/);
-      assert.match(err.message, /Rules Service/);
-      return true;
-    }
+    /no implementado/
   );
+});
+
+test('RuleEvaluationResult conserva normalized de Rules sin cambiar toJSON()', () => {
+  const result = new RuleEvaluationResult({
+    allowed: true,
+    ruleSetVersion: 'v1',
+    normalized: { name: 'Plomería', flujoOperativo: 'TARIFA_ESTANDAR' },
+  });
+  assert.deepEqual(result.normalized, { name: 'Plomería', flujoOperativo: 'TARIFA_ESTANDAR' });
+  assert.deepEqual(new RuleEvaluationResult({ allowed: true, ruleSetVersion: 'v1' }).normalized, {});
+  assert.deepEqual(Object.keys(result.toJSON()), ['allowed', 'ruleSetVersion', 'violations']);
 });
