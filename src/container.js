@@ -29,11 +29,11 @@ const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/De
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
-const { RegisterCompanyClientWithSitesUseCase } = require('./features/client/application/RegisterCompanyClientWithSitesUseCase');
-const { AddSiteToCompanyClientUseCase } = require('./features/client/application/AddSiteToCompanyClientUseCase');
-const { GetCompanyClientSitesUseCase } = require('./features/client/application/GetCompanyClientSitesUseCase');
-const { InMemoryCompanyClientRepository } = require('./features/client/infrastructure/InMemoryCompanyClientRepository');
-const { PostgresCompanyClientRepository } = require('./features/client/infrastructure/PostgresCompanyClientRepository');
+const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
+const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
+const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
+const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
+const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 
 const config = require('./config');
 

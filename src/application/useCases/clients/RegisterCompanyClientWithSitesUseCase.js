@@ -1,6 +1,6 @@
 const crypto = require('crypto');
-const { CompanyClient } = require('../domain/CompanyClient');
-const { Site } = require('../domain/Site');
+const CompanyClient = require('../../../domain/entities/CompanyClient');
+const Site = require('../../../domain/entities/Site');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
 
 /**
@@ -9,7 +9,7 @@ const { ValidationError, ConflictError } = require('../../../domain/errors/Domai
  */
 class RegisterCompanyClientWithSitesUseCase {
   /**
-   * @param {object|import('./ICompanyClientRepository').ICompanyClientRepository} dependenciesOrRepo
+   * @param {object|import('../../../domain/ports/ICompanyClientRepository')} dependenciesOrRepo
    */
   constructor(dependenciesOrRepo) {
     if (!dependenciesOrRepo) {
@@ -170,4 +170,5 @@ class RegisterCompanyClientWithSitesUseCase {
   }
 }
 
-module.exports = { RegisterCompanyClientWithSitesUseCase };
+RegisterCompanyClientWithSitesUseCase.RegisterCompanyClientWithSitesUseCase = RegisterCompanyClientWithSitesUseCase;
+module.exports = RegisterCompanyClientWithSitesUseCase;

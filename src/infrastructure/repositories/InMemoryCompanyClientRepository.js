@@ -1,7 +1,7 @@
 const crypto = require('crypto');
-const { CompanyClient } = require('../domain/CompanyClient');
-const { Site } = require('../domain/Site');
-const { ICompanyClientRepository } = require('../application/ICompanyClientRepository');
+const CompanyClient = require('../../domain/entities/CompanyClient');
+const Site = require('../../domain/entities/Site');
+const ICompanyClientRepository = require('../../domain/ports/ICompanyClientRepository');
 
 /**
  * Adaptador de Infraestructura en Memoria para Cliente Empresa y Sitios.
@@ -106,4 +106,5 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
   }
 }
 
-module.exports = { InMemoryCompanyClientRepository };
+InMemoryCompanyClientRepository.InMemoryCompanyClientRepository = InMemoryCompanyClientRepository;
+module.exports = InMemoryCompanyClientRepository;

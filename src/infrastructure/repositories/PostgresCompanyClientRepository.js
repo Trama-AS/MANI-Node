@@ -1,8 +1,8 @@
 const crypto = require('crypto');
-const { CompanyClient } = require('../domain/CompanyClient');
-const { Site } = require('../domain/Site');
-const { ICompanyClientRepository } = require('../application/ICompanyClientRepository');
-const { DomainError } = require('../../../domain/errors/DomainError');
+const CompanyClient = require('../../domain/entities/CompanyClient');
+const Site = require('../../domain/entities/Site');
+const ICompanyClientRepository = require('../../domain/ports/ICompanyClientRepository');
+const { DomainError } = require('../../domain/errors/DomainError');
 
 /**
  * Adaptador de Infraestructura: Repositorio PostgreSQL / Supabase para Cliente Empresa y Sitios (RF-08 / RF-09).
@@ -11,7 +11,7 @@ const { DomainError } = require('../../../domain/errors/DomainError');
 class PostgresCompanyClientRepository extends ICompanyClientRepository {
   /**
    * @param {object} params
-   * @param {import('../../db/PgPoolFactory')} [params.pgPoolFactory]
+   * @param {import('../db/PgPoolFactory')} [params.pgPoolFactory]
    * @param {import('pg').Pool} [params.pgPool]
    */
   constructor({ pgPoolFactory, pgPool } = {}) {
@@ -232,4 +232,5 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 }
 
-module.exports = { PostgresCompanyClientRepository };
+PostgresCompanyClientRepository.PostgresCompanyClientRepository = PostgresCompanyClientRepository;
+module.exports = PostgresCompanyClientRepository;

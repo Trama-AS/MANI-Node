@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { CompanyClient } = require('../../../src/features/client/domain/CompanyClient');
+const CompanyClient = require('../../../src/domain/entities/CompanyClient');
 
 describe('CompanyClient Domain Entity', () => {
   it('debe crear una instancia válida de cliente empresa con tipo PERSONA_JURIDICA (Migración 007)', () => {

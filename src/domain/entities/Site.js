@@ -40,6 +40,10 @@ class Site {
     this.creadoEn = creadoEn;
   }
 
+  get clientId() {
+    return this.clienteId;
+  }
+
   /**
    * Valida las reglas de negocio de la sede o sitio.
    * @throws {ValidationError} si falta algún campo obligatorio.

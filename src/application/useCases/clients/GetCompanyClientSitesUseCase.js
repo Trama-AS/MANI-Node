@@ -6,7 +6,7 @@ const { ValidationError, NotFoundError, ForbiddenError } = require('../../../dom
  */
 class GetCompanyClientSitesUseCase {
   /**
-   * @param {import('./ICompanyClientRepository').ICompanyClientRepository} repository
+   * @param {import('../../../domain/ports/ICompanyClientRepository')} repository
    */
   constructor(repository) {
     if (!repository) throw new Error('repository es requerido en GetCompanyClientSitesUseCase');
@@ -19,7 +19,7 @@ class GetCompanyClientSitesUseCase {
    * @param {string} input.tenantId
    * @param {string} [input.userId]
    * @param {string} [input.userRole]
-   * @returns {Promise<{ client: import('../domain/CompanyClient').CompanyClient, sites: import('../domain/Site').Site[] }>}
+   * @returns {Promise<{ client: import('../../../domain/entities/CompanyClient'), sites: import('../../../domain/entities/Site')[] }>}
    */
   async execute({ clienteId, tenantId, userId, userRole }) {
     if (!clienteId) throw new ValidationError('clienteId es requerido', 'VALIDATION_ERROR');
@@ -42,4 +42,5 @@ class GetCompanyClientSitesUseCase {
   }
 }
 
-module.exports = { GetCompanyClientSitesUseCase };
+GetCompanyClientSitesUseCase.GetCompanyClientSitesUseCase = GetCompanyClientSitesUseCase;
+module.exports = GetCompanyClientSitesUseCase;

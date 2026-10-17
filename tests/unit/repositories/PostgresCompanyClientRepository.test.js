@@ -1,8 +1,8 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { PostgresCompanyClientRepository } = require('../../../src/features/client/infrastructure/PostgresCompanyClientRepository');
-const { CompanyClient } = require('../../../src/features/client/domain/CompanyClient');
-const { Site } = require('../../../src/features/client/domain/Site');
+const PostgresCompanyClientRepository = require('../../../src/infrastructure/repositories/PostgresCompanyClientRepository');
+const CompanyClient = require('../../../src/domain/entities/CompanyClient');
+const Site = require('../../../src/domain/entities/Site');
 
 function createMockPgPool(queryHandler) {
   const queries = [];

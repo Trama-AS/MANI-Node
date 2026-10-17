@@ -1,9 +1,9 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { RegisterCompanyClientWithSitesUseCase } = require('../../../../src/features/client/application/RegisterCompanyClientWithSitesUseCase');
-const { AddSiteToCompanyClientUseCase } = require('../../../../src/features/client/application/AddSiteToCompanyClientUseCase');
-const { GetCompanyClientSitesUseCase } = require('../../../../src/features/client/application/GetCompanyClientSitesUseCase');
-const { InMemoryCompanyClientRepository } = require('../../../../src/features/client/infrastructure/InMemoryCompanyClientRepository');
+const RegisterCompanyClientWithSitesUseCase = require('../../../../src/application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
+const AddSiteToCompanyClientUseCase = require('../../../../src/application/useCases/clients/AddSiteToCompanyClientUseCase');
+const GetCompanyClientSitesUseCase = require('../../../../src/application/useCases/clients/GetCompanyClientSitesUseCase');
+const InMemoryCompanyClientRepository = require('../../../../src/infrastructure/repositories/InMemoryCompanyClientRepository');
 
 describe('AddSiteToCompanyClientUseCase & GetCompanyClientSitesUseCase (RF-08 / RF-09)', () => {
   it('Scenario 1: debe agregar un nuevo sitio a una empresa existente y luego poder consultarlo', async () => {

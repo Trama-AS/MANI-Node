@@ -1,4 +1,4 @@
-const { Site } = require('../domain/Site');
+const Site = require('../../../domain/entities/Site');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../../../domain/errors/DomainError');
 
 /**
@@ -7,7 +7,7 @@ const { ValidationError, NotFoundError, ForbiddenError } = require('../../../dom
  */
 class AddSiteToCompanyClientUseCase {
   /**
-   * @param {import('./ICompanyClientRepository').ICompanyClientRepository} repository
+   * @param {import('../../../domain/ports/ICompanyClientRepository')} repository
    */
   constructor(repository) {
     if (!repository) throw new Error('repository es requerido en AddSiteToCompanyClientUseCase');
@@ -66,4 +66,5 @@ class AddSiteToCompanyClientUseCase {
   }
 }
 
-module.exports = { AddSiteToCompanyClientUseCase };
+AddSiteToCompanyClientUseCase.AddSiteToCompanyClientUseCase = AddSiteToCompanyClientUseCase;
+module.exports = AddSiteToCompanyClientUseCase;

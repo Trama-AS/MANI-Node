@@ -1,7 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { RegisterCompanyClientWithSitesUseCase } = require('../../../../src/features/client/application/RegisterCompanyClientWithSitesUseCase');
-const { InMemoryCompanyClientRepository } = require('../../../../src/features/client/infrastructure/InMemoryCompanyClientRepository');
+const RegisterCompanyClientWithSitesUseCase = require('../../../../src/application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
+const InMemoryCompanyClientRepository = require('../../../../src/infrastructure/repositories/InMemoryCompanyClientRepository');
 
 describe('RegisterCompanyClientWithSitesUseCase (US-02.2.2 / RF-08)', () => {
   it('Scenario 1: debe registrar exitosamente una organización con múltiples sitios', async () => {

@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { Site } = require('../../../src/features/client/domain/Site');
+const Site = require('../../../src/domain/entities/Site');
 
 describe('Site Domain Entity (RF-08 / RF-09)', () => {
   it('debe crear un sitio válido con zona obligatoria y reglas contextuales', () => {
@@ -19,6 +19,7 @@ describe('Site Domain Entity (RF-08 / RF-09)', () => {
 
     assert.doesNotThrow(() => site.validate());
     assert.strictEqual(site.tenantId, 'tenant-trama-1');
+    assert.strictEqual(site.clientId, 'client-uuid-001');
     assert.strictEqual(site.nombre, 'Sede Principal Calle 100');
     assert.strictEqual(site.zonaId, 'zona-bogota-norte');
     assert.strictEqual(site.reglas.requiereEpi, true);

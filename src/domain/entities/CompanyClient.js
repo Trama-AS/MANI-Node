@@ -1,4 +1,4 @@
-const { ValidationError } = require('../../../domain/errors/DomainError');
+const { ValidationError } = require('../errors/DomainError');
 
 /**
  * Entidad de Dominio: Cliente Empresa (CompanyClient)
@@ -71,4 +71,5 @@ class CompanyClient {
   }
 }
 
-module.exports = { CompanyClient };
+CompanyClient.CompanyClient = CompanyClient;
+module.exports = CompanyClient;

@@ -1,18 +1,11 @@
-const { Router } = require('express');
-const authenticate = require('../../../middlewares/auth.middleware');
-const container = require('../../../container');
-
-const router = Router();
-
-// Aplica autenticación obligatoria a todas las operaciones de cliente empresa (ADR-0018)
-router.use(authenticate);
+const container = require('../container');
 
 /**
  * POST /api/v1/clients/company
  * Registra una organización cliente con sucursales/sedes iniciales (US-02.2.2 / RF-08).
  * Requiere autenticación JWT obligatoria y extrae el tenant del claim (ADR-0018).
  */
-async function handleRegisterCompany(req, res, next) {
+async function registerCompany(req, res, next) {
   const correlationId =
     res.getHeader('X-Correlation-ID') || req.headers['x-correlation-id'] || `node-${Date.now()}`;
   const tenantId = req.user?.tenantId;
@@ -89,14 +82,11 @@ async function handleRegisterCompany(req, res, next) {
   }
 }
 
-router.post('/company', handleRegisterCompany);
-router.post('/', handleRegisterCompany);
-
 /**
  * POST /api/v1/clients/:id/sites
  * Registra un sitio adicional a una empresa existente (RF-08 / RF-09).
  */
-router.post('/:id/sites', async (req, res, next) => {
+async function addSite(req, res, next) {
   const correlationId =
     res.getHeader('X-Correlation-ID') || req.headers['x-correlation-id'] || `node-${Date.now()}`;
   const tenantId = req.user?.tenantId;
@@ -157,13 +147,13 @@ router.post('/:id/sites', async (req, res, next) => {
     }
     next(err);
   }
-});
+}
 
 /**
  * GET /api/v1/clients/:id/sites
  * Consulta los sitios registrados de una empresa (RF-08 / RF-09).
  */
-router.get('/:id/sites', async (req, res, next) => {
+async function getSites(req, res, next) {
   const correlationId =
     res.getHeader('X-Correlation-ID') || req.headers['x-correlation-id'] || `node-${Date.now()}`;
   const tenantId = req.user?.tenantId;
@@ -218,6 +208,10 @@ router.get('/:id/sites', async (req, res, next) => {
     }
     next(err);
   }
-});
+}
 
-module.exports = router;
+module.exports = {
+  registerCompany,
+  addSite,
+  getSites,
+};
