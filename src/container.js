@@ -26,6 +26,7 @@ const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUs
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
+const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
@@ -108,6 +109,11 @@ class Container {
     this.declareAllyCategoriesUseCase = new DeclareAllyCategoriesUseCase({
       aliadoRepository: this.aliadoRepository,
       aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+    });
+
+    this.listAvailableAllyCategoriesUseCase = new ListAvailableAllyCategoriesUseCase({
+      aliadoRepository: this.aliadoRepository,
       catalogRepository: this.catalogRepository,
     });
 
