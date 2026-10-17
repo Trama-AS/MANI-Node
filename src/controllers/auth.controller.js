@@ -40,4 +40,27 @@ async function registerAllyNaturalPerson(req, res, next) {
   }
 }
 
-module.exports = { registerAllyNaturalPerson };
+async function registerAllyCompany(req, res, next) {
+  try {
+    const tenantSlug = req.header('X-Tenant-Slug');
+    const result = await container.registerAllyCompanyUseCase.execute({
+      tenantSlug,
+      razonSocial: req.body.razon_social ?? req.body.razonSocial,
+      nit: req.body.nit,
+      nombreRepresentante: req.body.nombre_representante ?? req.body.nombreRepresentante,
+      docRepresentante: req.body.doc_representante ?? req.body.docRepresentante,
+      email: req.body.email,
+      password: req.body.password,
+      phone: req.body.telefono_contacto ?? req.body.phone,
+      categoriaId: req.body.categoria_id ?? req.body.categoriaId,
+      documentos: extraerDocumentos(req),
+    });
+
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { registerAllyNaturalPerson, registerAllyCompany };
+
