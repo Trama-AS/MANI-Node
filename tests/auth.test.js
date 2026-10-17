@@ -115,4 +115,75 @@ describe('CFG-22: Validación de Autenticación y Claims de Tenant en Gateway y 
       server.close();
     }
   });
+
+  test('Rechaza token con firma inválida o secreto adulterado con 401 INVALID_SIGNATURE', async () => {
+    const app = makeApp();
+    const server = app.listen(0);
+    const port = server.address().port;
+
+    const forgedToken = jwt.sign(
+      {
+        sub: 'usr-attacker',
+        role: 'authenticated',
+        app_metadata: { tenant_id: 'tenant-victim', user_role: 'admin' },
+      },
+      'secreto-completamente-falso-y-erroneo',
+      { expiresIn: '1h' }
+    );
+
+    try {
+      const res = await fetch(`http://localhost:${port}/api/v1/auth/validate-token`, {
+        headers: { Authorization: `Bearer ${forgedToken}` },
+      });
+      assert.equal(res.status, 401);
+      const data = await res.json();
+      assert.equal(data.error, 'INVALID_SIGNATURE');
+    } finally {
+      server.close();
+    }
+  });
+
+  test('Rechaza token expirado con 401 TOKEN_EXPIRED', async () => {
+    const app = makeApp();
+    const server = app.listen(0);
+    const port = server.address().port;
+
+    const expiredToken = jwt.sign(
+      {
+        sub: 'usr-expired',
+        role: 'authenticated',
+        app_metadata: { tenant_id: 'tenant-mani', user_role: 'cliente' },
+      },
+      JWT_SECRET,
+      { expiresIn: '-10s' } // Expirado hace 10 segundos
+    );
+
+    try {
+      const res = await fetch(`http://localhost:${port}/api/v1/auth/validate-token`, {
+        headers: { Authorization: `Bearer ${expiredToken}` },
+      });
+      assert.equal(res.status, 401);
+      const data = await res.json();
+      assert.equal(data.error, 'TOKEN_EXPIRED');
+    } finally {
+      server.close();
+    }
+  });
+
+  test('Rechaza encabezado Authorization sin formato Bearer con 401', async () => {
+    const app = makeApp();
+    const server = app.listen(0);
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://localhost:${port}/api/v1/auth/validate-token`, {
+        headers: { Authorization: 'Basic dXNlcjpwYXNz' },
+      });
+      assert.equal(res.status, 401);
+      const data = await res.json();
+      assert.equal(data.error, 'UNAUTHORIZED');
+    } finally {
+      server.close();
+    }
+  });
 });

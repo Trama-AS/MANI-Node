@@ -40,24 +40,28 @@ router.all('/auth/validate-token', (req, res) => {
 
   try {
     let decoded;
-    // Si la firma está configurada o se verifica con el secreto compartido
     try {
       decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256', 'HS384', 'HS512'] });
     } catch (verifyErr) {
-      // En entorno local de pruebas, si falla HS256 intentar decodificación segura
-      // para validar estructura de claims si el token fue emitido por Supabase Auth remoto
-      decoded = jwt.decode(token);
-      if (!decoded) {
-        throw verifyErr;
-      }
-      // Validar expiración si decoded contiene exp
-      if (decoded.exp && Math.floor(Date.now() / 1000) >= decoded.exp) {
+      if (verifyErr.name === 'TokenExpiredError') {
         return res.status(401).json({
           error: 'TOKEN_EXPIRED',
           message: 'El token de autenticación ha expirado',
           correlationId,
         });
       }
+      if (verifyErr.name === 'JsonWebTokenError') {
+        return res.status(401).json({
+          error: 'INVALID_SIGNATURE',
+          message: 'Firma criptográfica inválida o token adulterado',
+          correlationId,
+        });
+      }
+      return res.status(401).json({
+        error: 'INVALID_TOKEN',
+        message: verifyErr.message || 'Token de autenticación inválido',
+        correlationId,
+      });
     }
 
     const appMetadata = decoded.app_metadata || {};
