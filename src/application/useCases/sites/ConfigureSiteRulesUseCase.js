@@ -29,7 +29,7 @@ class ConfigureSiteRulesUseCase {
    * @param {string} [input.role]
    * @returns {Promise<{ site: import('../../../domain/entities/Site'), reglas: SiteRules }>}
    */
-  async execute({ siteId, tenantId, reglas, userId, role = 'ADMIN' }) {
+  async execute({ siteId, tenantId, reglas, userId, role }) {
     if (!siteId) throw new ValidationError('siteId es requerido', 'VALIDATION_ERROR');
     if (!tenantId) throw new ValidationError('tenantId es requerido', 'VALIDATION_ERROR');
     if (!reglas || typeof reglas !== 'object') {

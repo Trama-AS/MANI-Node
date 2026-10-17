@@ -3,19 +3,26 @@ const assert = require('node:assert/strict');
 const Site = require('../../../src/domain/entities/Site');
 
 describe('Site Domain Entity (RF-08 / RF-09)', () => {
-  it('debe crear un sitio válido con zona obligatoria y dirección válida', () => {
+  it('debe crear un sitio válido con zona obligatoria y reglas contextuales', () => {
     const site = new Site({
       tenantId: 'tenant-trama-1',
-      clienteId: 'client-123',
-      nombre: 'Sede Principal',
-      direccion: 'Calle 100 # 15-20',
-      zonaId: 'zona-norte',
+      clienteId: 'client-uuid-001',
+      nombre: 'Sede Principal Calle 100',
+      direccion: 'Calle 100 # 15-20, Oficina 501',
+      zonaId: 'zona-bogota-norte',
+      reglas: {
+        requiereEpi: true,
+        horarioAcceso: '08:00-17:00',
+        parqueaderoDisponible: true,
+      },
     });
 
     assert.doesNotThrow(() => site.validate());
     assert.strictEqual(site.tenantId, 'tenant-trama-1');
-    assert.strictEqual(site.nombre, 'Sede Principal');
-    assert.strictEqual(site.zonaId, 'zona-norte');
+    assert.strictEqual(site.clientId, 'client-uuid-001');
+    assert.strictEqual(site.nombre, 'Sede Principal Calle 100');
+    assert.strictEqual(site.zonaId, 'zona-bogota-norte');
+    assert.strictEqual(site.reglas.requiereEpi, true);
   });
 
   it('debe fallar si falta el tenantId', () => {
@@ -28,7 +35,7 @@ describe('Site Domain Entity (RF-08 / RF-09)', () => {
     assert.throws(() => site.validate(), /tenantId es requerido/);
   });
 
-  it('debe fallar si la dirección es demasiado corta', () => {
+  it('debe fallar si la dirección es demasiado corta o vacía', () => {
     const site = new Site({
       tenantId: 'tenant-1',
       direccion: 'Cra',

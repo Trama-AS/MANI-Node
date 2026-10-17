@@ -13,6 +13,7 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     const result = await useCase.execute({
       siteId: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23',
       tenantId: 'trama-demo',
+      role: 'ADMIN',
       reglas: {
         horario: { inicio: '07:00', fin: '16:00', diasPermitidos: ['LUN', 'MAR', 'MIE'] },
         permisosRequeridos: ['CURSO_ALTURAS'],
@@ -23,6 +24,22 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     assert.ok(result.site);
     assert.strictEqual(result.reglas.horario.inicio, '07:00');
     assert.strictEqual(result.reglas.permisosRequeridos[0], 'CURSO_ALTURAS');
+  });
+
+  it('ConfigureSiteRulesUseCase debe denegar por defecto (ForbiddenError) cuando no se proporciona rol', async () => {
+    const repo = new InMemorySiteRepository();
+    const useCase = new ConfigureSiteRulesUseCase({ siteRepository: repo });
+
+    await assert.rejects(
+      async () => {
+        await useCase.execute({
+          siteId: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23',
+          tenantId: 'trama-demo',
+          reglas: { horario: { inicio: '07:00', fin: '16:00', diasPermitidos: ['LUN'] } },
+        });
+      },
+      (err) => err.code === 'FORBIDDEN' && err.statusCode === 403
+    );
   });
 
   it('ConfigureSiteRulesUseCase debe fallar si la sede no existe o pertenece a otro tenant', async () => {
