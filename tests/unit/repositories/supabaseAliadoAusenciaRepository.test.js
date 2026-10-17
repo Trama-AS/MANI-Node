@@ -100,7 +100,7 @@ test('las restricciones de la tabla se traducen a errores de negocio', async () 
   const cases = [
     [{ code: '23P01', message: 'conflicting key value violates exclusion constraint' }, 'MANI-AUS-409', 409],
     [{ code: '23514', message: 'violates check constraint' }, 'MANI-AUS-422H', 422],
-    [{ code: 'P0001', message: 'MANI-AUS-403: el aliado no pertenece al tenant' }, 'MANI-AUS-403', 403],
+    [{ code: '23503', message: 'violates foreign key constraint "fk_aliado_ausencia_aliado_tenant"' }, 'MANI-AUS-403', 403],
     [{ code: '08006', message: 'connection failure' }, 'INTERNAL_ERROR', 500],
   ];
   for (const [error, code, statusCode] of cases) {

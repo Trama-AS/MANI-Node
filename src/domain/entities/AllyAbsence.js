@@ -29,7 +29,7 @@ function parseInstant(value, field) {
 /**
  * Intervalo en el que el aliado está "No disponible" (US-02.1.6). Es
  * semiabierto [startsAt, endsAt), igual que la restricción de exclusión de
- * aliado_ausencia (db/migrations/0002_add_aliado_ausencia.sql).
+ * aliado_ausencia (MANI-APIGateway/database/migrations/008_add_aliado_ausencia.sql).
  */
 class AllyAbsence {
   constructor({ id = null, tenantId, aliadoId, startsAt, endsAt, reason, note = null }) {

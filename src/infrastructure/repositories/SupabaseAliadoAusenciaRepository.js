@@ -29,7 +29,7 @@ function toRow(absence) {
 }
 
 /**
- * Persistencia de aliado_ausencia (db/migrations/0002_add_aliado_ausencia.sql).
+ * Persistencia de aliado_ausencia (MANI-APIGateway/database/migrations/008_add_aliado_ausencia.sql).
  * Cada consulta filtra por tenant_id y aliado_id: la service role salta RLS,
  * así que el aislamiento lo garantiza este repositorio.
  */
@@ -102,7 +102,7 @@ class SupabaseAliadoAusenciaRepository extends IAliadoAusenciaRepository {
     const { data, error } = await this.supabaseClientFactory
       .getClient()
       .from('aliado_ausencia')
-      .update(toRow(absence))
+      .update({ ...toRow(absence), updated_at: new Date().toISOString() })
       .eq('id', absence.id)
       .eq('tenant_id', absence.tenantId)
       .eq('aliado_id', absence.aliadoId)
@@ -137,7 +137,8 @@ class SupabaseAliadoAusenciaRepository extends IAliadoAusenciaRepository {
     if (error.code === '23514') {
       return new DomainError('MANI-AUS-422H: horario de ausencia inválido', 'MANI-AUS-422H', 422);
     }
-    if (error.code === 'P0001' && /MANI-AUS-403/.test(error.message || '')) {
+    // fk_aliado_ausencia_aliado_tenant: el aliado no existe en ese tenant.
+    if (error.code === '23503') {
       return new DomainError('MANI-AUS-403: solo un aliado puede gestionar su disponibilidad', 'MANI-AUS-403', 403);
     }
     return new DomainError(`${message}: ${error.message}`, 'INTERNAL_ERROR', 500);
