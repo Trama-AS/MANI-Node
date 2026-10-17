@@ -1,8 +1,28 @@
 const { Router } = require('express');
+const multer = require('multer');
 const jwt = require('jsonwebtoken');
+const authController = require('../controllers/auth.controller');
 
 const router = Router();
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET || 'mani-jwt-secret-shared-development-token-key-2026';
+
+// Whitelist de documentos KYC que acepta el contrato (docs/openapi/core.yaml)
+const ALLOWED_DOCUMENT_FIELDS = ['cedula_ciudadania', 'rut_certificado'];
+const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: ALLOWED_DOCUMENT_FIELDS.length },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      const err = new Error(`Tipo de archivo no permitido: ${file.mimetype}`);
+      err.statusCode = 400;
+      err.code = 'VALIDATION_ERROR';
+      return cb(err);
+    }
+    cb(null, true);
+  },
+});
 
 /**
  * CFG-22: Endpoint de validación de autenticación y claims para el API Gateway.
@@ -138,6 +158,13 @@ router.post('/auth/dev-token', (req, res) => {
     expiresIn,
   });
 });
+
+// upload.fields() rechaza campos fuera de ALLOWED_DOCUMENT_FIELDS con MulterError
+router.post(
+  '/auth/register/ally',
+  upload.fields(ALLOWED_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+  authController.registerAllyNaturalPerson
+);
 
 // Sin multer: el registro de Cliente no lleva documentos KYC.
 router.post('/auth/register/client', authController.registerClientNaturalPerson);
