@@ -8,18 +8,11 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 async function getActiveDocuments(req, res, next) {
   const correlationId = req.correlationId || res.getHeader('X-Correlation-ID') || `node-${Date.now()}`;
 
-  // ADR-0018: el Gateway propaga X-Tenant-Slug (o query param).
-  let tenantSlug = req.headers['x-tenant-slug'] || req.query.tenantSlug || req.query.slug;
-  const rawTenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-  let tenantId = null;
-
-  if (rawTenantId) {
-    if (UUID_REGEX.test(rawTenantId)) {
-      tenantId = rawTenantId;
-    } else if (!tenantSlug) {
-      tenantSlug = rawTenantId;
-    }
-  }
+  // ADR-0018: en preautenticación solo se admite X-Tenant-Slug; en sesión autenticada solo req.user.tenantId (JWT firmado).
+  // El header X-Tenant-Id del cliente se descarta por riesgo de spoofing.
+  const tenantSlug = req.headers['x-tenant-slug'] || req.query.tenantSlug || req.query.slug;
+  const rawTenantId = req.user?.tenantId;
+  const tenantId = (rawTenantId && UUID_REGEX.test(rawTenantId)) ? rawTenantId : null;
 
   try {
     const docs = await container.getActiveLegalDocumentsUseCase.execute({

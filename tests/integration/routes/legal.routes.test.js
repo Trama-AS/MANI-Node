@@ -56,6 +56,18 @@ test('GET /api/v1/legal/documents/active con X-Tenant-Slug del tenant A no devue
   assert.equal(res.body.data.some((d) => d.id === 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b99'), false);
 });
 
+test('GET /api/v1/legal/documents/active ignora X-Tenant-Id enviado por el cliente (ADR-0018)', async () => {
+  // Intentar suplantar al tenant B mediante X-Tenant-Id sin JWT ni X-Tenant-Slug
+  const res = await request(app)
+    .get('/api/v1/legal/documents/active')
+    .set('X-Tenant-Id', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22');
+
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body.data));
+  // No debe resolver documentos privados del tenant B a partir de X-Tenant-Id
+  assert.equal(res.body.data.some((d) => d.id === 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b99'), false);
+});
+
 test('POST /api/v1/legal/consents sin Authorization retorna 401', async () => {
   const res = await request(app)
     .post('/api/v1/legal/consents')

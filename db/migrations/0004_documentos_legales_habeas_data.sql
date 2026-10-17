@@ -29,6 +29,37 @@ CREATE INDEX IF NOT EXISTS idx_documento_legal_tenant_active
 CREATE INDEX IF NOT EXISTS idx_consentimiento_usuario_usuario 
     ON consentimiento_usuario (usuario_id);
 
+-- ADR-0012: Habilitar Row-Level Security (RLS) en ambas tablas, especialmente consentimiento_usuario (Habeas Data / Ley 1581).
+-- Core Node opera con service_role tras validar JWT/claims; con el JWT de usuario solo se permite lectura acotada al propio tenant/usuario.
+ALTER TABLE documento_legal ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consentimiento_usuario ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF (SELECT count(DISTINCT p.proname) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'auth' AND p.proname IN ('uid', 'jwt')) = 2 THEN
+        DROP POLICY IF EXISTS "Lectura de documentos legales del tenant o globales" ON documento_legal;
+        CREATE POLICY "Lectura de documentos legales del tenant o globales" ON documento_legal
+        FOR SELECT USING (
+            is_active = true
+            AND (
+                tenant_id IS NULL
+                OR tenant_id::text = (auth.jwt() -> 'app_metadata' ->> 'tenant_id')
+            )
+        );
+
+        DROP POLICY IF EXISTS "Usuario lee sus propios consentimientos del tenant" ON consentimiento_usuario;
+        CREATE POLICY "Usuario lee sus propios consentimientos del tenant" ON consentimiento_usuario
+        FOR SELECT USING (
+            usuario_id = auth.uid()
+            AND (
+                tenant_id IS NULL
+                OR tenant_id::text = (auth.jwt() -> 'app_metadata' ->> 'tenant_id')
+            )
+        );
+    END IF;
+END $$;
+
 INSERT INTO documento_legal (id, tenant_id, tipo, version, contenido, is_active)
 SELECT 
     '00000000-0000-0000-0000-000000000001'::uuid,
@@ -54,5 +85,5 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('mani-node-0004', 'Tablas documento_legal y consentimiento_usuario para Habeas Data (SCRUM-856)')
+VALUES ('mani-node-0004', 'Tablas documento_legal y consentimiento_usuario con RLS para Habeas Data (SCRUM-856)')
 ON CONFLICT (version) DO NOTHING;
