@@ -48,7 +48,6 @@ const companyFieldsMiddleware = uploadCompany.fields(
 );
 
 router.post('/auth/register/ally/company', companyFieldsMiddleware, authController.registerAllyCompany);
-router.post('/aliados/empresa', companyFieldsMiddleware, authController.registerAllyCompany);
 
 module.exports = router;
 

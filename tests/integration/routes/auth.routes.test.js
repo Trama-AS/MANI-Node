@@ -139,7 +139,7 @@ test('POST /api/v1/auth/register/ally repetido con el mismo email responde 409 E
 
 function registerCompanyRequest(overrides = {}) {
   const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
-  const endpoint = overrides.endpoint ?? '/api/v1/core/aliados/empresa';
+  const endpoint = overrides.endpoint ?? '/api/v1/auth/register/ally/company';
   const req = request(app)
     .post(endpoint)
     .set('X-Tenant-Slug', overrides.tenantSlug ?? 'trama-demo')
@@ -157,7 +157,7 @@ function registerCompanyRequest(overrides = {}) {
   return req;
 }
 
-test('POST /api/v1/core/aliados/empresa responde 201 con estado_verificacion PENDIENTE y profile ALLY/PENDING', async () => {
+test('POST /api/v1/auth/register/ally/company responde 201 con estado_verificacion PENDIENTE y profile ALLY/PENDING', async () => {
   const res = await registerCompanyRequest();
 
   assert.equal(res.status, 201);
@@ -171,7 +171,6 @@ test('POST /api/v1/core/aliados/empresa responde 201 con estado_verificacion PEN
 
 test('POST /api/v1/auth/register/ally/company sin camara_comercio responde 400 VALIDATION_ERROR', async () => {
   const res = await registerCompanyRequest({
-    endpoint: '/api/v1/auth/register/ally/company',
     attachCamara: false,
   });
 
@@ -179,7 +178,7 @@ test('POST /api/v1/auth/register/ally/company sin camara_comercio responde 400 V
   assert.equal(res.body.code, 'VALIDATION_ERROR');
 });
 
-test('POST /api/v1/core/aliados/empresa con NIT duplicado en el mismo tenant responde 409 COMPANY_ALREADY_REGISTERED', async () => {
+test('POST /api/v1/auth/register/ally/company con NIT duplicado en el mismo tenant responde 409 COMPANY_ALREADY_REGISTERED', async () => {
   const nit = `901.555.${Date.now()}`;
 
   const first = await registerCompanyRequest({ nit });
@@ -188,5 +187,29 @@ test('POST /api/v1/core/aliados/empresa con NIT duplicado en el mismo tenant res
   const second = await registerCompanyRequest({ nit });
   assert.equal(second.status, 409);
   assert.equal(second.body.code, 'COMPANY_ALREADY_REGISTERED');
+});
+
+test('CA-5: usuario del tenant B no puede consultar datos ni documentos de aliado empresa del tenant A (Políticas §13.4)', async () => {
+  const container = require('../../../src/container');
+  const nit = `901.777.${Date.now()}`;
+
+  // 1. Registrar empresa en tenant A (plomeria-express: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11)
+  const regRes = await registerCompanyRequest({
+    tenantSlug: 'plomeria-express',
+    nit,
+  });
+  assert.equal(regRes.status, 201);
+  const allyUserId = regRes.body.usuario_id;
+  const tenantAId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+  const tenantBId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22';
+
+  // 2. Verificar que el repositorio de aliados acotado a tenant B no encuentra al aliado de tenant A
+  const allyInTenantB = await container.aliadoRepository.findByUsuarioId(tenantBId, allyUserId);
+  assert.equal(allyInTenantB, null);
+
+  // 3. Verificar que los documentos KYC del aliado de tenant A no sean accesibles bajo tenant B
+  const docsInTenantB = (container.documentoKycRepository.rows || [])
+    .filter((r) => r.tenantId === tenantBId && r.aliadoId === regRes.body.aliado_id);
+  assert.deepEqual(docsInTenantB, []);
 });
 

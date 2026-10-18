@@ -6,8 +6,6 @@ const authRoutes = require('./auth.routes');
 const router = Router();
 
 router.use(healthRoutes);
-router.use('/api/v1/core', authRoutes);
-router.use('/api/v1/core', coreRoutes);
 router.use('/api/v1', authRoutes);
 router.use('/api/v1', coreRoutes);
 // El Gateway recorta "/api/v1/core/" por completo (no solo "/core") antes de
