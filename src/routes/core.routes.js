@@ -3,6 +3,7 @@ const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
 const quotesController = require('../controllers/quotes.controller');
+const servicesController = require('../controllers/services.controller');
 const authenticate = require('../middlewares/auth.middleware');
 
 const router = Router();
@@ -25,5 +26,13 @@ router.post('/cotizaciones/:id/rechazar', authenticate, quotesController.rejectQ
 router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQuote);
 router.post('/cotizaciones/:id/solicitar-ajuste', authenticate, quotesController.adjustQuote);
 router.post('/cotizaciones/:id/responder', authenticate, quotesController.respondQuote);
+
+// RF-18 / US-04.3.1 / SCRUM-868: Marcar inicio/fin de ejecución
+router.post('/solicitudes/:id/iniciar', authenticate, servicesController.startExecution);
+router.post('/solicitudes/:id/iniciar-ejecucion', authenticate, servicesController.startExecution);
+router.post('/servicios/:id/iniciar', authenticate, servicesController.startExecution);
+router.post('/solicitudes/:id/finalizar', authenticate, servicesController.finishExecution);
+router.post('/solicitudes/:id/finalizar-ejecucion', authenticate, servicesController.finishExecution);
+router.post('/servicios/:id/finalizar', authenticate, servicesController.finishExecution);
 
 module.exports = router;

@@ -45,6 +45,7 @@ const SupabaseHistorialSolicitudRepository = require('./infrastructure/repositor
 
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
+const ExecutionLifecycleUseCase = require('./application/useCases/services/ExecutionLifecycleUseCase');
 
 const config = require('./config');
 
@@ -126,6 +127,11 @@ class Container {
 
     this.respondQuoteUseCase = new RespondQuoteUseCase({
       cotizacionRepository: this.cotizacionRepository,
+      solicitudRepository: this.solicitudRepository,
+      historialSolicitudRepository: this.historialSolicitudRepository,
+    });
+
+    this.executionLifecycleUseCase = new ExecutionLifecycleUseCase({
       solicitudRepository: this.solicitudRepository,
       historialSolicitudRepository: this.historialSolicitudRepository,
     });
