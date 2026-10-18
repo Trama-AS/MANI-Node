@@ -203,11 +203,15 @@ test('CA-5: usuario del tenant B no puede consultar datos ni documentos de aliad
   const tenantAId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
   const tenantBId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22';
 
-  // 2. Verificar que el repositorio de aliados acotado a tenant B no encuentra al aliado de tenant A
+  // 2. Control positivo: el aliado sí es visible bajo su propio tenant (tenant A)
+  const allyInTenantA = await container.aliadoRepository.findByUsuarioId(tenantAId, allyUserId);
+  assert.notEqual(allyInTenantA, null);
+
+  // 3. Verificar que el repositorio de aliados acotado a tenant B no encuentra al aliado de tenant A
   const allyInTenantB = await container.aliadoRepository.findByUsuarioId(tenantBId, allyUserId);
   assert.equal(allyInTenantB, null);
 
-  // 3. Verificar que los documentos KYC del aliado de tenant A no sean accesibles bajo tenant B
+  // 4. Verificar que los documentos KYC del aliado de tenant A no sean accesibles bajo tenant B
   const docsInTenantB = (container.documentoKycRepository.rows || [])
     .filter((r) => r.tenantId === tenantBId && r.aliadoId === regRes.body.aliado_id);
   assert.deepEqual(docsInTenantB, []);
