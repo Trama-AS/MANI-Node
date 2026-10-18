@@ -25,6 +25,7 @@ router.post('/profiles/me/photo', photoMiddleware, profilesController.updateOwnP
 router.patch('/profiles/:id', photoMiddleware, profilesController.updateOwnProfile);
 router.put('/profiles/:id', photoMiddleware, profilesController.updateOwnProfile);
 router.get('/profiles/me/categories', profilesController.getAllyCategories);
+router.get('/profiles/me/categories/available', profilesController.listAvailableAllyCategories);
 router.put('/profiles/me/categories', profilesController.declareAllyCategories);
 router.post('/profiles/me/categories', profilesController.declareAllyCategories);
 router.get('/catalog', catalogController.listCategories);

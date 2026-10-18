@@ -128,6 +128,37 @@ async function updateOwnProfile(req, res, next) {
   }
 }
 
-module.exports = { getOwnProfile, updateOwnProfile, getAllyCategories, declareAllyCategories };
+async function listAvailableAllyCategories(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({
+      error: 'Encabezado Authorization requerido',
+      correlationId: req.correlationId || 'none',
+    });
+  }
 
+  try {
+    const session = req.user || (await container.tokenService.verifyToken(authHeader));
+    const categories = await container.listAvailableAllyCategoriesUseCase.execute({
+      userId: session.userId,
+      tenantId: session.tenantId,
+      role: session.role,
+    });
 
+    res.status(200).json({
+      message: 'Categorías disponibles para el aliado',
+      correlationId: req.correlationId || 'none',
+      categories,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  getOwnProfile,
+  updateOwnProfile,
+  getAllyCategories,
+  declareAllyCategories,
+  listAvailableAllyCategories,
+};
