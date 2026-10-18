@@ -45,6 +45,91 @@ async function createQuote(req, res, next) {
   }
 }
 
+async function acceptQuote(req, res, next) {
+  try {
+    const cotizacionId = req.params.id || req.params.cotizacionId;
+    const result = await container.respondQuoteUseCase.execute({
+      user: req.user,
+      cotizacionId,
+      accion: 'ACEPTAR',
+      comentario: req.body.comentario,
+    });
+
+    res.status(200).json({
+      cotizacion: result.cotizacion.toJSON(),
+      solicitud: result.solicitud.toJSON(),
+      correlationId: req.correlationId || 'none',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function rejectQuote(req, res, next) {
+  try {
+    const cotizacionId = req.params.id || req.params.cotizacionId;
+    const result = await container.respondQuoteUseCase.execute({
+      user: req.user,
+      cotizacionId,
+      accion: 'RECHAZAR',
+      motivo: req.body.motivo || req.body.comentario,
+    });
+
+    res.status(200).json({
+      cotizacion: result.cotizacion.toJSON(),
+      solicitud: result.solicitud.toJSON(),
+      correlationId: req.correlationId || 'none',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function adjustQuote(req, res, next) {
+  try {
+    const cotizacionId = req.params.id || req.params.cotizacionId;
+    const result = await container.respondQuoteUseCase.execute({
+      user: req.user,
+      cotizacionId,
+      accion: 'AJUSTAR',
+      comentario: req.body.comentario || req.body.observacion,
+    });
+
+    res.status(200).json({
+      cotizacion: result.cotizacion.toJSON(),
+      solicitud: result.solicitud.toJSON(),
+      correlationId: req.correlationId || 'none',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function respondQuote(req, res, next) {
+  try {
+    const cotizacionId = req.params.id || req.params.cotizacionId;
+    const result = await container.respondQuoteUseCase.execute({
+      user: req.user,
+      cotizacionId,
+      accion: req.body.accion,
+      comentario: req.body.comentario,
+      motivo: req.body.motivo,
+    });
+
+    res.status(200).json({
+      cotizacion: result.cotizacion.toJSON(),
+      solicitud: result.solicitud.toJSON(),
+      correlationId: req.correlationId || 'none',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createQuote,
+  acceptQuote,
+  rejectQuote,
+  adjustQuote,
+  respondQuote,
 };

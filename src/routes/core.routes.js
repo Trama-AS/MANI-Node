@@ -19,4 +19,11 @@ router.get('/catalog', catalogController.listCategories);
 router.post('/cotizaciones', authenticate, quotesController.createQuote);
 router.post('/solicitudes/:solicitudId/cotizaciones', authenticate, quotesController.createQuote);
 
+// RF-17 / US-04.2.3 / SCRUM-867: Cliente acepta/rechaza/ajusta cotización
+router.post('/cotizaciones/:id/aceptar', authenticate, quotesController.acceptQuote);
+router.post('/cotizaciones/:id/rechazar', authenticate, quotesController.rejectQuote);
+router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQuote);
+router.post('/cotizaciones/:id/solicitar-ajuste', authenticate, quotesController.adjustQuote);
+router.post('/cotizaciones/:id/responder', authenticate, quotesController.respondQuote);
+
 module.exports = router;

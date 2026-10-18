@@ -44,6 +44,7 @@ const InMemoryHistorialSolicitudRepository = require('./infrastructure/repositor
 const SupabaseHistorialSolicitudRepository = require('./infrastructure/repositories/SupabaseHistorialSolicitudRepository');
 
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
+const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
 
 const config = require('./config');
 
@@ -118,6 +119,12 @@ class Container {
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
     this.createQuoteUseCase = new CreateQuoteUseCase({
+      cotizacionRepository: this.cotizacionRepository,
+      solicitudRepository: this.solicitudRepository,
+      historialSolicitudRepository: this.historialSolicitudRepository,
+    });
+
+    this.respondQuoteUseCase = new RespondQuoteUseCase({
       cotizacionRepository: this.cotizacionRepository,
       solicitudRepository: this.solicitudRepository,
       historialSolicitudRepository: this.historialSolicitudRepository,
