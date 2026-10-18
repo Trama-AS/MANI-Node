@@ -74,9 +74,27 @@ async function getServiceLog(req, res, next) {
   }
 }
 
+async function getClientServicesHistory(req, res, next) {
+  try {
+    const result = await container.getClientServicesHistoryUseCase.execute({
+      user: req.user,
+      estado: req.query.estado,
+    });
+
+    res.status(200).json({
+      servicios: result.servicios,
+      total: result.total,
+      correlationId: req.correlationId || 'none',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   startExecution,
   finishExecution,
   registerEvent,
   getServiceLog,
+  getClientServicesHistory,
 };

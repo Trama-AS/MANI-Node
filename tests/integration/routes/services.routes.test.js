@@ -146,3 +146,46 @@ test('GET /api/v1/solicitudes/:id/log devuelve historial cronológico al cliente
   assert.equal(res.body.log[0].estadoNuevo, 'EN_EJECUCION');
   assert.ok(res.body.log[1].observacion.includes('Revisión en marcha'));
 });
+
+test('GET /api/v1/solicitudes/historial devuelve la lista de servicios del cliente autenticado', async () => {
+  const clientToken = signTestToken({ sub: 'cliente-historial-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  // Crear servicios para este cliente
+  await container.solicitudRepository.create({
+    tenantId: 'trama-demo',
+    clienteId: 'cliente-historial-1',
+    categoriaId: 'cat-plomeria',
+    zonaId: 'zona-norte',
+    descripcion: 'Servicio Antiguo',
+    estado: 'FINALIZADA',
+    fechaCreacion: '2026-10-01T10:00:00Z',
+  });
+
+  await container.solicitudRepository.create({
+    tenantId: 'trama-demo',
+    clienteId: 'cliente-historial-1',
+    categoriaId: 'cat-cerrajeria',
+    zonaId: 'zona-norte',
+    descripcion: 'Servicio Nuevo',
+    estado: 'EN_EJECUCION',
+    fechaCreacion: '2026-10-18T10:00:00Z',
+  });
+
+  const res = await request(app)
+    .get('/api/v1/solicitudes/historial')
+    .set('Authorization', `Bearer ${clientToken}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.total, 2);
+  assert.equal(res.body.servicios[0].descripcion, 'Servicio Nuevo');
+  assert.equal(res.body.servicios[1].descripcion, 'Servicio Antiguo');
+
+  // Filtrado por estado
+  const resFiltro = await request(app)
+    .get('/api/v1/solicitudes/historial?estado=FINALIZADA')
+    .set('Authorization', `Bearer ${clientToken}`);
+
+  assert.equal(resFiltro.status, 200);
+  assert.equal(resFiltro.body.total, 1);
+  assert.equal(resFiltro.body.servicios[0].estado, 'FINALIZADA');
+});
