@@ -20,6 +20,7 @@ async function registerDirectEmployee(req, res, next) {
   const {
     fullName,
     nombre,
+    nombreCompleto,
     email,
     password,
     phone,
@@ -29,18 +30,21 @@ async function registerDirectEmployee(req, res, next) {
     documentNumber,
     numeroDocumento,
     categoriaId,
+    categoriaIds,
   } = req.body || {};
+
+  const resolvedCategoriaId = categoriaId || (Array.isArray(categoriaIds) && categoriaIds.length > 0 ? categoriaIds[0] : null);
 
   try {
     const result = await container.registerDirectEmployeeUseCase.execute({
       tenantId,
-      fullName: fullName || nombre,
+      fullName: fullName || nombre || nombreCompleto,
       email,
       password,
       phone: phone || telefono,
       documentType: documentType || tipoDocumento,
       documentNumber: documentNumber || numeroDocumento,
-      categoriaId,
+      categoriaId: resolvedCategoriaId,
     });
 
     return res.status(201).json({

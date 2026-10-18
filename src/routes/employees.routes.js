@@ -12,6 +12,13 @@ router.post(
   employeesController.registerDirectEmployee
 );
 
+router.post(
+  '/allies/direct-employees',
+  authenticate,
+  requireRole('ADMIN'),
+  employeesController.registerDirectEmployee
+);
+
 // Alias de administración
 router.post(
   '/admin/employees',
