@@ -47,6 +47,7 @@ const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUse
 const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
 const ExecutionLifecycleUseCase = require('./application/useCases/services/ExecutionLifecycleUseCase');
 const RegisterServiceEventUseCase = require('./application/useCases/services/RegisterServiceEventUseCase');
+const GetServiceLogUseCase = require('./application/useCases/services/GetServiceLogUseCase');
 
 const config = require('./config');
 
@@ -141,6 +142,11 @@ class Container {
       solicitudRepository: this.solicitudRepository,
       historialSolicitudRepository: this.historialSolicitudRepository,
       fileStorageService: this.fileStorageService,
+    });
+
+    this.getServiceLogUseCase = new GetServiceLogUseCase({
+      solicitudRepository: this.solicitudRepository,
+      historialSolicitudRepository: this.historialSolicitudRepository,
     });
 
     this.listTenantsUseCase = new ListTenantsUseCase({

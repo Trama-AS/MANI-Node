@@ -109,3 +109,40 @@ test('POST /api/v1/solicitudes/:id/eventos registra evento e imprevisto con 201 
   assert.equal(res.body.evento.fotoUrl, 'https://cdn.mani.local/fotos/termostato.png');
   assert.ok(res.body.evento.observacion.includes('termostato'));
 });
+
+test('GET /api/v1/solicitudes/:id/log devuelve historial cronológico al cliente autorizado', async () => {
+  const clientToken = signTestToken({ sub: 'demo-client-1', tenantId: 'trama-demo', role: 'cliente' });
+  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const sol = await container.solicitudRepository.create({
+    tenantId: 'trama-demo',
+    clienteId: 'demo-client-1',
+    aliadoId: 'demo-ally-1',
+    categoriaId: 'cat-plomeria',
+    zonaId: 'zona-norte',
+    descripcion: 'Revisión técnica',
+    estado: 'ASIGNADA',
+  });
+
+  // Generar eventos
+  await request(app)
+    .post(`/api/v1/solicitudes/${sol.id}/iniciar`)
+    .set('Authorization', `Bearer ${allyToken}`);
+
+  await request(app)
+    .post(`/api/v1/solicitudes/${sol.id}/eventos`)
+    .set('Authorization', `Bearer ${allyToken}`)
+    .send({ observacion: 'Revisión en marcha' });
+
+  // Consultar log por el cliente
+  const res = await request(app)
+    .get(`/api/v1/solicitudes/${sol.id}/log`)
+    .set('Authorization', `Bearer ${clientToken}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.solicitud.id, sol.id);
+  assert.ok(Array.isArray(res.body.log));
+  assert.equal(res.body.log.length, 2);
+  assert.equal(res.body.log[0].estadoNuevo, 'EN_EJECUCION');
+  assert.ok(res.body.log[1].observacion.includes('Revisión en marcha'));
+});

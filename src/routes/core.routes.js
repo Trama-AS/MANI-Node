@@ -39,4 +39,9 @@ router.post('/servicios/:id/finalizar', authenticate, servicesController.finishE
 router.post('/solicitudes/:id/eventos', authenticate, servicesController.registerEvent);
 router.post('/servicios/:id/eventos', authenticate, servicesController.registerEvent);
 
+// RF-18 / US-04.3.3 / SCRUM-870: Cliente consulta el log del servicio
+router.get('/solicitudes/:id/log', authenticate, servicesController.getServiceLog);
+router.get('/solicitudes/:id/historial', authenticate, servicesController.getServiceLog);
+router.get('/servicios/:id/log', authenticate, servicesController.getServiceLog);
+
 module.exports = router;
