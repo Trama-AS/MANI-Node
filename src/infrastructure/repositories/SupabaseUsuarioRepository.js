@@ -53,6 +53,20 @@ class SupabaseUsuarioRepository extends IUsuarioRepository {
     const { error } = await client.from('usuario').delete().eq('tenant_id', tenantId).eq('id', id);
     if (error) throw new DomainError(`Error eliminando usuario: ${error.message}`, 'INTERNAL_ERROR', 500);
   }
+
+  async findById(tenantId, id) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('usuario')
+      .select('id, tenant_id, email, rol, estado, telefono')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw new DomainError(`Error consultando usuario por id: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data;
+  }
 }
 
 module.exports = SupabaseUsuarioRepository;
+

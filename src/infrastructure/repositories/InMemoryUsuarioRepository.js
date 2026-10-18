@@ -24,6 +24,16 @@ class InMemoryUsuarioRepository extends IUsuarioRepository {
       }
     }
   }
+
+  async findById(tenantId, id) {
+    for (const usuario of this.usuarios.values()) {
+      if (usuario.tenantId === tenantId && usuario.id === id) {
+        return usuario;
+      }
+    }
+    return null;
+  }
 }
 
 module.exports = InMemoryUsuarioRepository;
+

@@ -72,6 +72,66 @@ class SupabaseAliadoRepository extends IAliadoRepository {
       .eq('usuario_id', usuarioId);
     if (error) throw new DomainError(`Error eliminando aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
   }
+
+  async findById(tenantId, aliadoId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('aliado')
+      .select(
+        'id, tenant_id, usuario_id, tipo, nombre_razon_social, estado_verificacion, motivo_rechazo, fecha_verificacion, created_at'
+      )
+      .eq('tenant_id', tenantId)
+      .eq('id', aliadoId)
+      .maybeSingle();
+
+    if (error) throw new DomainError(`Error consultando aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data;
+  }
+
+  async findByTenant(tenantId, { estadoVerificacion } = {}) {
+    const client = this.supabaseClientFactory.getClient();
+    let query = client
+      .from('aliado')
+      .select(
+        'id, tenant_id, usuario_id, tipo, nombre_razon_social, estado_verificacion, motivo_rechazo, fecha_verificacion, created_at'
+      )
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: true });
+
+    if (estadoVerificacion) {
+      const dbEstado = ESTADO_VERIFICACION_TO_DB[estadoVerificacion] || estadoVerificacion;
+      query = query.eq('estado_verificacion', dbEstado);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new DomainError(`Error listando aliados: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data || [];
+  }
+
+  async updateVerificationStatus(
+    tenantId,
+    aliadoId,
+    { estadoVerificacion, motivoRechazo = null, fechaVerificacion }
+  ) {
+    const client = this.supabaseClientFactory.getClient();
+    const dbEstado = ESTADO_VERIFICACION_TO_DB[estadoVerificacion] || estadoVerificacion;
+    const { data, error } = await client
+      .from('aliado')
+      .update({
+        estado_verificacion: dbEstado,
+        motivo_rechazo: motivoRechazo,
+        fecha_verificacion: fechaVerificacion || new Date().toISOString(),
+      })
+      .eq('tenant_id', tenantId)
+      .eq('id', aliadoId)
+      .eq('estado_verificacion', 'PENDIENTE')
+      .select()
+      .maybeSingle();
+
+    if (error) throw new DomainError(`Error actualizando verificación de aliado: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data;
+  }
 }
 
 module.exports = SupabaseAliadoRepository;
+

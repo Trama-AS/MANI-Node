@@ -29,6 +29,10 @@ const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/De
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const ListAlliesVerificationUseCase = require('./application/useCases/verification/ListAlliesVerificationUseCase');
+const GetAllyVerificationDetailUseCase = require('./application/useCases/verification/GetAllyVerificationDetailUseCase');
+const GetKycDocumentSignedUrlUseCase = require('./application/useCases/verification/GetKycDocumentSignedUrlUseCase');
+const ResolveAllyVerificationUseCase = require('./application/useCases/verification/ResolveAllyVerificationUseCase');
 
 const config = require('./config');
 
@@ -130,9 +134,40 @@ class Container {
       fileStorageService: this.fileStorageService,
       authIdentityService: this.authIdentityService,
     });
+
+    this.listAlliesVerificationUseCase = new ListAlliesVerificationUseCase({
+      aliadoRepository: this.aliadoRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+      documentoKycRepository: this.documentoKycRepository,
+    });
+
+    this.getAllyVerificationDetailUseCase = new GetAllyVerificationDetailUseCase({
+      aliadoRepository: this.aliadoRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+      documentoKycRepository: this.documentoKycRepository,
+    });
+
+    this.getKycDocumentSignedUrlUseCase = new GetKycDocumentSignedUrlUseCase({
+      aliadoRepository: this.aliadoRepository,
+      documentoKycRepository: this.documentoKycRepository,
+      fileStorageService: this.fileStorageService,
+    });
+
+    this.resolveAllyVerificationUseCase = new ResolveAllyVerificationUseCase({
+      aliadoRepository: this.aliadoRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+      documentoKycRepository: this.documentoKycRepository,
+    });
   }
 }
 
 const container = new Container();
 
 module.exports = container;
+

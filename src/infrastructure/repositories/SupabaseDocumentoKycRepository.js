@@ -36,6 +36,30 @@ class SupabaseDocumentoKycRepository extends IDocumentoKycRepository {
       .eq('aliado_id', aliadoId);
     if (error) throw new DomainError(`Error eliminando documentos KYC: ${error.message}`, 'INTERNAL_ERROR', 500);
   }
+
+  async findByAliadoId(tenantId, aliadoId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('documento_kyc')
+      .select('id, tenant_id, aliado_id, tipo_documento, ruta_storage, estado, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('aliado_id', aliadoId);
+    if (error) throw new DomainError(`Error consultando documentos KYC: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data || [];
+  }
+
+  async updateStatusByAliadoId(tenantId, aliadoId, estado) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('documento_kyc')
+      .update({ estado })
+      .eq('tenant_id', tenantId)
+      .eq('aliado_id', aliadoId)
+      .select();
+    if (error) throw new DomainError(`Error actualizando documentos KYC: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data || [];
+  }
 }
 
 module.exports = SupabaseDocumentoKycRepository;
+
