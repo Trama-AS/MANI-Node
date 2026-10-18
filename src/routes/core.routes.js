@@ -35,4 +35,8 @@ router.post('/solicitudes/:id/finalizar', authenticate, servicesController.finis
 router.post('/solicitudes/:id/finalizar-ejecucion', authenticate, servicesController.finishExecution);
 router.post('/servicios/:id/finalizar', authenticate, servicesController.finishExecution);
 
+// RF-18 / US-04.3.2 / SCRUM-869: Registrar eventos durante la ejecución
+router.post('/solicitudes/:id/eventos', authenticate, servicesController.registerEvent);
+router.post('/servicios/:id/eventos', authenticate, servicesController.registerEvent);
+
 module.exports = router;

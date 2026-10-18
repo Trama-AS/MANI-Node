@@ -82,3 +82,30 @@ test('Flujo completo inicio -> fin de ejecución con persistencia de timestamps 
   assert.equal(finishRes.body.solicitud.estado, 'FINALIZADA');
   assert.ok(finishRes.body.solicitud.fechaFinEjecucion);
 });
+
+test('POST /api/v1/solicitudes/:id/eventos registra evento e imprevisto con 201 Created', async () => {
+  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const sol = await container.solicitudRepository.create({
+    tenantId: 'trama-demo',
+    clienteId: 'demo-client-1',
+    aliadoId: 'demo-ally-1',
+    categoriaId: 'cat-plomeria',
+    zonaId: 'zona-norte',
+    descripcion: 'Reparación de calentador',
+    estado: 'EN_EJECUCION',
+  });
+
+  const res = await request(app)
+    .post(`/api/v1/solicitudes/${sol.id}/eventos`)
+    .set('Authorization', `Bearer ${allyToken}`)
+    .send({
+      observacion: 'Se encontró termostato quemado, se cotiza reemplazo',
+      fotoUrl: 'https://cdn.mani.local/fotos/termostato.png',
+    });
+
+  assert.equal(res.status, 201);
+  assert.ok(res.body.evento.id);
+  assert.equal(res.body.evento.solicitudId, sol.id);
+  assert.equal(res.body.evento.fotoUrl, 'https://cdn.mani.local/fotos/termostato.png');
+  assert.ok(res.body.evento.observacion.includes('termostato'));
+});
