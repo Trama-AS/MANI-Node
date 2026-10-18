@@ -8,10 +8,14 @@ const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemor
 const InMemoryAliadoRepository = require('./infrastructure/repositories/InMemoryAliadoRepository');
 const InMemoryAliadoCategoriaRepository = require('./infrastructure/repositories/InMemoryAliadoCategoriaRepository');
 const InMemoryDocumentoKycRepository = require('./infrastructure/repositories/InMemoryDocumentoKycRepository');
+const InMemoryClienteRepository = require('./infrastructure/repositories/InMemoryClienteRepository');
+const InMemorySitioRepository = require('./infrastructure/repositories/InMemorySitioRepository');
 const SupabaseUsuarioRepository = require('./infrastructure/repositories/SupabaseUsuarioRepository');
 const SupabaseAliadoRepository = require('./infrastructure/repositories/SupabaseAliadoRepository');
 const SupabaseAliadoCategoriaRepository = require('./infrastructure/repositories/SupabaseAliadoCategoriaRepository');
 const SupabaseDocumentoKycRepository = require('./infrastructure/repositories/SupabaseDocumentoKycRepository');
+const SupabaseClienteRepository = require('./infrastructure/repositories/SupabaseClienteRepository');
+const SupabaseSitioRepository = require('./infrastructure/repositories/SupabaseSitioRepository');
 const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
@@ -26,10 +30,12 @@ const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUs
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
+const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
+const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 
 const config = require('./config');
 
@@ -74,6 +80,8 @@ class Container {
       this.documentoKycRepository = new SupabaseDocumentoKycRepository({
         supabaseClientFactory: this.supabaseClientFactory,
       });
+      this.clienteRepository = new SupabaseClienteRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.sitioRepository = new SupabaseSitioRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
@@ -88,6 +96,8 @@ class Container {
       this.aliadoRepository = new InMemoryAliadoRepository();
       this.aliadoCategoriaRepository = new InMemoryAliadoCategoriaRepository();
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
+      this.clienteRepository = new InMemoryClienteRepository();
+      this.sitioRepository = new InMemorySitioRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
     }
@@ -109,6 +119,11 @@ class Container {
     this.declareAllyCategoriesUseCase = new DeclareAllyCategoriesUseCase({
       aliadoRepository: this.aliadoRepository,
       aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+    });
+
+    this.listAvailableAllyCategoriesUseCase = new ListAvailableAllyCategoriesUseCase({
+      aliadoRepository: this.aliadoRepository,
       catalogRepository: this.catalogRepository,
     });
 
@@ -138,6 +153,16 @@ class Container {
       usuarioRepository: this.usuarioRepository,
       aliadoRepository: this.aliadoRepository,
       aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      authIdentityService: this.authIdentityService,
+    });
+
+    // CA-2: reutiliza tenantRepository, usuarioRepository y authIdentityService
+    // -- las MISMAS instancias que RegisterAllyNaturalPersonUseCase, no copias.
+    this.registerClientNaturalPersonUseCase = new RegisterClientNaturalPersonUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      clienteRepository: this.clienteRepository,
+      sitioRepository: this.sitioRepository,
       authIdentityService: this.authIdentityService,
     });
   }
