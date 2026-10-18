@@ -63,3 +63,42 @@ test('findAllCategories lanza DomainError INTERNAL_ERROR si Supabase reporta err
     }
   );
 });
+
+test('findActiveByTenant filtra por tenant_id y estado ACTIVO, ordena por nombre y mapea a Category', async () => {
+  const filters = [];
+  const orders = [];
+  const builder = {
+    select: () => builder,
+    eq: (col, val) => {
+      filters.push([col, val]);
+      return builder;
+    },
+    order: (col, opts) => {
+      orders.push([col, opts]);
+      return Promise.resolve({ data: [{ id: 'c1', nombre: 'Electricidad', estado: 'ACTIVO' }], error: null });
+    },
+  };
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory({ from: () => builder }) });
+
+  const categories = await repo.findActiveByTenant('t1');
+
+  assert.deepEqual(filters, [['tenant_id', 't1'], ['estado', 'ACTIVO']]);
+  assert.deepEqual(orders, [['nombre', { ascending: true }]]);
+  assert.equal(categories.length, 1);
+  assert.equal(categories[0].name, 'Electricidad');
+  assert.equal(categories[0].isActive(), true);
+});
+
+test('findActiveByTenant lanza DomainError INTERNAL_ERROR si Supabase reporta error', async () => {
+  const builder = {
+    select: () => builder,
+    eq: () => builder,
+    order: async () => ({ data: null, error: { message: 'down' } }),
+  };
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory({ from: () => builder }) });
+
+  await assert.rejects(
+    () => repo.findActiveByTenant('t1'),
+    (err) => err.code === 'INTERNAL_ERROR'
+  );
+});
