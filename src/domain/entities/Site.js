@@ -27,6 +27,8 @@ class Site {
     nombre,
     direccion,
     zonaId,
+    contactoNombre = null,
+    contactoTelefono = null,
     reglas = null,
     creadoEn = new Date(),
   }) {
@@ -36,6 +38,8 @@ class Site {
     this.direccion = direccion ? direccion.trim() : '';
     this.nombre = nombre ? nombre.trim() : this.direccion;
     this.zonaId = zonaId ? zonaId.trim() : '';
+    this.contactoNombre = contactoNombre ? contactoNombre.trim() : null;
+    this.contactoTelefono = contactoTelefono ? contactoTelefono.trim() : null;
     this.reglas = reglas && typeof reglas === 'object' ? reglas : null;
     this.creadoEn = creadoEn;
   }
@@ -59,6 +63,21 @@ class Site {
       throw new ValidationError('zonaId es requerida (RF-09: todo sitio debe pertenecer a una zona del catálogo)', 'VALIDATION_ERROR');
     }
     return true;
+  }
+
+  toJSON() {
+    return {
+      id: this.id,
+      tenantId: this.tenantId,
+      clienteId: this.clienteId,
+      nombre: this.nombre,
+      direccion: this.direccion,
+      zonaId: this.zonaId,
+      contactoNombre: this.contactoNombre,
+      contactoTelefono: this.contactoTelefono,
+      reglas: this.reglas,
+      creadoEn: this.creadoEn,
+    };
   }
 }
 

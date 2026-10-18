@@ -9,6 +9,8 @@ router.use(authenticate);
 
 router.post('/company', clientsController.registerCompany);
 router.post('/', clientsController.registerCompany);
+router.post('/companies/:id/sites', clientsController.addSite);
+router.get('/companies/:id/sites', clientsController.getSites);
 router.post('/:id/sites', clientsController.addSite);
 router.get('/:id/sites', clientsController.getSites);
 

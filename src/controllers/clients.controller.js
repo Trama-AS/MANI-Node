@@ -110,7 +110,7 @@ async function addSite(req, res, next) {
     });
   }
 
-  const { nombre, direccion, zonaId, reglas } = req.body ?? {};
+  const { nombre, direccion, zonaId, contactoNombre, contactoTelefono, reglas } = req.body ?? {};
 
   try {
     const savedSite = await container.addSiteToCompanyClientUseCase.execute({
@@ -119,6 +119,8 @@ async function addSite(req, res, next) {
       nombre,
       direccion,
       zonaId,
+      contactoNombre,
+      contactoTelefono,
       reglas,
       userId,
       userRole,
@@ -134,6 +136,8 @@ async function addSite(req, res, next) {
         nombre: savedSite.nombre,
         direccion: savedSite.direccion,
         zonaId: savedSite.zonaId,
+        contactoNombre: savedSite.contactoNombre,
+        contactoTelefono: savedSite.contactoTelefono,
         reglas: savedSite.reglas,
       },
     });

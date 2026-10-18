@@ -28,7 +28,7 @@ class AddSiteToCompanyClientUseCase {
    * @returns {Promise<Site>}
    */
   async execute(input) {
-    const { clienteId, tenantId, nombre, direccion, zonaId, reglas, userId, userRole, correlationId = 'none' } = input;
+    const { clienteId, tenantId, nombre, direccion, zonaId, contactoNombre, contactoTelefono, reglas, userId, userRole, correlationId = 'none' } = input;
 
     if (!clienteId) throw new ValidationError('clienteId es requerido', 'VALIDATION_ERROR');
     if (!tenantId) throw new ValidationError('tenantId es requerido', 'VALIDATION_ERROR');
@@ -53,6 +53,8 @@ class AddSiteToCompanyClientUseCase {
       nombre,
       direccion,
       zonaId,
+      contactoNombre,
+      contactoTelefono,
       reglas,
     });
     site.validate();
