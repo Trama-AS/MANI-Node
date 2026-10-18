@@ -40,4 +40,25 @@ async function registerAllyNaturalPerson(req, res, next) {
   }
 }
 
-module.exports = { registerAllyNaturalPerson };
+// Registro de Cliente persona natural (US-02.2.1-M2): sin archivos, body
+// JSON puro (express.json(), sin multer -- a diferencia del registro de
+// Aliado, que sí requiere KYC multipart).
+async function registerClientNaturalPerson(req, res, next) {
+  try {
+    const tenantSlug = req.header('X-Tenant-Slug');
+    const result = await container.registerClientNaturalPersonUseCase.execute({
+      tenantSlug,
+      fullName: req.body.fullName,
+      email: req.body.email,
+      password: req.body.password,
+      phone: req.body.phone,
+      direccionHogar: req.body.direccionHogar,
+    });
+
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { registerAllyNaturalPerson, registerClientNaturalPerson };
