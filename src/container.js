@@ -36,6 +36,15 @@ const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUse
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 
+const InMemoryCotizacionRepository = require('./infrastructure/repositories/InMemoryCotizacionRepository');
+const SupabaseCotizacionRepository = require('./infrastructure/repositories/SupabaseCotizacionRepository');
+const InMemorySolicitudRepository = require('./infrastructure/repositories/InMemorySolicitudRepository');
+const SupabaseSolicitudRepository = require('./infrastructure/repositories/SupabaseSolicitudRepository');
+const InMemoryHistorialSolicitudRepository = require('./infrastructure/repositories/InMemoryHistorialSolicitudRepository');
+const SupabaseHistorialSolicitudRepository = require('./infrastructure/repositories/SupabaseHistorialSolicitudRepository');
+
+const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
+
 const config = require('./config');
 
 class Container {
@@ -81,6 +90,9 @@ class Container {
       });
       this.clienteRepository = new SupabaseClienteRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.sitioRepository = new SupabaseSitioRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.cotizacionRepository = new SupabaseCotizacionRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.solicitudRepository = new SupabaseSolicitudRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.historialSolicitudRepository = new SupabaseHistorialSolicitudRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
@@ -97,11 +109,20 @@ class Container {
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
       this.clienteRepository = new InMemoryClienteRepository();
       this.sitioRepository = new InMemorySitioRepository();
+      this.cotizacionRepository = new InMemoryCotizacionRepository();
+      this.solicitudRepository = new InMemorySolicitudRepository();
+      this.historialSolicitudRepository = new InMemoryHistorialSolicitudRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
+    this.createQuoteUseCase = new CreateQuoteUseCase({
+      cotizacionRepository: this.cotizacionRepository,
+      solicitudRepository: this.solicitudRepository,
+      historialSolicitudRepository: this.historialSolicitudRepository,
+    });
+
     this.listTenantsUseCase = new ListTenantsUseCase({
       tenantRepository: this.tenantRepository,
     });

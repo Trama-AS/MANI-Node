@@ -2,6 +2,8 @@ const { Router } = require('express');
 const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
+const quotesController = require('../controllers/quotes.controller');
+const authenticate = require('../middlewares/auth.middleware');
 
 const router = Router();
 
@@ -12,5 +14,9 @@ router.get('/profiles/me/categories/available', profilesController.listAvailable
 router.put('/profiles/me/categories', profilesController.declareAllyCategories);
 router.post('/profiles/me/categories', profilesController.declareAllyCategories);
 router.get('/catalog', catalogController.listCategories);
+
+// RF-15 / US-04.2.1 / SCRUM-865: Cotización con mano de obra y materiales separados
+router.post('/cotizaciones', authenticate, quotesController.createQuote);
+router.post('/solicitudes/:solicitudId/cotizaciones', authenticate, quotesController.createQuote);
 
 module.exports = router;
