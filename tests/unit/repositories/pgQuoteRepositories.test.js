@@ -182,3 +182,14 @@ test('cotizacion.updateEstado con soloSiEstado condiciona el UPDATE al estado ac
   assert.match(update.sql, /AND \(\$4::text IS NULL OR estado = \$4::text\)/);
   assert.deepEqual(update.params, ['ACEPTADA', 'c1', TENANT, 'PENDIENTE']);
 });
+
+test('solicitud.transicionarEstado condiciona el UPDATE a los estados de origen y devuelve null si no aplica', async () => {
+  const { factory, queries } = fakeFactory(() => ({ rows: [] }));
+
+  const result = await new PgSolicitudRepository({ pgPoolFactory: factory }).transicionarEstado(ctx, SOL, ['ACEPTADA', 'ASIGNADA'], 'EN_EJECUCION');
+
+  assert.equal(result, null);
+  const update = queries.find((q) => q.sql.startsWith('UPDATE solicitud'));
+  assert.match(update.sql, /estado = ANY\(\$4::text\[\]\)/);
+  assert.deepEqual(update.params, ['EN_EJECUCION', SOL, TENANT, ['ACEPTADA', 'ASIGNADA']]);
+});

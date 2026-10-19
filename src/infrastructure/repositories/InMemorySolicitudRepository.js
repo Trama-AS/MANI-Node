@@ -48,6 +48,12 @@ class InMemorySolicitudRepository extends ISolicitudRepository {
     this.solicitudes.set(id, updated);
     return new Solicitud(updated);
   }
+
+  async transicionarEstado(ctx, id, desde, hacia) {
+    const found = this.solicitudes.get(id);
+    if (!found || found.tenantId !== ctx.tenantId || !desde.includes(found.estado)) return null;
+    return this.updateEstado(ctx, id, hacia);
+  }
 }
 
 module.exports = InMemorySolicitudRepository;

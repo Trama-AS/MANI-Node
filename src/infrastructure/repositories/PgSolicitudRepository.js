@@ -56,6 +56,18 @@ class PgSolicitudRepository extends ISolicitudRepository {
       return rows.length ? toEntity(rows[0]) : null;
     });
   }
+
+  async transicionarEstado(ctx, id, desde, hacia) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const { rows } = await client.query(
+        `UPDATE solicitud SET estado = $1, updated_at = now()
+         WHERE id = $2 AND tenant_id = $3 AND estado = ANY($4::text[])
+         RETURNING ${COLUMNS}`,
+        [hacia, id, ctx.tenantId, desde]
+      );
+      return rows.length ? toEntity(rows[0]) : null;
+    });
+  }
 }
 
 module.exports = PgSolicitudRepository;

@@ -15,6 +15,14 @@ class ISolicitudRepository {
   async updateEstado(_ctx, _id, _estado) {
     throw new Error('Método updateEstado no implementado');
   }
+
+  /**
+   * Transición atómica: cambia a `hacia` solo si el estado actual está en `desde`. Devuelve la solicitud
+   * actualizada, o null si no había fila en un estado de origen válido (dos llamadas simultáneas no se pisan).
+   */
+  async transicionarEstado(_ctx, _id, _desde, _hacia) {
+    throw new Error('Método transicionarEstado no implementado');
+  }
 }
 
 module.exports = ISolicitudRepository;

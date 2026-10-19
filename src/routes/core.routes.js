@@ -31,10 +31,6 @@ router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQu
 
 // RF-18 / US-04.3.1 / SCRUM-868: Marcar inicio/fin de ejecución
 router.post('/solicitudes/:id/iniciar', authenticate, servicesController.startExecution);
-router.post('/solicitudes/:id/iniciar-ejecucion', authenticate, servicesController.startExecution);
-router.post('/servicios/:id/iniciar', authenticate, servicesController.startExecution);
 router.post('/solicitudes/:id/finalizar', authenticate, servicesController.finishExecution);
-router.post('/solicitudes/:id/finalizar-ejecucion', authenticate, servicesController.finishExecution);
-router.post('/servicios/:id/finalizar', authenticate, servicesController.finishExecution);
 
 module.exports = router;

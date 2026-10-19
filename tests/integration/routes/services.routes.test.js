@@ -1,3 +1,4 @@
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
@@ -29,56 +30,63 @@ test('POST /api/v1/solicitudes/:id/iniciar con rol CLIENT responde 403 FORBIDDEN
   assert.equal(res.body.code, 'FORBIDDEN');
 });
 
-test('POST /api/v1/solicitudes/:id/finalizar sin haber iniciado responde 409 CONFLICT', async () => {
-  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
-  const sol = await container.solicitudRepository.create({
+let contador = 0;
+function nuevaSolicitud(estado) {
+  contador += 1;
+  return container.solicitudRepository.seed({
+    id: `sol-ejec-${contador}`,
     tenantId: 'trama-demo',
-    clienteId: 'demo-client-1',
-    aliadoId: 'demo-ally-1',
+    clienteId: 'demo-cliente-1',
+    aliadoId: 'demo-aliado-1',
     categoriaId: 'cat-plomeria',
     zonaId: 'zona-norte',
-    descripcion: 'Instalación lavamanos',
-    estado: 'ASIGNADA',
+    descripcion: 'Servicio de prueba',
+    estado,
   });
+}
 
-  const res = await request(app)
-    .post(`/api/v1/solicitudes/${sol.id}/finalizar`)
-    .set('Authorization', `Bearer ${allyToken}`);
+test('POST /api/v1/solicitudes/:id/finalizar sin haber iniciado responde 409 CONFLICT', async () => {
+  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const sol = nuevaSolicitud('ASIGNADA');
+
+  const res = await request(app).post(`/api/v1/solicitudes/${sol.id}/finalizar`).set('Authorization', `Bearer ${allyToken}`);
 
   assert.equal(res.status, 409);
   assert.equal(res.body.code, 'CONFLICT');
-  assert.ok(res.body.error.includes('no ha sido iniciado'));
 });
 
-test('Flujo completo inicio -> fin de ejecución con persistencia de timestamps y estados', async () => {
+test('Flujo completo inicio -> fin: estados y eventos INICIO_EJECUCION / FIN_EJECUCION con su hora', async () => {
   const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
-  const sol = await container.solicitudRepository.create({
-    tenantId: 'trama-demo',
-    clienteId: 'demo-client-1',
-    aliadoId: 'demo-ally-1',
-    categoriaId: 'cat-plomeria',
-    zonaId: 'zona-norte',
-    descripcion: 'Cambio de empaques',
-    estado: 'ACEPTADA',
-  });
+  const sol = nuevaSolicitud('ACEPTADA');
 
-  // 1. Iniciar ejecución
   const startRes = await request(app)
     .post(`/api/v1/solicitudes/${sol.id}/iniciar`)
     .set('Authorization', `Bearer ${allyToken}`)
     .send({ observacion: 'Llegada al sitio' });
-
   assert.equal(startRes.status, 200);
   assert.equal(startRes.body.solicitud.estado, 'EN_EJECUCION');
-  assert.ok(startRes.body.solicitud.fechaInicioEjecucion);
+  assert.equal(startRes.body.evento.tipoEvento, 'INICIO_EJECUCION');
+  assert.ok(startRes.body.evento.fecha);
 
-  // 2. Finalizar ejecución
   const finishRes = await request(app)
     .post(`/api/v1/solicitudes/${sol.id}/finalizar`)
     .set('Authorization', `Bearer ${allyToken}`)
-    .send({ observacion: 'Reparación terminada con éxito' });
-
+    .send({ observacion: 'Reparación terminada' });
   assert.equal(finishRes.status, 200);
   assert.equal(finishRes.body.solicitud.estado, 'FINALIZADA');
-  assert.ok(finishRes.body.solicitud.fechaFinEjecucion);
+  assert.equal(finishRes.body.evento.tipoEvento, 'FIN_EJECUCION');
+});
+
+test('cross-tenant y alias retirados: otro tenant no ve la solicitud y /iniciar-ejecucion ya no existe', async () => {
+  const sol = nuevaSolicitud('ACEPTADA');
+  const otroTenant = signTestToken({ sub: 'demo-ally-1', tenantId: 'otro-tenant', role: 'aliado' });
+  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const cruzado = await request(app).post(`/api/v1/solicitudes/${sol.id}/iniciar`).set('Authorization', `Bearer ${otroTenant}`);
+  assert.ok([403, 404].includes(cruzado.status));
+
+  for (const ruta of [`/api/v1/solicitudes/${sol.id}/iniciar-ejecucion`, `/api/v1/servicios/${sol.id}/iniciar`, `/api/v1/solicitudes/${sol.id}/finalizar-ejecucion`]) {
+    const res = await request(app).post(ruta).set('Authorization', `Bearer ${allyToken}`);
+    assert.equal(res.status, 404);
+  }
 });

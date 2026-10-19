@@ -152,7 +152,8 @@ class Container {
 
     this.executionLifecycleUseCase = new ExecutionLifecycleUseCase({
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      aliadoRepository: this.aliadoRepository,
     });
 
     this.listTenantsUseCase = new ListTenantsUseCase({
