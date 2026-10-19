@@ -1,75 +1,58 @@
-const crypto = require('crypto');
 const ISolicitudRepository = require('../../domain/ports/ISolicitudRepository');
 const Solicitud = require('../../domain/entities/Solicitud');
 
+/** Adaptador en memoria (DEV/test sin DATABASE_URL). Mismo aislamiento por tenant que el real. */
 class InMemorySolicitudRepository extends ISolicitudRepository {
   constructor() {
     super();
     this.solicitudes = new Map();
 
-    const demoSolicitud = new Solicitud({
+    // Solicitud de demostración asignada al aliado de demostración (`aliado.id` = demo-aliado-1).
+    const demo = new Solicitud({
       id: 'sol-demo-1',
       tenantId: 'trama-demo',
-      clienteId: 'demo-client-1',
-      aliadoId: 'demo-ally-1',
+      clienteId: 'demo-cliente-1',
       categoriaId: 'cat-plomeria',
       zonaId: 'zona-norte',
+      aliadoId: 'demo-aliado-1',
       descripcion: 'Reparación de fuga en baño principal',
-      direccion: 'Calle 100 # 15-20',
       estado: 'ASIGNADA',
       fechaCreacion: new Date(Date.now() - 3600000).toISOString(),
     });
-    this.solicitudes.set(demoSolicitud.id, demoSolicitud);
+    this.solicitudes.set(demo.id, demo);
   }
 
-  async create(solicitud) {
-    const id = solicitud.id || crypto.randomUUID();
-    const entity = new Solicitud({
-      ...solicitud,
-      id,
-    });
-    this.solicitudes.set(id, entity);
+  /** Solo para pruebas y semillas de DEV. */
+  seed(solicitud) {
+    const entity = new Solicitud(solicitud);
+    this.solicitudes.set(entity.id, entity);
     return entity;
   }
 
-  async findById(id) {
+  async findById(ctx, id) {
     const found = this.solicitudes.get(id);
-    return found ? new Solicitud(found) : null;
+    return found && found.tenantId === ctx.tenantId ? new Solicitud(found) : null;
   }
 
-  async findByClienteId(clienteId, { tenantId, estado } = {}) {
+  async findByClienteId(ctx, clienteId, { estado } = {}) {
     return [...this.solicitudes.values()]
-      .filter((s) => {
-        if (s.clienteId !== clienteId) return false;
-        if (tenantId && s.tenantId !== tenantId) return false;
-        if (estado && s.estado !== estado) return false;
-        return true;
-      })
+      .filter((s) => s.tenantId === ctx.tenantId && s.clienteId === clienteId && (!estado || s.estado === estado))
       .sort((a, b) => new Date(b.fechaCreacion) - new Date(a.fechaCreacion))
       .map((s) => new Solicitud(s));
   }
 
-  async findByAliadoId(aliadoId, { tenantId, estado } = {}) {
-    return [...this.solicitudes.values()]
-      .filter((s) => {
-        if (s.aliadoId !== aliadoId) return false;
-        if (tenantId && s.tenantId !== tenantId) return false;
-        if (estado && s.estado !== estado) return false;
-        return true;
-      })
-      .sort((a, b) => new Date(b.fechaCreacion) - new Date(a.fechaCreacion))
-      .map((s) => new Solicitud(s));
+  async updateEstado(ctx, id, estado) {
+    const found = this.solicitudes.get(id);
+    if (!found || found.tenantId !== ctx.tenantId) return null;
+    const updated = new Solicitud({ ...found, estado, fechaActualizacion: new Date().toISOString() });
+    this.solicitudes.set(id, updated);
+    return new Solicitud(updated);
   }
 
-  async update(solicitud) {
-    const existing = this.solicitudes.get(solicitud.id);
-    if (!existing) return null;
-    const updated = new Solicitud({
-      ...existing,
-      ...solicitud,
-    });
-    this.solicitudes.set(solicitud.id, updated);
-    return updated;
+  async transicionarEstado(ctx, id, desde, hacia) {
+    const found = this.solicitudes.get(id);
+    if (!found || found.tenantId !== ctx.tenantId || !desde.includes(found.estado)) return null;
+    return this.updateEstado(ctx, id, hacia);
   }
 }
 

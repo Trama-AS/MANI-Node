@@ -12,6 +12,11 @@ class IClienteRepository {
     throw new Error('Método create() no implementado en IClienteRepository');
   }
 
+  /** Cliente del usuario en el tenant (`cliente.id` es distinto del id del usuario). Null si no existe. */
+  async findByUsuarioId(_tenantId, _usuarioId) {
+    throw new Error('Método findByUsuarioId() no implementado en IClienteRepository');
+  }
+
   /** Compensación (B3): deshace create() si un paso posterior del registro falla. */
   async deleteByUsuarioId(_tenantId, _usuarioId) {
     throw new Error('Método deleteByUsuarioId() no implementado en IClienteRepository');

@@ -1,133 +1,86 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-
 const RegisterServiceEventUseCase = require('../../../../src/application/useCases/services/RegisterServiceEventUseCase');
 const InMemorySolicitudRepository = require('../../../../src/infrastructure/repositories/InMemorySolicitudRepository');
-const InMemoryHistorialSolicitudRepository = require('../../../../src/infrastructure/repositories/InMemoryHistorialSolicitudRepository');
-const Solicitud = require('../../../../src/domain/entities/Solicitud');
+const InMemoryEventoServicioRepository = require('../../../../src/infrastructure/repositories/InMemoryEventoServicioRepository');
 
-test('RegisterServiceEventUseCase - validaciones del constructor', () => {
-  assert.throws(() => new RegisterServiceEventUseCase({}), /solicitudRepository es requerido/);
-  assert.throws(
-    () => new RegisterServiceEventUseCase({ solicitudRepository: {} }),
-    /historialSolicitudRepository es requerido/
-  );
+const TENANT = 'tenant-a';
+const ally = { userId: 'usuario-aliado-1', tenantId: TENANT, role: 'ALLY' };
+
+function setup({ aliado = { id: 'aliado-1', usuarioId: 'usuario-aliado-1', tenantId: TENANT }, solicitud = {} } = {}) {
+  const solicitudRepository = new InMemorySolicitudRepository();
+  const eventoServicioRepository = new InMemoryEventoServicioRepository();
+  solicitudRepository.seed({ id: 'sol-1', tenantId: TENANT, clienteId: 'cl', categoriaId: 'c', zonaId: 'z', aliadoId: 'aliado-1', estado: 'EN_EJECUCION', ...solicitud });
+  const subidas = [];
+  const fileStorageService = { upload: async ({ path }) => { subidas.push(path); return { path: `bucket/${path}` }; } };
+  const aliadoRepository = { findByUsuarioId: async (t, u) => (aliado && aliado.tenantId === t && aliado.usuarioId === u ? aliado : null) };
+  return {
+    useCase: new RegisterServiceEventUseCase({ solicitudRepository, eventoServicioRepository, aliadoRepository, fileStorageService }),
+    eventoServicioRepository,
+    subidas,
+  };
+}
+
+const foto = { originalname: 'té mp.png', mimetype: 'image/png', buffer: Buffer.from('x') };
+
+test('registra el evento en evento_servicio con la ruta de la evidencia bajo {tenant}/{usuario}/eventos/', async () => {
+  const { useCase, eventoServicioRepository, subidas } = setup();
+
+  const { evento } = await useCase.execute({ user: ally, solicitudId: 'sol-1', observacion: ' Termostato quemado ', file: foto });
+
+  assert.equal(evento.tipoEvento, 'EVENTO_EJECUCION');
+  assert.equal(evento.descripcion, 'Termostato quemado');
+  assert.match(subidas[0], /^tenant-a\/usuario-aliado-1\/eventos\/sol-1-\d+-t/);
+  assert.equal(evento.evidenciaRuta, `bucket/${subidas[0]}`);
+  assert.equal((await eventoServicioRepository.findBySolicitudId({ tenantId: TENANT }, 'sol-1')).length, 1);
 });
 
-test('RegisterServiceEventUseCase - rechaza si falta sesión o el rol no es ALLY', async () => {
-  const useCase = new RegisterServiceEventUseCase({
-    solicitudRepository: new InMemorySolicitudRepository(),
-    historialSolicitudRepository: new InMemoryHistorialSolicitudRepository(),
-  });
+test('sin foto el evento se guarda sin evidencia', async () => {
+  const { useCase, subidas } = setup();
 
-  await assert.rejects(
-    () => useCase.execute({ user: null, solicitudId: 'sol-1', observacion: 'Imprevisto' }),
-    { statusCode: 403, message: 'Sesión requerida' }
-  );
+  const { evento } = await useCase.execute({ user: ally, solicitudId: 'sol-1', observacion: 'Todo en orden' });
 
-  await assert.rejects(
-    () =>
-      useCase.execute({
-        user: { userId: 'u-1', tenantId: 'trama-demo', role: 'CLIENT' },
-        solicitudId: 'sol-1',
-        observacion: 'Imprevisto',
-      }),
-    { statusCode: 403, message: /Solo el aliado/ }
-  );
+  assert.equal(evento.evidenciaRuta, null);
+  assert.equal(subidas.length, 0);
 });
 
-test('RegisterServiceEventUseCase - valida solicitudId, existencia y tenant', async () => {
-  const useCase = new RegisterServiceEventUseCase({
-    solicitudRepository: new InMemorySolicitudRepository(),
-    historialSolicitudRepository: new InMemoryHistorialSolicitudRepository(),
+for (const [name, input] of [
+  ['una URL de foto en el cuerpo', { observacion: 'Imprevisto', fotoUrl: 'https://evil.example/x.png' }],
+  ['un archivo que no es imagen', { observacion: 'Imprevisto', file: { ...foto, mimetype: 'application/pdf' } }],
+  ['observación corta', { observacion: 'ok' }],
+  ['observación de más de 2000 caracteres', { observacion: 'x'.repeat(2001) }],
+  ['sin solicitud', { observacion: 'Imprevisto', solicitudId: '' }],
+]) {
+  test(`validación: ${name} responde 400 y no escribe`, async () => {
+    const { useCase, eventoServicioRepository } = setup();
+
+    await assert.rejects(() => useCase.execute({ user: ally, solicitudId: 'sol-1', ...input }), (e) => e.statusCode === 400);
+    assert.equal((await eventoServicioRepository.findBySolicitudId({ tenantId: TENANT }, 'sol-1')).length, 0);
   });
-  const user = { userId: 'demo-ally-1', tenantId: 'trama-demo', role: 'ALLY' };
+}
 
-  await assert.rejects(
-    () => useCase.execute({ user, solicitudId: '', observacion: 'Tubería rota' }),
-    { statusCode: 400, message: 'El id de la solicitud es obligatorio' }
-  );
-
-  await assert.rejects(
-    () => useCase.execute({ user, solicitudId: 'sol-no-existe', observacion: 'Tubería rota' }),
-    { statusCode: 404, message: 'Solicitud no encontrada' }
-  );
-
-  const userOtroTenant = { userId: 'demo-ally-1', tenantId: 'otro-tenant', role: 'ALLY' };
-  await assert.rejects(
-    () => useCase.execute({ user: userOtroTenant, solicitudId: 'sol-demo-1', observacion: 'Tubería rota' }),
-    { statusCode: 404, message: 'Solicitud no encontrada' }
-  );
+test('compara solicitud.aliado_id con aliado.id: otro aliado 403; sin perfil 403; otro tenant 404', async () => {
+  await assert.rejects(() => setup({ solicitud: { aliadoId: 'aliado-2' } }).useCase.execute({ user: ally, solicitudId: 'sol-1', observacion: 'Imprevisto' }), (e) => e.statusCode === 403);
+  await assert.rejects(() => setup({ aliado: null }).useCase.execute({ user: ally, solicitudId: 'sol-1', observacion: 'Imprevisto' }), (e) => e.statusCode === 403);
+  await assert.rejects(() => setup({ solicitud: { tenantId: 'tenant-b' } }).useCase.execute({ user: ally, solicitudId: 'sol-1', observacion: 'Imprevisto' }), (e) => e.statusCode === 404);
 });
 
-test('RegisterServiceEventUseCase - rechaza si solicitud pertenece a otro aliado o está finalizada', async () => {
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const useCase = new RegisterServiceEventUseCase({
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: new InMemoryHistorialSolicitudRepository(),
+for (const estado of ['FINALIZADA', 'CANCELADA', 'RECHAZADA']) {
+  test(`un servicio ${estado} no admite eventos (409)`, async () => {
+    await assert.rejects(() => setup({ solicitud: { estado } }).useCase.execute({ user: ally, solicitudId: 'sol-1', observacion: 'Imprevisto' }), (e) => e.statusCode === 409);
   });
+}
 
-  const userAjeno = { userId: 'aliado-ajeno', tenantId: 'trama-demo', role: 'ALLY' };
-  await assert.rejects(
-    () => useCase.execute({ user: userAjeno, solicitudId: 'sol-demo-1', observacion: 'Comentario' }),
-    { statusCode: 403, message: /asignada a otro aliado/ }
-  );
+test('un cliente o una sesión sin tenant no registran eventos (403)', async () => {
+  const { useCase } = setup();
 
-  const solFinalizada = await solicitudRepo.create(
-    new Solicitud({
-      tenantId: 'trama-demo',
-      clienteId: 'c-1',
-      aliadoId: 'demo-ally-1',
-      categoriaId: 'cat-1',
-      zonaId: 'z-1',
-      descripcion: 'Finalizada',
-      estado: 'FINALIZADA',
-    })
-  );
-
-  const userCorrecto = { userId: 'demo-ally-1', tenantId: 'trama-demo', role: 'ALLY' };
-  await assert.rejects(
-    () => useCase.execute({ user: userCorrecto, solicitudId: solFinalizada.id, observacion: 'Comentario' }),
-    { statusCode: 409, message: /en estado FINALIZADA/ }
-  );
+  await assert.rejects(() => useCase.execute({ user: { ...ally, role: 'CLIENT' }, solicitudId: 'sol-1', observacion: 'Imprevisto' }), (e) => e.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ user: { userId: 'x', role: 'ALLY' }, solicitudId: 'sol-1', observacion: 'Imprevisto' }), (e) => e.statusCode === 403);
 });
 
-test('RegisterServiceEventUseCase - valida longitud de comentario', async () => {
-  const useCase = new RegisterServiceEventUseCase({
-    solicitudRepository: new InMemorySolicitudRepository(),
-    historialSolicitudRepository: new InMemoryHistorialSolicitudRepository(),
-  });
-  const user = { userId: 'demo-ally-1', tenantId: 'trama-demo', role: 'ALLY' };
-
-  await assert.rejects(
-    () => useCase.execute({ user, solicitudId: 'sol-demo-1', observacion: '  ' }),
-    { statusCode: 400, message: /mínimo 3 caracteres/ }
-  );
-});
-
-test('RegisterServiceEventUseCase - registra evento exitosamente con foto y trazabilidad', async () => {
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const historialRepo = new InMemoryHistorialSolicitudRepository();
-  const useCase = new RegisterServiceEventUseCase({
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: historialRepo,
-  });
-
-  const user = { userId: 'demo-ally-1', tenantId: 'trama-demo', role: 'ALLY' };
-  const res = await useCase.execute({
-    user,
-    solicitudId: 'sol-demo-1',
-    observacion: 'Se encontró daño en la válvula principal que requirió llave de paso extra',
-    fotoUrl: 'https://storage.mani.local/evidencias/valvula-danada.jpg',
-  });
-
-  assert.ok(res.evento.id);
-  assert.equal(res.evento.solicitudId, 'sol-demo-1');
-  assert.equal(res.evento.usuarioId, 'demo-ally-1');
-  assert.ok(res.evento.observacion.includes('válvula principal'));
-  assert.equal(res.evento.fotoUrl, 'https://storage.mani.local/evidencias/valvula-danada.jpg');
-
-  const eventos = await historialRepo.findBySolicitudId('sol-demo-1');
-  assert.equal(eventos.length, 1);
-  assert.equal(eventos[0].fotoUrl, 'https://storage.mani.local/evidencias/valvula-danada.jpg');
+test('exige sus dependencias', () => {
+  assert.throws(() => new RegisterServiceEventUseCase({}), /solicitudRepository/);
+  assert.throws(() => new RegisterServiceEventUseCase({ solicitudRepository: {} }), /eventoServicioRepository/);
+  assert.throws(() => new RegisterServiceEventUseCase({ solicitudRepository: {}, eventoServicioRepository: {} }), /aliadoRepository/);
+  assert.throws(() => new RegisterServiceEventUseCase({ solicitudRepository: {}, eventoServicioRepository: {}, aliadoRepository: {} }), /fileStorageService/);
 });
