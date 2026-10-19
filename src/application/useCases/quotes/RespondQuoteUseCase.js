@@ -12,6 +12,20 @@ const TRANSICIONES = {
   AJUSTAR: { cotizacion: 'AJUSTE_SOLICITADO', solicitud: 'COTIZANDO', evento: 'AJUSTE_SOLICITADO' },
 };
 
+// Texto que acompaña la respuesta: el rechazo exige motivo y el ajuste exige comentario.
+function detalleDeRespuesta(accion, comentario, motivo) {
+  if (accion === 'RECHAZAR') {
+    const texto = String(motivo || comentario || '').trim();
+    if (texto.length < 5) throw new ValidationError('El motivo de rechazo es obligatorio (mínimo 5 caracteres)');
+    return texto;
+  }
+  const texto = comentario ? String(comentario).trim() : '';
+  if (accion === 'AJUSTAR' && texto.length < 3) {
+    throw new ValidationError('Debes indicar el comentario u observación para solicitar el ajuste');
+  }
+  return texto;
+}
+
 /**
  * US-04.2.3 (SCRUM-867): el cliente dueño de la solicitud acepta, rechaza o pide ajustar una cotización.
  * - El cliente se resuelve desde el usuario del JWT y se compara `solicitud.cliente_id` con `cliente.id`.
@@ -47,14 +61,7 @@ class RespondQuoteUseCase {
       throw new ValidationError('Acción no permitida. Debe ser ACEPTAR, RECHAZAR o AJUSTAR');
     }
 
-    let detalle = comentario ? String(comentario).trim() : '';
-    if (accionNormalizada === 'RECHAZAR') {
-      detalle = String(motivo || comentario || '').trim();
-      if (detalle.length < 5) throw new ValidationError('El motivo de rechazo es obligatorio (mínimo 5 caracteres)');
-    }
-    if (accionNormalizada === 'AJUSTAR' && detalle.length < 3) {
-      throw new ValidationError('Debes indicar el comentario u observación para solicitar el ajuste');
-    }
+    const detalle = detalleDeRespuesta(accionNormalizada, comentario, motivo);
 
     const ctx = { tenantId: user.tenantId, userId: user.userId, role: user.role };
 
