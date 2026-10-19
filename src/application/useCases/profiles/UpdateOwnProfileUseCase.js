@@ -73,7 +73,17 @@ class UpdateOwnProfileUseCase {
     const fullName = rawBody.fullName ?? rawBody.nombre;
     const phone = rawBody.phone ?? rawBody.telefono;
     const address = rawBody.address ?? rawBody.direccion;
-    let photoUrl = rawBody.photoUrl ?? rawBody.fotoUrl ?? rawBody.foto_url;
+    // La foto solo entra como archivo subido a Storage (ruta {tenant_id}/{usuario_id}/...), nunca como URL
+    // en el cuerpo: una URL arbitraria se saltaría el control de ruta por tenant (ADR-0032 §6).
+    for (const field of ['photoUrl', 'fotoUrl', 'foto_url']) {
+      if (Object.prototype.hasOwnProperty.call(rawBody, field)) {
+        throw new ValidationError(
+          'La foto de perfil solo se actualiza subiendo un archivo a POST /profiles/me/photo',
+          'MANI-PRF-422'
+        );
+      }
+    }
+    let photoUrl;
 
     const changes = {};
 
@@ -130,15 +140,6 @@ class UpdateOwnProfileUseCase {
       } else {
         photoUrl = path;
       }
-    } else if (photoUrl !== undefined) {
-      const cleanUrl = typeof photoUrl === 'string' ? photoUrl.trim() : '';
-      if (!cleanUrl || !/\.(png|jpe?g|webp)(\?.*)?$/i.test(cleanUrl)) {
-        throw new ValidationError(
-          'La foto de perfil debe tener un formato de imagen soportado (.png, .jpg, .jpeg, .webp)',
-          'MANI-PRF-422'
-        );
-      }
-      photoUrl = cleanUrl;
     }
 
     if (photoUrl !== undefined) {

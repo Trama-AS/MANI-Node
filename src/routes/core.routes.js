@@ -20,11 +20,10 @@ const photoMiddleware = uploadPhoto.fields([
 
 router.get('/tenants', tenantsController.listTenants);
 router.get('/profiles/me', profilesController.getOwnProfile);
-router.patch('/profiles/me', photoMiddleware, profilesController.updateOwnProfile);
-router.put('/profiles/me', photoMiddleware, profilesController.updateOwnProfile);
-router.post('/profiles/me/photo', photoMiddleware, profilesController.updateOwnProfile);
-router.patch('/profiles/:id', photoMiddleware, profilesController.updateOwnProfile);
-router.put('/profiles/:id', photoMiddleware, profilesController.updateOwnProfile);
+// SCRUM-854: una ruta por operación sobre el perfil propio. Los datos van por PATCH (JSON) y la foto
+// solo por subida de archivo; no hay ruta por :id porque el caso de uso edita únicamente el perfil propio.
+router.patch('/profiles/me', profilesController.updateOwnProfile);
+router.post('/profiles/me/photo', photoMiddleware, profilesController.updateOwnProfilePhoto);
 router.get('/profiles/me/categories', profilesController.getAllyCategories);
 router.get('/profiles/me/categories/available', profilesController.listAvailableAllyCategories);
 router.put('/profiles/me/categories', profilesController.declareAllyCategories);

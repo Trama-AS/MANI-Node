@@ -128,6 +128,19 @@ async function updateOwnProfile(req, res, next) {
   }
 }
 
+async function updateOwnProfilePhoto(req, res, next) {
+  const uploadedFiles = req.files || {};
+  const hasFile = Boolean(req.file || uploadedFiles.photo?.[0] || uploadedFiles.avatar?.[0] || uploadedFiles.foto?.[0]);
+  if (!hasFile) {
+    return res.status(400).json({
+      error: 'Debe adjuntar la foto de perfil como archivo (campo photo)',
+      code: 'MANI-PRF-422',
+      correlationId: req.correlationId || 'none',
+    });
+  }
+  return updateOwnProfile(req, res, next);
+}
+
 async function listAvailableAllyCategories(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -161,4 +174,5 @@ module.exports = {
   getAllyCategories,
   declareAllyCategories,
   listAvailableAllyCategories,
+  updateOwnProfilePhoto,
 };

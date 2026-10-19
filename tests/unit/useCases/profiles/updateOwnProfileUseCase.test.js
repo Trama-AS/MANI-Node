@@ -127,3 +127,16 @@ test('SCRUM-1028: valida formato de teléfono, dirección no vacía y formato de
     }
   );
 });
+
+test('UpdateOwnProfileUseCase: rechaza una URL de foto en el cuerpo sin tocar el repositorio (SCRUM-854)', async () => {
+  let called = false;
+  const useCase = new UpdateOwnProfileUseCase({
+    profileRepository: { updateOwnProfile: async () => { called = true; return null; } },
+  });
+
+  await assert.rejects(
+    () => useCase.execute({ userId: 'u1', tenantId: 't1', payload: { photoUrl: 'https://evil.example/x.png' } }),
+    (err) => err.code === 'MANI-PRF-422'
+  );
+  assert.equal(called, false);
+});
