@@ -42,12 +42,20 @@ const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/I
 const SupabaseLegalDocumentRepository = require('./infrastructure/repositories/SupabaseLegalDocumentRepository');
 const InMemoryUserConsentRepository = require('./infrastructure/repositories/InMemoryUserConsentRepository');
 const SupabaseUserConsentRepository = require('./infrastructure/repositories/SupabaseUserConsentRepository');
+const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
+const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
+const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
+const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
+const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
 const CreateAllyAbsenceUseCase = require('./application/useCases/availability/CreateAllyAbsenceUseCase');
 const UpdateAllyAbsenceUseCase = require('./application/useCases/availability/UpdateAllyAbsenceUseCase');
 const DeleteAllyAbsenceUseCase = require('./application/useCases/availability/DeleteAllyAbsenceUseCase');
+
+const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
+const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
 
 const config = require('./config');
 
@@ -109,6 +117,11 @@ class Container {
       this.userConsentRepository = new SupabaseUserConsentRepository({
         supabaseClientFactory: this.supabaseClientFactory,
       });
+      if (this.pgPoolFactory.isConfigured()) {
+        this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
+      } else {
+        this.companyClientRepository = new InMemoryCompanyClientRepository();
+      }
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
@@ -124,6 +137,7 @@ class Container {
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
       this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
       this.userConsentRepository = new InMemoryUserConsentRepository();
+      this.companyClientRepository = new InMemoryCompanyClientRepository();
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -164,6 +178,14 @@ class Container {
       catalogRepository: this.catalogRepository,
     });
 
+    // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).
+    // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
+    this.serviceRequestRepository = new PgServiceRequestRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+      fileStorageService: this.fileStorageService,
+    });
+
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
       envLabel: config.envLabel,
@@ -178,6 +200,15 @@ class Container {
       legalDocumentRepository: this.legalDocumentRepository,
       userConsentRepository: this.userConsentRepository,
     });
+    this.registerCompanyClientWithSitesUseCase = new RegisterCompanyClientWithSitesUseCase({
+      companyClientRepository: this.companyClientRepository,
+      authIdentityService: this.authIdentityService,
+      tenantRepository: this.tenantRepository,
+    });
+
+    this.addSiteToCompanyClientUseCase = new AddSiteToCompanyClientUseCase(this.companyClientRepository);
+
+    this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
       tenantRepository: this.tenantRepository,

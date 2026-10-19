@@ -1,7 +1,7 @@
 const Profile = require('../../../domain/entities/Profile');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
+const isValidEmail = require('../../../domain/validation/isValidEmail');
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_DOCUMENT_TYPES = ['CC', 'CE', 'PASSPORT'];
 
 function sanitizeForPath(value) {
@@ -68,7 +68,7 @@ class RegisterAllyNaturalPersonUseCase {
     if (!fullName || typeof fullName !== 'string') {
       throw new ValidationError('fullName es requerido', 'VALIDATION_ERROR');
     }
-    if (!email || !EMAIL_REGEX.test(email)) {
+    if (!email || !isValidEmail(email)) {
       throw new ValidationError('email es requerido y debe tener un formato válido', 'VALIDATION_ERROR');
     }
     if (!password || password.length < 8) {
