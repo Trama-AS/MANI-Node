@@ -48,6 +48,9 @@ const CreateAllyAbsenceUseCase = require('./application/useCases/availability/Cr
 const UpdateAllyAbsenceUseCase = require('./application/useCases/availability/UpdateAllyAbsenceUseCase');
 const DeleteAllyAbsenceUseCase = require('./application/useCases/availability/DeleteAllyAbsenceUseCase');
 
+const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
+const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+
 const config = require('./config');
 
 class Container {
@@ -159,6 +162,14 @@ class Container {
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
+    });
+
+    // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).
+    // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
+    this.serviceRequestRepository = new PgServiceRequestRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+      fileStorageService: this.fileStorageService,
     });
 
     this.checkHealthUseCase = new CheckHealthUseCase({

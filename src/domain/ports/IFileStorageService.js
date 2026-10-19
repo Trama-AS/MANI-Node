@@ -4,7 +4,8 @@
  */
 class IFileStorageService {
   /**
-   * @param {{ path: string, buffer: Buffer, contentType: string }} params
+   * @param {{ path: string, buffer: Buffer, contentType: string, bucket?: string }} params
+   *   `bucket` por omisión es `kyc-documentos`; también se admite `solicitudes`.
    * @returns {Promise<{ path: string }>}
    */
   async upload(_params) {
