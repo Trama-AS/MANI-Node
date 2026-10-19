@@ -193,3 +193,29 @@ test('sin DATABASE_URL las rutas fallan cerrado con 503 en lugar de devolver dat
 
   assert.equal(res.status, 503);
 });
+
+test('GET /notifications sin requestId responde 400 y con un aliado 403', async () => {
+  const fake = {
+    listNotificationsUseCase: new ListNotificationsUseCase({ notificacionRepository: { listByRequest: async () => [] } }),
+  };
+  await withFakes(fake, async () => {
+    const sinRequest = await request(app).get('/api/v1/notifications').set('Authorization', bearer());
+    assert.equal(sinRequest.status, 400);
+
+    const aliado = await request(app)
+      .get('/api/v1/notifications')
+      .query({ requestId: SOLICITUD })
+      .set('Authorization', bearer({ role: 'aliado' }));
+    assert.equal(aliado.status, 403);
+  })();
+});
+
+test('GET /solicitudes/:id/context con un id inválido responde 400', async () => {
+  const fake = {
+    getSolicitudContextUseCase: new GetSolicitudContextUseCase({ solicitudContextRepository: { findContext: async () => null } }),
+  };
+  await withFakes(fake, async () => {
+    const res = await request(app).get('/api/v1/solicitudes/no-es-uuid/context').set('Authorization', bearer());
+    assert.equal(res.status, 400);
+  })();
+});
