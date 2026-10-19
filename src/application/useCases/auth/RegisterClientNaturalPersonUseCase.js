@@ -1,7 +1,6 @@
 const Profile = require('../../../domain/entities/Profile');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = require('../../../domain/validation/isValidEmail');
 
 /**
  * Ejecuta una limpieza de compensación (B3) sin dejar que un fallo —sea un
@@ -56,7 +55,7 @@ class RegisterClientNaturalPersonUseCase {
     if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
       throw new ValidationError('fullName es requerido', 'VALIDATION_ERROR');
     }
-    if (!email || !EMAIL_REGEX.test(email)) {
+    if (!email || !isValidEmail(email)) {
       throw new ValidationError('email es requerido y debe tener un formato válido', 'VALIDATION_ERROR');
     }
     if (!password || password.length < 8) {
