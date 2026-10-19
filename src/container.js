@@ -16,6 +16,8 @@ const SupabaseAliadoCategoriaRepository = require('./infrastructure/repositories
 const SupabaseDocumentoKycRepository = require('./infrastructure/repositories/SupabaseDocumentoKycRepository');
 const SupabaseClienteRepository = require('./infrastructure/repositories/SupabaseClienteRepository');
 const SupabaseSitioRepository = require('./infrastructure/repositories/SupabaseSitioRepository');
+const InMemoryAliadoAusenciaRepository = require('./infrastructure/repositories/InMemoryAliadoAusenciaRepository');
+const SupabaseAliadoAusenciaRepository = require('./infrastructure/repositories/SupabaseAliadoAusenciaRepository');
 const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
@@ -35,6 +37,10 @@ const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/Lis
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
+const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
+const CreateAllyAbsenceUseCase = require('./application/useCases/availability/CreateAllyAbsenceUseCase');
+const UpdateAllyAbsenceUseCase = require('./application/useCases/availability/UpdateAllyAbsenceUseCase');
+const DeleteAllyAbsenceUseCase = require('./application/useCases/availability/DeleteAllyAbsenceUseCase');
 
 const config = require('./config');
 
@@ -81,6 +87,9 @@ class Container {
       });
       this.clienteRepository = new SupabaseClienteRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.sitioRepository = new SupabaseSitioRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.aliadoAusenciaRepository = new SupabaseAliadoAusenciaRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
@@ -97,6 +106,7 @@ class Container {
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
       this.clienteRepository = new InMemoryClienteRepository();
       this.sitioRepository = new InMemorySitioRepository();
+      this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
     }
@@ -125,6 +135,15 @@ class Container {
       aliadoRepository: this.aliadoRepository,
       catalogRepository: this.catalogRepository,
     });
+
+    const absenceDeps = {
+      aliadoRepository: this.aliadoRepository,
+      aliadoAusenciaRepository: this.aliadoAusenciaRepository,
+    };
+    this.listAllyAbsencesUseCase = new ListAllyAbsencesUseCase(absenceDeps);
+    this.createAllyAbsenceUseCase = new CreateAllyAbsenceUseCase(absenceDeps);
+    this.updateAllyAbsenceUseCase = new UpdateAllyAbsenceUseCase(absenceDeps);
+    this.deleteAllyAbsenceUseCase = new DeleteAllyAbsenceUseCase(absenceDeps);
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
