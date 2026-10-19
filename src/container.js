@@ -30,6 +30,7 @@ const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectio
 
 const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUseCase');
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
+const UpdateOwnProfileUseCase = require('./application/useCases/profiles/UpdateOwnProfileUseCase');
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
 const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
@@ -142,6 +143,11 @@ class Container {
 
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
+    });
+
+    this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
+      profileRepository: this.profileRepository,
+      fileStorageService: this.fileStorageService,
     });
 
     this.getAllyCategoriesUseCase = new GetAllyCategoriesUseCase({
