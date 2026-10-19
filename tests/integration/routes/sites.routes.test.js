@@ -116,8 +116,8 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     assert.strictEqual(res.status, 404);
   });
 
-  it('GET /api/v1/sites/:id/rules con token del tenant responde 200 con reglas destacadas (QS-06)', async () => {
-    const token = signToken({ tenantId: 'trama-demo' });
+  it('GET /api/v1/sites/:id/rules con el cliente dueño responde 200 con reglas destacadas (QS-06)', async () => {
+    const token = signToken({ tenantId: 'trama-demo', role: 'cliente', userId: 'cliente-dueno-1' });
 
     const res = await request(app)
       .get(`/api/v1/sites/${demoSiteId}/rules`)
@@ -128,6 +128,41 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     assert.strictEqual(res.body.tieneRestricciones, true);
     assert.ok(res.body.reglasDestacadas.totalRequisitos >= 1);
   });
+
+  it('GET /api/v1/sites/:id/rules con el admin del tenant responde 200', async () => {
+    const token = signToken({ tenantId: 'trama-demo', role: 'admin_tenant', userId: 'admin-1' });
+
+    const res = await request(app)
+      .get(`/api/v1/sites/${demoSiteId}/rules`)
+      .set('Authorization', `Bearer ${token}`);
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.siteId, demoSiteId);
+  });
+
+  // Aliado asignado y no asignado: mientras la asignación no esté en Core (MANI-.NET#1 depende de
+  // MANI-Node#43), ningún aliado lee las reglas. Cuando exista, el asignado pasará a 200.
+  for (const [caso, claims] of [
+    ['un aliado asignado (aún sin asignación en Core)', { role: 'aliado', userId: 'aliado-asignado-1' }],
+    ['un aliado no asignado', { role: 'aliado', userId: 'aliado-no-asignado-1' }],
+    ['otro cliente del mismo tenant', { role: 'cliente', userId: 'cliente-ajeno-no-dueno' }],
+  ]) {
+    it(`GET /api/v1/sites/:id/rules con ${caso} responde 403 sin datos de la sede`, async () => {
+      const token = signToken({ tenantId: 'trama-demo', ...claims });
+
+      for (const ruta of ['rules', 'reglas']) {
+        const res = await request(app)
+          .get(`/api/v1/sites/${demoSiteId}/${ruta}`)
+          .set('Authorization', `Bearer ${token}`);
+
+        assert.strictEqual(res.status, 403, ruta);
+        assert.strictEqual(res.body.code, 'FORBIDDEN');
+        assert.strictEqual(res.body.reglasDestacadas, undefined);
+        assert.strictEqual(res.body.reglasRaw, undefined);
+        assert.strictEqual(res.body.direccion, undefined);
+      }
+    });
+  }
 
   it('POST /api/v1/sites/:id/validate-schedule valida horario dentro de rango (200)', async () => {
     const token = signToken({ tenantId: 'trama-demo' });

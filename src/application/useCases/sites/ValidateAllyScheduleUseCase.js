@@ -35,12 +35,7 @@ class ValidateAllyScheduleUseCase {
       throw new NotFoundError(`Sitio con ID "${siteId}" no encontrado en tenant "${tenantId}".`, 'SITE_NOT_FOUND');
     }
 
-    const rulesInstance =
-      site.reglas instanceof SiteRules
-        ? site.reglas
-        : site.reglas
-        ? new SiteRules(site.reglas)
-        : new SiteRules();
+    const rulesInstance = SiteRules.from(site.reglas);
 
     const evaluacion = rulesInstance.evaluateSchedule(fechaHoraPropuesta);
 

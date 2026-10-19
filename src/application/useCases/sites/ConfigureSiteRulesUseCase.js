@@ -1,5 +1,6 @@
 const SiteRules = require('../../../domain/entities/SiteRules');
-const { ValidationError, NotFoundError, ForbiddenError } = require('../../../domain/errors/DomainError');
+const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
+const { assertSiteOwnerOrAdmin } = require('./siteAccess');
 
 /**
  * Caso de Uso: Configurar Reglas Contextuales del Sitio (SCRUM-853 / US-02.2.3 / RF-09)
@@ -44,17 +45,14 @@ class ConfigureSiteRulesUseCase {
 
     // 2. Control de Acceso basado en Roles (DoD §9.3 / QA feedback)
     // Solo el cliente dueño de la sede o el admin del tenant configuran reglas
-    if (role !== 'ADMIN') {
-      const duenoId = this.clientRepository
-        ? await this.clientRepository.findUsuarioIdByClientId(tenantId, existingSite.clientId || existingSite.clienteId)
-        : null;
-      if (role !== 'CLIENT' || duenoId !== userId) {
-        throw new ForbiddenError(
-          'Solo el cliente dueño de la sede o el admin del tenant configuran reglas',
-          'FORBIDDEN'
-        );
-      }
-    }
+    await assertSiteOwnerOrAdmin({
+      site: existingSite,
+      tenantId,
+      userId,
+      role,
+      clientRepository: this.clientRepository,
+      mensaje: 'Solo el cliente dueño de la sede o el admin del tenant configuran reglas',
+    });
 
     // 3. Construir y validar las reglas en el dominio
     const siteRules = new SiteRules(reglas);

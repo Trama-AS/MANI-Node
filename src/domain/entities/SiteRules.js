@@ -16,6 +16,16 @@ const { ValidationError } = require('../errors/DomainError');
 
 class SiteRules {
   /**
+   * Normaliza lo que viene de persistencia: una instancia, un objeto plano o nada (reglas vacías).
+   * @param {SiteRules|object|null|undefined} reglas
+   * @returns {SiteRules}
+   */
+  static from(reglas) {
+    if (reglas instanceof SiteRules) return reglas;
+    return new SiteRules(reglas || undefined);
+  }
+
+  /**
    * @param {object} [data]
    * @param {object} [data.horario]
    * @param {string} [data.horario.inicio] - HH:mm (ej: "08:00")

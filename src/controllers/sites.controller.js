@@ -74,6 +74,8 @@ async function getSiteRulesForAlly(req, res, next) {
     const result = await container.getSiteRulesForAllyUseCase.execute({
       siteId,
       tenantId,
+      userId: req.user?.userId,
+      role: req.user?.role,
     });
 
     return res.status(200).json({

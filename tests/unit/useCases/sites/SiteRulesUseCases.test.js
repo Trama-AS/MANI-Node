@@ -1,6 +1,8 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const InMemorySiteRepository = require('../../../../src/infrastructure/repositories/InMemorySiteRepository');
+const InMemoryClientRepository = require('../../../../src/infrastructure/repositories/InMemoryClientRepository');
+const { ForbiddenError } = require('../../../../src/domain/errors/DomainError');
 const ConfigureSiteRulesUseCase = require('../../../../src/application/useCases/sites/ConfigureSiteRulesUseCase');
 const GetSiteRulesForAllyUseCase = require('../../../../src/application/useCases/sites/GetSiteRulesForAllyUseCase');
 const ValidateAllyScheduleUseCase = require('../../../../src/application/useCases/sites/ValidateAllyScheduleUseCase');
@@ -58,18 +60,50 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     );
   });
 
-  it('GetSiteRulesForAllyUseCase debe retornar reglas destacadas para el aliado', async () => {
-    const repo = new InMemorySiteRepository();
-    const useCase = new GetSiteRulesForAllyUseCase({ siteRepository: repo });
+  describe('GetSiteRulesForAllyUseCase: quién puede leer las reglas (SCRUM-853, criterio C2)', () => {
+    const siteId = 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23';
+    const crear = () =>
+      new GetSiteRulesForAllyUseCase({
+        siteRepository: new InMemorySiteRepository(),
+        clientRepository: new InMemoryClientRepository(),
+      });
 
-    const result = await useCase.execute({
-      siteId: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23',
-      tenantId: 'trama-demo',
+    it('el cliente dueño de la sede recibe las reglas destacadas', async () => {
+      const result = await crear().execute({ siteId, tenantId: 'trama-demo', userId: 'cliente-dueno-1', role: 'CLIENT' });
+
+      assert.strictEqual(result.siteId, siteId);
+      assert.strictEqual(result.tieneRestricciones, true);
+      assert.ok(result.reglasDestacadas.totalRequisitos >= 1);
     });
 
-    assert.strictEqual(result.siteId, 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23');
-    assert.strictEqual(result.tieneRestricciones, true);
-    assert.ok(result.reglasDestacadas.totalRequisitos >= 1);
+    it('el admin del tenant recibe las reglas', async () => {
+      const result = await crear().execute({ siteId, tenantId: 'trama-demo', userId: 'admin-1', role: 'ADMIN' });
+      assert.strictEqual(result.siteId, siteId);
+    });
+
+    for (const [caso, input] of [
+      ['otro cliente del tenant', { userId: 'cliente-ajeno', role: 'CLIENT' }],
+      ['un aliado (la asignación aún no está en Core)', { userId: 'aliado-1', role: 'ALLY' }],
+      ['sin rol', { userId: 'cliente-dueno-1' }],
+    ]) {
+      it(`${caso} recibe 403 sin datos`, async () => {
+        await assert.rejects(
+          () => crear().execute({ siteId, tenantId: 'trama-demo', ...input }),
+          (err) => err instanceof ForbiddenError && err.statusCode === 403
+        );
+      });
+    }
+
+    it('una sede de otro tenant sigue respondiendo 404 antes de evaluar el rol', async () => {
+      await assert.rejects(
+        () => crear().execute({ siteId, tenantId: 'otro-tenant', userId: 'admin-1', role: 'ADMIN' }),
+        /no encontrado/
+      );
+    });
+
+    it('exige clientRepository para poder verificar al dueño', () => {
+      assert.throws(() => new GetSiteRulesForAllyUseCase({ siteRepository: new InMemorySiteRepository() }), /clientRepository/);
+    });
   });
 
   it('ValidateAllyScheduleUseCase aprueba dentro de horario y solicita justificación fuera de horario', async () => {

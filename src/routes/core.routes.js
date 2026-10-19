@@ -1,10 +1,16 @@
 const { Router } = require('express');
+const multer = require('multer');
 const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
 const availabilityController = require('../controllers/availability.controller');
+const requestsController = require('../controllers/requests.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
 
 const router = Router();
+
+// Fotos de la solicitud (SCRUM-1072): hasta 5 imágenes de 5 MB en el campo `fotos`.
+const uploadFotosSolicitud = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
 
 router.get('/tenants', tenantsController.listTenants);
 router.get('/profiles/me', profilesController.getOwnProfile);
@@ -17,5 +23,8 @@ router.post('/profiles/me/unavailability', availabilityController.createAbsence)
 router.patch('/profiles/me/unavailability/:absenceId', availabilityController.updateAbsence);
 router.delete('/profiles/me/unavailability/:absenceId', availabilityController.deleteAbsence);
 router.get('/catalog', catalogController.listCategories);
+
+// US-04.1.1-M2 (SCRUM-1072): el cliente crea la solicitud en Core; el despacho es un paso posterior en Dispatch.
+router.post('/solicitudes', authenticate, uploadFotosSolicitud.array('fotos', 5), requestsController.createRequest);
 
 module.exports = router;
