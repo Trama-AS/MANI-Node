@@ -2,9 +2,11 @@ const { Router } = require('express');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const authController = require('../controllers/auth.controller');
+const { resolveJwtSecret, isDevTokenEnabled } = require('../config/jwtSecret');
 
-const router = Router();
-const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET || 'mani-jwt-secret-shared-development-token-key-2026';
+// Los servicios aceptan únicamente HS256 (ADR-0031 §1). Fijar el algoritmo evita
+// que un token declare otro distinto ("alg confusion").
+const ALLOWED_ALGORITHMS = ['HS256'];
 
 // Whitelist de documentos KYC que acepta el contrato (docs/openapi/core.yaml)
 const ALLOWED_DOCUMENT_FIELDS = ['cedula_ciudadania', 'rut_certificado'];
@@ -24,78 +26,82 @@ const upload = multer({
   },
 });
 
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function reject(res, status, error, message, correlationId) {
+  return res.status(status).json({ error, message, correlationId });
+}
+
 /**
- * CFG-22: Endpoint de validación de autenticación y claims para el API Gateway.
- * Invocado internamente por NGINX (auth_request /_auth_validate) antes de
- * permitir que una petición alcance los microservicios aguas abajo.
- *
- * Rechaza con 401:
- * - Falta de encabezado Authorization
- * - Formato distinto a "Bearer <token>"
- * - Token expirado o con firma inválida
- * - Ausencia del claim obligatorio `tenant_id` (en app_metadata o payload)
+ * Construye el router de autenticación. Resolver el secreto aquí hace que un
+ * secreto ausente impida arrancar el servicio en vez de degradar la seguridad
+ * en silencio (SCRUM-1333).
  */
-router.all('/auth/validate-token', (req, res) => {
-  const authHeader = req.headers.authorization;
-  const correlationId = req.headers['x-correlation-id'] || 'none';
+function createAuthRouter(env = process.env) {
+  const jwtSecret = resolveJwtSecret(env);
+  const router = Router();
 
-  if (!authHeader) {
-    return res.status(401).json({
-      error: 'UNAUTHORIZED',
-      message: 'Encabezado Authorization requerido',
-      correlationId,
-    });
-  }
+  /**
+   * CFG-22: Endpoint de validación de autenticación y claims para el API Gateway.
+   * Invocado internamente por NGINX (auth_request /_auth_validate) antes de
+   * permitir que una petición alcance los microservicios aguas abajo.
+   *
+   * Los claims de negocio se toman EXCLUSIVAMENTE de `app_metadata` (ADR-0031 §2):
+   * en un JWT de Supabase `role` en la raíz es siempre "authenticated" y un
+   * `tenant_id` en la raíz no lo emite el Custom Access Token Hook. Cualquier
+   * claim obligatorio ausente se rechaza; no hay valores por omisión.
+   */
+  router.all('/auth/validate-token', (req, res) => {
+    const authHeader = req.headers.authorization;
+    const correlationId = req.headers['x-correlation-id'] || 'none';
 
-  const parts = authHeader.trim().split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
-    return res.status(401).json({
-      error: 'UNAUTHORIZED',
-      message: 'Formato de token inválido. Debe ser: Bearer <token>',
-      correlationId,
-    });
-  }
-
-  const token = parts[1];
-
-  try {
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256', 'HS384', 'HS512'] });
-    } catch (verifyErr) {
-      if (verifyErr.name === 'TokenExpiredError') {
-        return res.status(401).json({
-          error: 'TOKEN_EXPIRED',
-          message: 'El token de autenticación ha expirado',
-          correlationId,
-        });
-      }
-      if (verifyErr.name === 'JsonWebTokenError') {
-        return res.status(401).json({
-          error: 'INVALID_SIGNATURE',
-          message: 'Firma criptográfica inválida o token adulterado',
-          correlationId,
-        });
-      }
-      return res.status(401).json({
-        error: 'INVALID_TOKEN',
-        message: verifyErr.message || 'Token de autenticación inválido',
-        correlationId,
-      });
+    if (!authHeader) {
+      return reject(res, 401, 'UNAUTHORIZED', 'Encabezado Authorization requerido', correlationId);
     }
 
-    const appMetadata = decoded.app_metadata || {};
-    const tenantId = appMetadata.tenant_id || decoded.tenant_id;
-    const userRole = appMetadata.user_role || appMetadata.rol || decoded.user_role || decoded.role || 'authenticated';
-    const userId = decoded.sub || decoded.userId || 'anonymous-user';
+    const parts = authHeader.trim().split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      return reject(res, 401, 'UNAUTHORIZED', 'Formato de token inválido. Debe ser: Bearer <token>', correlationId);
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(parts[1], jwtSecret, { algorithms: ALLOWED_ALGORITHMS });
+    } catch (verifyErr) {
+      if (verifyErr.name === 'TokenExpiredError') {
+        return reject(res, 401, 'TOKEN_EXPIRED', 'El token de autenticación ha expirado', correlationId);
+      }
+      if (verifyErr.name === 'JsonWebTokenError') {
+        return reject(res, 401, 'INVALID_SIGNATURE', 'Firma criptográfica inválida o token adulterado', correlationId);
+      }
+      return reject(res, 401, 'INVALID_TOKEN', 'Token de autenticación inválido', correlationId);
+    }
+
+    const appMetadata = decoded.app_metadata && typeof decoded.app_metadata === 'object' ? decoded.app_metadata : {};
+    const tenantId = appMetadata.tenant_id;
+    const userRole = appMetadata.user_role;
+    const userId = decoded.sub;
 
     // CFG-22: Una petición sin tenant válido se rechaza en el Gateway
-    if (!tenantId) {
-      return res.status(401).json({
-        error: 'MISSING_TENANT_CLAIM',
-        message: 'Token de autenticación no contiene el claim obligatorio tenant_id',
-        correlationId,
-      });
+    if (!isNonEmptyString(tenantId)) {
+      return reject(
+        res,
+        401,
+        'MISSING_TENANT_CLAIM',
+        'Token de autenticación no contiene el claim obligatorio app_metadata.tenant_id',
+        correlationId
+      );
+    }
+    if (!isNonEmptyString(userId) || !isNonEmptyString(userRole)) {
+      return reject(
+        res,
+        401,
+        'INVALID_TOKEN',
+        'Token de autenticación no contiene los claims obligatorios sub y app_metadata.user_role',
+        correlationId
+      );
     }
 
     // Inyectar claims validados en los encabezados de respuesta
@@ -104,69 +110,55 @@ router.all('/auth/validate-token', (req, res) => {
     res.setHeader('X-User-Role', userRole);
     res.setHeader('X-User-Id', userId);
 
-    return res.status(200).json({
-      valid: true,
-      userId,
-      tenantId,
-      role: userRole,
-      correlationId,
-    });
-  } catch (err) {
-    return res.status(401).json({
-      error: 'INVALID_TOKEN',
-      message: err.message || 'Firma o contenido del token inválido',
-      correlationId,
+    return res.status(200).json({ valid: true, userId, tenantId, role: userRole, correlationId });
+  });
+
+  /**
+   * Emisión de token JWT para pruebas y desarrollo local. Firma con el secreto
+   * real a petición de cualquiera, así que solo se registra con
+   * NODE_ENV=development|test; en cualquier otro entorno la ruta no existe (404).
+   */
+  if (isDevTokenEnabled(env)) {
+    router.post('/auth/dev-token', (req, res) => {
+      const {
+        tenantId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        role = 'aliado',
+        userId = `user-${Date.now()}`,
+        expiresIn = '24h',
+      } = req.body || {};
+
+      const payload = {
+        sub: userId,
+        email: `${role}.${Date.now()}@mani.test`,
+        role: 'authenticated',
+        app_metadata: {
+          provider: 'email',
+          tenant_id: tenantId,
+          user_role: role,
+        },
+        user_metadata: {
+          name: `Usuario ${role}`,
+        },
+      };
+
+      const token = jwt.sign(payload, jwtSecret, { expiresIn, algorithm: 'HS256' });
+
+      return res.status(200).json({ token, tokenType: 'Bearer', tenantId, role, userId, expiresIn });
     });
   }
-});
 
-/**
- * Emisión de token JWT para pruebas y desarrollo local.
- * Emite tokens compatibles con Supabase Auth conteniendo los claims
- * tenant_id y user_role requeridos por CFG-22.
- */
-router.post('/auth/dev-token', (req, res) => {
-  const {
-    tenantId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-    role = 'aliado',
-    userId = `user-${Date.now()}`,
-    expiresIn = '24h',
-  } = req.body || {};
+  // upload.fields() rechaza campos fuera de ALLOWED_DOCUMENT_FIELDS con MulterError
+  router.post(
+    '/auth/register/ally',
+    upload.fields(ALLOWED_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+    authController.registerAllyNaturalPerson
+  );
 
-  const payload = {
-    sub: userId,
-    email: `${role}.${Date.now()}@mani.test`,
-    role: 'authenticated',
-    app_metadata: {
-      provider: 'email',
-      tenant_id: tenantId,
-      user_role: role,
-    },
-    user_metadata: {
-      name: `Usuario ${role}`,
-    },
-  };
+  // Sin multer: el registro de Cliente no lleva documentos KYC.
+  router.post('/auth/register/client', authController.registerClientNaturalPerson);
 
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn });
+  return router;
+}
 
-  return res.status(200).json({
-    token,
-    tokenType: 'Bearer',
-    tenantId,
-    role,
-    userId,
-    expiresIn,
-  });
-});
-
-// upload.fields() rechaza campos fuera de ALLOWED_DOCUMENT_FIELDS con MulterError
-router.post(
-  '/auth/register/ally',
-  upload.fields(ALLOWED_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
-  authController.registerAllyNaturalPerson
-);
-
-// Sin multer: el registro de Cliente no lleva documentos KYC.
-router.post('/auth/register/client', authController.registerClientNaturalPerson);
-
-module.exports = router;
+module.exports = createAuthRouter();
+module.exports.createAuthRouter = createAuthRouter;

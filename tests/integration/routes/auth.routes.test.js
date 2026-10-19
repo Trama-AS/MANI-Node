@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 
