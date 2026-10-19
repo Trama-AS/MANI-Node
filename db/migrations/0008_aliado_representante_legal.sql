@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0005 (Core Node) — Soporte para Representante Legal de Aliado Empresa (SCRUM-1063 / US-02.1.2-M2)
+-- Migración 0008 (Core Node) — Soporte para Representante Legal de Aliado Empresa (SCRUM-1063 / US-02.1.2-M2)
 -- =====================================================================
 
 ALTER TABLE aliado
@@ -7,5 +7,5 @@ ALTER TABLE aliado
     ADD COLUMN IF NOT EXISTS documento_representante_legal TEXT;
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('mani-node-0005', 'Columnas nombre_representante_legal y documento_representante_legal en aliado (SCRUM-1063)')
+VALUES ('0008', 'SCRUM-1063 columnas nombre_representante_legal y documento_representante_legal en aliado (aliado empresa)')
 ON CONFLICT (version) DO NOTHING;
