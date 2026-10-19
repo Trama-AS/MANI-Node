@@ -59,7 +59,7 @@ async function registerEvent(req, res, next) {
 
 async function getServiceLog(req, res, next) {
   try {
-    const solicitudId = req.params.id || req.params.solicitudId;
+    const solicitudId = req.params.id;
     const result = await container.getServiceLogUseCase.execute({
       user: req.user,
       solicitudId,
@@ -67,7 +67,7 @@ async function getServiceLog(req, res, next) {
 
     res.status(200).json({
       solicitud: result.solicitud.toJSON(),
-      log: result.log.map((e) => (typeof e.toJSON === 'function' ? e.toJSON() : e)),
+      log: result.log,
       correlationId: req.correlationId || 'none',
     });
   } catch (err) {

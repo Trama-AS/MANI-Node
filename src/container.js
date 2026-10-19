@@ -167,7 +167,9 @@ class Container {
 
     this.getServiceLogUseCase = new GetServiceLogUseCase({
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      clienteRepository: this.clienteRepository,
+      aliadoRepository: this.aliadoRepository,
     });
 
     this.listTenantsUseCase = new ListTenantsUseCase({

@@ -122,39 +122,28 @@ test('POST /solicitudes/:id/eventos rechaza una URL de foto en el cuerpo (400) y
   assert.equal(alias.status, 404);
 });
 
-test('GET /api/v1/solicitudes/:id/log devuelve historial cronológico al cliente autorizado', async () => {
-  const clientToken = signTestToken({ sub: 'demo-client-1', tenantId: 'trama-demo', role: 'cliente' });
+test('GET /solicitudes/:id/log: el cliente dueño ve el log cronológico de evento_servicio; otro cliente 403; alias retirados', async () => {
+  const clientToken = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+  const otroCliente = signTestToken({ sub: 'otro-usuario', tenantId: 'trama-demo', role: 'cliente' });
   const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const sol = nuevaSolicitud('ASIGNADA');
 
-  const sol = await container.solicitudRepository.create({
-    tenantId: 'trama-demo',
-    clienteId: 'demo-client-1',
-    aliadoId: 'demo-ally-1',
-    categoriaId: 'cat-plomeria',
-    zonaId: 'zona-norte',
-    descripcion: 'Revisión técnica',
-    estado: 'ASIGNADA',
-  });
+  await request(app).post(`/api/v1/solicitudes/${sol.id}/iniciar`).set('Authorization', `Bearer ${allyToken}`);
+  await request(app).post(`/api/v1/solicitudes/${sol.id}/eventos`).set('Authorization', `Bearer ${allyToken}`).send({ observacion: 'Revisión en marcha' });
 
-  // Generar eventos
-  await request(app)
-    .post(`/api/v1/solicitudes/${sol.id}/iniciar`)
-    .set('Authorization', `Bearer ${allyToken}`);
-
-  await request(app)
-    .post(`/api/v1/solicitudes/${sol.id}/eventos`)
-    .set('Authorization', `Bearer ${allyToken}`)
-    .send({ observacion: 'Revisión en marcha' });
-
-  // Consultar log por el cliente
-  const res = await request(app)
-    .get(`/api/v1/solicitudes/${sol.id}/log`)
-    .set('Authorization', `Bearer ${clientToken}`);
-
+  const res = await request(app).get(`/api/v1/solicitudes/${sol.id}/log`).set('Authorization', `Bearer ${clientToken}`);
   assert.equal(res.status, 200);
-  assert.equal(res.body.solicitud.id, sol.id);
-  assert.ok(Array.isArray(res.body.log));
-  assert.equal(res.body.log.length, 2);
-  assert.equal(res.body.log[0].estadoNuevo, 'EN_EJECUCION');
-  assert.ok(res.body.log[1].observacion.includes('Revisión en marcha'));
+  assert.deepEqual(res.body.log.map((e) => e.tipoEvento), ['INICIO_EJECUCION', 'EVENTO_EJECUCION']);
+  assert.ok(res.body.log[1].descripcion.includes('Revisión en marcha'));
+
+  const aliadoAsignado = await request(app).get(`/api/v1/solicitudes/${sol.id}/log`).set('Authorization', `Bearer ${allyToken}`);
+  assert.equal(aliadoAsignado.status, 200);
+
+  const ajeno = await request(app).get(`/api/v1/solicitudes/${sol.id}/log`).set('Authorization', `Bearer ${otroCliente}`);
+  assert.equal(ajeno.status, 403);
+
+  for (const ruta of [`/api/v1/solicitudes/${sol.id}/historial`, `/api/v1/servicios/${sol.id}/log`]) {
+    const alias = await request(app).get(ruta).set('Authorization', `Bearer ${clientToken}`);
+    assert.equal(alias.status, 404);
+  }
 });
