@@ -15,12 +15,13 @@ name: Quality Gate
 #   - mani-node: push a develop (estado oficial de la rama).
 #   - mani-node-pr: pull requests, para no pisar el estado de develop.
 #
-# Para que el gate BLOQUEE el merge, el ruleset de develop debe exigir los dos
-# checks: "Pruebas y cobertura" y "Sonar Quality Gate". Si las pruebas fallan,
-# el job de Sonar queda omitido y GitHub cuenta un job omitido como aprobado.
+# Para que el gate BLOQUEE el merge, el ruleset de develop, release y main debe
+# exigir los dos checks: "Pruebas y cobertura" y "Sonar Quality Gate". Si las
+# pruebas fallan, el job de Sonar queda omitido y GitHub cuenta un job omitido
+# como aprobado.
 #
-# Requisitos del repositorio: secreto SONAR_TOKEN y variable SONAR_HOST_URL
-# (http://localhost:9000, porque el runner corre en la misma VM que SonarQube).
+# Requisitos: secreto SONAR_TOKEN y variable SONAR_HOST_URL (URL del servidor en
+# la VM de Calidad), definidos en el repositorio o en la organización.
 
 on:
   pull_request:
@@ -71,10 +72,16 @@ jobs:
     name: Sonar Quality Gate
     needs: pruebas_cobertura
     # Los PRs desde forks no llegan al runner de la VM: su código no es de
-    # confianza y no tienen acceso a los secretos.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, calidad]
+    # confianza y no tienen acceso a los secretos. En vez de omitir el job (un
+    # job omitido cuenta como aprobado), el job corre en ubuntu-latest y falla.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","calidad"]') }}
     steps:
+      - name: Bloquear PRs desde forks
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Los PRs desde forks no pasan el Quality Gate. Abra el PR desde una rama de Trama-AS."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
