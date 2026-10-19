@@ -15,7 +15,11 @@ class ICotizacionRepository {
     throw new Error('Método findBySolicitudId no implementado');
   }
 
-  async updateEstado(_ctx, _id, _estado) {
+  /**
+   * Cambia el estado. Con `soloSiEstado` la transición es atómica: solo ocurre si la cotización sigue en ese
+   * estado (dos respuestas simultáneas no se pisan). Devuelve null si no hubo fila que cambiar.
+   */
+  async updateEstado(_ctx, _id, _estado, _opciones = {}) {
     throw new Error('Método updateEstado no implementado');
   }
 }
