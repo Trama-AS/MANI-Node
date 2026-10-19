@@ -35,6 +35,30 @@ class InMemoryProfileRepository extends IProfileRepository {
     );
     return profile || null;
   }
+
+  async updateOwnProfile(userId, tenantId, changes = {}) {
+    const idx = this.profiles.findIndex(
+      (p) => (p.userId === userId || p.id === userId) && (!tenantId || p.tenantId === tenantId)
+    );
+    if (idx === -1) return null;
+
+    const current = this.profiles[idx];
+    const updated = new Profile({
+      id: current.id,
+      userId: current.userId,
+      role: current.role,
+      fullName: changes.fullName !== undefined ? changes.fullName : current.fullName,
+      status: current.status,
+      tenantId: current.tenantId,
+      phone: changes.phone !== undefined ? changes.phone : current.phone,
+      address: changes.address !== undefined ? changes.address : current.address,
+      photoUrl: changes.photoUrl !== undefined ? changes.photoUrl : current.photoUrl,
+    });
+
+    this.profiles[idx] = updated;
+    return updated;
+  }
 }
 
 module.exports = InMemoryProfileRepository;
+

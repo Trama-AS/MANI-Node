@@ -91,6 +91,56 @@ async function declareAllyCategories(req, res, next) {
   }
 }
 
+async function updateOwnProfile(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({
+      error: 'Encabezado Authorization requerido',
+      correlationId: req.correlationId || 'none',
+    });
+  }
+
+  try {
+    const session = req.user || (await container.tokenService.verifyToken(authHeader));
+    const uploadedFiles = req.files || {};
+    const fileCandidate =
+      req.file ||
+      uploadedFiles.photo?.[0] ||
+      uploadedFiles.avatar?.[0] ||
+      uploadedFiles.foto?.[0] ||
+      null;
+
+    const profile = await container.updateOwnProfileUseCase.execute({
+      userId: session.userId,
+      tenantId: session.tenantId,
+      targetUserId: req.params?.id || null,
+      payload: req.body || {},
+      photoFile: fileCandidate,
+    });
+
+    res.status(200).json({
+      message: 'Perfil actualizado exitosamente',
+      correlationId: req.correlationId || 'none',
+      profile,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateOwnProfilePhoto(req, res, next) {
+  const uploadedFiles = req.files || {};
+  const hasFile = Boolean(req.file || uploadedFiles.photo?.[0] || uploadedFiles.avatar?.[0] || uploadedFiles.foto?.[0]);
+  if (!hasFile) {
+    return res.status(400).json({
+      error: 'Debe adjuntar la foto de perfil como archivo (campo photo)',
+      code: 'MANI-PRF-422',
+      correlationId: req.correlationId || 'none',
+    });
+  }
+  return updateOwnProfile(req, res, next);
+}
+
 async function listAvailableAllyCategories(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -118,5 +168,11 @@ async function listAvailableAllyCategories(req, res, next) {
   }
 }
 
-module.exports = { getOwnProfile, getAllyCategories, declareAllyCategories, listAvailableAllyCategories };
-
+module.exports = {
+  getOwnProfile,
+  updateOwnProfile,
+  getAllyCategories,
+  declareAllyCategories,
+  listAvailableAllyCategories,
+  updateOwnProfilePhoto,
+};
