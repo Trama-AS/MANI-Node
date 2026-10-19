@@ -111,7 +111,7 @@ class SupabaseAliadoRepository extends IAliadoRepository {
   async updateVerificationStatus(
     tenantId,
     aliadoId,
-    { estadoVerificacion, motivoRechazo = null, fechaVerificacion }
+    { estadoVerificacion, motivoRechazo = null, fechaVerificacion, verificadoPor = null }
   ) {
     const client = this.supabaseClientFactory.getClient();
     const dbEstado = ESTADO_VERIFICACION_TO_DB[estadoVerificacion] || estadoVerificacion;
@@ -121,6 +121,8 @@ class SupabaseAliadoRepository extends IAliadoRepository {
         estado_verificacion: dbEstado,
         motivo_rechazo: motivoRechazo,
         fecha_verificacion: fechaVerificacion || new Date().toISOString(),
+        // CA-5: quién resolvió la verificación queda en la base, no solo en el log.
+        verificado_por: verificadoPor,
       })
       .eq('tenant_id', tenantId)
       .eq('id', aliadoId)
