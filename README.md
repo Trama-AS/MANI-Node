@@ -39,6 +39,10 @@ flowchart LR
 | `PUT` | `/api/v1/core/profiles/me/categories` | Reemplaza de forma atómica el conjunto de categorías del aliado. Body: `{ "categoryIds": [...] }`. 422 `MANI-CAT-422V` (vacío) o `MANI-CAT-422C` (inactiva, inexistente o de otro tenant). | Sí (JWT) |
 | `GET` | `/api/v1/core/profiles/me/categories/available` | Categorías ACTIVO del tenant del aliado (`[{ id, name }]`, ordenadas por nombre). El tenant sale del JWT. | Sí (JWT) |
 | `GET` | `/api/v1/core/catalog` | Catálogo de servicios de manicura disponibles. | No |
+| `GET` | `/api/v1/core/allies/eligible` | Aliados elegibles (VERIFICADOS, con la categoría, cobertura en la zona o su ancestro, sin ausencia vigente ni rechazo). Query: `categoriaId`, `zonaId` (UUID, obligatorios), `requestId`, `tipo` (`PERSONA_NATURAL`/`PERSONA_JURIDICA`), `page`, `pageSize` (máx. 100). Lo consume Dispatch (ADR-0030). Roles CLIENT/ADMIN. | Sí (JWT) |
+| `GET` | `/api/v1/core/solicitudes/:id/context` | Zona y categoría de la solicitud del tenant (404 si no existe en el tenant). Roles CLIENT/ADMIN. | Sí (JWT) |
+| `POST` | `/api/v1/core/notifications` | Publica la oferta de despacho (`tipo: OFERTA_DESPACHO`, `canal: PUSH`) al usuario del aliado. Body: `{ allyId, tipo, canal, payload: { requestId, ... } }`. 403 si el cuerpo trae otro `tenantId`; 404 si el aliado no es del tenant. | Sí (JWT) |
+| `GET` | `/api/v1/core/notifications?requestId=` | Ofertas ya publicadas para una solicitud (Dispatch las usa para no duplicarlas). | Sí (JWT) |
 | `POST` | `/api/v1/core/auth/register/ally` | Registro de Aliado persona natural (ADR-0022 / US-02.1.1-M2). | No (pre-auth; requiere `X-Tenant-Id`) |
 
 ### Ejemplo de Respuesta (`GET /api/v1/core/health`):
@@ -55,6 +59,8 @@ flowchart LR
 Viven en **MANI-APIGateway** (`docs/openapi/core.yaml`, `postman/`, `.github/workflows/`), no en este repo: el Gateway es el límite público del contrato (CFG-16), Core solo lo implementa. Ver el README de ese repositorio para validarlo, regenerar la colección o correr Newman localmente.
 
 ---
+
+> Las rutas de elegibilidad y notificaciones toman el tenant y el rol **solo del JWT** que Dispatch reenvía (nunca de `X-Tenant-Id` ni del cuerpo) y requieren `DATABASE_URL`: sin ella responden `503` en lugar de devolver datos.
 
 ## 🛠️ Stack Tecnológico
 

@@ -3,6 +3,8 @@ const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
 const availabilityController = require('../controllers/availability.controller');
+const dispatchIntegrationController = require('../controllers/dispatchIntegration.controller');
+const authenticate = require('../middlewares/auth.middleware');
 
 const router = Router();
 
@@ -17,5 +19,11 @@ router.post('/profiles/me/unavailability', availabilityController.createAbsence)
 router.patch('/profiles/me/unavailability/:absenceId', availabilityController.updateAbsence);
 router.delete('/profiles/me/unavailability/:absenceId', availabilityController.deleteAbsence);
 router.get('/catalog', catalogController.listCategories);
+
+// Superficie que consume MANI-Dispatch (ADR-0030): Core es dueño de la elegibilidad y de la mensajería.
+router.get('/allies/eligible', authenticate, dispatchIntegrationController.listEligibleAllies);
+router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
+router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
+router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
 
 module.exports = router;
