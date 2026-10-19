@@ -171,3 +171,14 @@ test('exigen pgPoolFactory', () => {
   assert.throws(() => new PgSolicitudRepository({}), /pgPoolFactory/);
   assert.throws(() => new PgEventoServicioRepository({}), /pgPoolFactory/);
 });
+
+test('cotizacion.updateEstado con soloSiEstado condiciona el UPDATE al estado actual (transición atómica)', async () => {
+  const { factory, queries } = fakeFactory(() => ({ rows: [] }));
+
+  const result = await new PgCotizacionRepository({ pgPoolFactory: factory }).updateEstado(ctx, 'c1', 'ACEPTADA', { soloSiEstado: 'PENDIENTE' });
+
+  assert.equal(result, null);
+  const update = queries.find((q) => q.sql.startsWith('UPDATE cotizacion'));
+  assert.match(update.sql, /AND \(\$4::text IS NULL OR estado = \$4::text\)/);
+  assert.deepEqual(update.params, ['ACEPTADA', 'c1', TENANT, 'PENDIENTE']);
+});

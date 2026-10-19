@@ -27,9 +27,10 @@ class InMemoryCotizacionRepository extends ICotizacionRepository {
       .map((c) => new Cotizacion(c));
   }
 
-  async updateEstado(ctx, id, estado) {
+  async updateEstado(ctx, id, estado, { soloSiEstado = null } = {}) {
     const found = this.cotizaciones.get(id);
     if (!found || found.tenantId !== ctx.tenantId) return null;
+    if (soloSiEstado && found.estado !== soloSiEstado) return null;
     const updated = new Cotizacion({ ...found, estado });
     this.cotizaciones.set(id, updated);
     return new Cotizacion(updated);

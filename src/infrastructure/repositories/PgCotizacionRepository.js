@@ -70,11 +70,13 @@ class PgCotizacionRepository extends ICotizacionRepository {
     });
   }
 
-  async updateEstado(ctx, id, estado) {
+  async updateEstado(ctx, id, estado, { soloSiEstado = null } = {}) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       const { rows } = await client.query(
-        `UPDATE cotizacion SET estado = $1 WHERE id = $2 AND tenant_id = $3 RETURNING ${COLUMNS}`,
-        [estado, id, ctx.tenantId]
+        `UPDATE cotizacion SET estado = $1
+         WHERE id = $2 AND tenant_id = $3 AND ($4::text IS NULL OR estado = $4::text)
+         RETURNING ${COLUMNS}`,
+        [estado, id, ctx.tenantId, soloSiEstado]
       );
       return rows.length ? toEntity(rows[0]) : null;
     });
