@@ -2,6 +2,15 @@ const IFileStorageService = require('../../domain/ports/IFileStorageService');
 const { DomainError } = require('../../domain/errors/DomainError');
 
 const BUCKET = 'kyc-documentos';
+// Buckets que Core puede usar; las rutas siempre empiezan por {tenantId}/{usuarioId}/ (políticas de la 0007).
+const BUCKETS_PERMITIDOS = new Set([BUCKET, 'solicitudes']);
+
+function bucketValido(bucket) {
+  if (!BUCKETS_PERMITIDOS.has(bucket)) {
+    throw new DomainError(`Bucket de Storage no permitido: ${bucket}`, 'INTERNAL_ERROR', 500);
+  }
+  return bucket;
+}
 
 /**
  * Sube a Supabase Storage. El path DEBE empezar con `{tenantId}/{usuarioId}/`:
@@ -16,20 +25,21 @@ class SupabaseFileStorageService extends IFileStorageService {
     this.supabaseClientFactory = supabaseClientFactory;
   }
 
-  async upload({ path, buffer, contentType }) {
+  async upload({ path, buffer, contentType, bucket = BUCKET }) {
+    const destino = bucketValido(bucket);
     const client = this.supabaseClientFactory.getClient();
-    const { error } = await client.storage.from(BUCKET).upload(path, buffer, {
+    const { error } = await client.storage.from(destino).upload(path, buffer, {
       contentType,
       upsert: false,
     });
 
     if (error) throw new DomainError(`Error subiendo documento a Storage: ${error.message}`, 'INTERNAL_ERROR', 500);
-    return { path: `${BUCKET}/${path}` };
+    return { path: `${destino}/${path}` };
   }
 
-  async delete(path) {
+  async delete(path, { bucket = BUCKET } = {}) {
     const client = this.supabaseClientFactory.getClient();
-    const { error } = await client.storage.from(BUCKET).remove([path]);
+    const { error } = await client.storage.from(bucketValido(bucket)).remove([path]);
     if (error) throw new DomainError(`Error eliminando documento de Storage: ${error.message}`, 'INTERNAL_ERROR', 500);
   }
 }
