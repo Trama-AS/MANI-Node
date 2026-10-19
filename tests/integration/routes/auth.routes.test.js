@@ -14,7 +14,8 @@ function registerRequest(overrides = {}) {
     .field('fullName', overrides.fullName ?? 'Maria Fernanda Rojas')
     .field('email', overrides.email ?? `aliado.${unique}@mani.test`)
     .field('password', overrides.password ?? 'Cambiar123!')
-    .field('categoriaId', overrides.categoriaId ?? 'cat-1');
+    .field('categoriaId', overrides.categoriaId ?? 'cat-1')
+    .field('acceptsTerms', overrides.acceptsTerms ?? 'true');
 
   if (overrides.attachCedula !== false) {
     req.attach('cedula_ciudadania', Buffer.from('contenido-fake-cedula'), 'cedula.pdf');
@@ -74,6 +75,13 @@ test('POST /api/v1/auth/register/ally con solo X-Tenant-Id (sin X-Tenant-Slug) r
 
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/auth/register/ally sin acceptsTerms responde 400 TERMS_NOT_ACCEPTED (DoD §9.3)', async () => {
+  const res = await registerRequest({ acceptsTerms: 'false' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'TERMS_NOT_ACCEPTED');
 });
 
 test('POST /api/v1/auth/register/ally sin documentos KYC responde 400 VALIDATION_ERROR', async () => {
@@ -136,6 +144,86 @@ test('POST /api/v1/auth/register/ally repetido con el mismo email responde 409 E
   const second = await registerRequest({ email });
   assert.equal(second.status, 409);
   assert.equal(second.body.code, 'EMAIL_ALREADY_REGISTERED');
+});
+
+function registerCompanyRequest(overrides = {}) {
+  const unique = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  const endpoint = overrides.endpoint ?? '/api/v1/auth/register/ally/company';
+  const req = request(app)
+    .post(endpoint)
+    .set('X-Tenant-Slug', overrides.tenantSlug ?? 'trama-demo')
+    .field('razon_social', overrides.razonSocial ?? 'Servicios Integrales SAS')
+    .field('nit', overrides.nit ?? `900.${unique}`)
+    .field('nombre_representante', overrides.nombreRepresentante ?? 'Andres Felipe Perez')
+    .field('email', overrides.email ?? `empresa.${unique}@mani.test`)
+    .field('password', overrides.password ?? 'Cambiar123!')
+    .field('categoria_id', overrides.categoriaId ?? 'cat-1');
+
+  if (overrides.attachCamara !== false) {
+    req.attach('camara_comercio', Buffer.from('contenido-fake-camara'), 'camara.pdf');
+  }
+
+  return req;
+}
+
+test('POST /api/v1/auth/register/ally/company responde 201 con estado_verificacion PENDIENTE y profile ALLY/PENDING', async () => {
+  const res = await registerCompanyRequest();
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.estado_verificacion, 'PENDIENTE');
+  assert.ok(res.body.usuario_id);
+  assert.ok(res.body.aliado_id);
+  assert.equal(res.body.profile.role, 'ALLY');
+  assert.equal(res.body.profile.status, 'PENDING');
+  assert.equal(res.body.profile.tenantId, 'trama-demo');
+});
+
+test('POST /api/v1/auth/register/ally/company sin camara_comercio responde 400 VALIDATION_ERROR', async () => {
+  const res = await registerCompanyRequest({
+    attachCamara: false,
+  });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+
+test('POST /api/v1/auth/register/ally/company con NIT duplicado en el mismo tenant responde 409 COMPANY_ALREADY_REGISTERED', async () => {
+  const nit = `901.555.${Date.now()}`;
+
+  const first = await registerCompanyRequest({ nit });
+  assert.equal(first.status, 201);
+
+  const second = await registerCompanyRequest({ nit });
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, 'COMPANY_ALREADY_REGISTERED');
+});
+
+test('CA-5: usuario del tenant B no puede consultar datos ni documentos de aliado empresa del tenant A (Políticas §13.4)', async () => {
+  const container = require('../../../src/container');
+  const nit = `901.777.${Date.now()}`;
+
+  // 1. Registrar empresa en tenant A (plomeria-express: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11)
+  const regRes = await registerCompanyRequest({
+    tenantSlug: 'plomeria-express',
+    nit,
+  });
+  assert.equal(regRes.status, 201);
+  const allyUserId = regRes.body.usuario_id;
+  const tenantAId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+  const tenantBId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22';
+
+  // 2. Control positivo: el aliado sí es visible bajo su propio tenant (tenant A)
+  const allyInTenantA = await container.aliadoRepository.findByUsuarioId(tenantAId, allyUserId);
+  assert.notEqual(allyInTenantA, null);
+
+  // 3. Verificar que el repositorio de aliados acotado a tenant B no encuentra al aliado de tenant A
+  const allyInTenantB = await container.aliadoRepository.findByUsuarioId(tenantBId, allyUserId);
+  assert.equal(allyInTenantB, null);
+
+  // 4. Verificar que los documentos KYC del aliado de tenant A no sean accesibles bajo tenant B
+  const docsInTenantB = (container.documentoKycRepository.rows || [])
+    .filter((r) => r.tenantId === tenantBId && r.aliadoId === regRes.body.aliado_id);
+  assert.deepEqual(docsInTenantB, []);
 });
 
 // --- Registro de Cliente persona natural (US-02.2.1-M2) ---

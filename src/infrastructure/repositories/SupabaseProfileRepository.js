@@ -46,6 +46,48 @@ class SupabaseProfileRepository extends IProfileRepository {
 
     return new Profile({ id: usuario.id, userId: usuario.id, role, fullName, status, tenantId: usuario.tenant_id });
   }
+
+  async updateOwnProfile(userId, tenantId, changes = {}) {
+    const current = await this.findByUserId(userId, tenantId);
+    if (!current) return null;
+
+    const client = this.supabaseClientFactory.getClient();
+    const usuarioUpdates = {};
+    if (changes.phone !== undefined) usuarioUpdates.telefono = changes.phone;
+    if (changes.address !== undefined) usuarioUpdates.direccion = changes.address;
+    if (changes.photoUrl !== undefined) usuarioUpdates.foto_url = changes.photoUrl;
+
+    if (Object.keys(usuarioUpdates).length > 0) {
+      const { error } = await client
+        .from('usuario')
+        .update(usuarioUpdates)
+        .eq('id', userId)
+        .eq('tenant_id', tenantId);
+      if (error) throw new DomainError(`Error actualizando usuario: ${error.message}`, 'INTERNAL_ERROR', 500);
+    }
+
+    if (changes.fullName !== undefined && current.role === 'ALLY') {
+      const { error: aliadoErr } = await client
+        .from('aliado')
+        .update({ nombre_razon_social: changes.fullName })
+        .eq('usuario_id', userId)
+        .eq('tenant_id', tenantId);
+      if (aliadoErr) throw new DomainError(`Error actualizando aliado: ${aliadoErr.message}`, 'INTERNAL_ERROR', 500);
+    }
+
+    return new Profile({
+      id: current.id,
+      userId: current.userId,
+      role: current.role,
+      fullName: changes.fullName !== undefined ? changes.fullName : current.fullName,
+      status: current.status,
+      tenantId: current.tenantId,
+      phone: changes.phone !== undefined ? changes.phone : current.phone,
+      address: changes.address !== undefined ? changes.address : current.address,
+      photoUrl: changes.photoUrl !== undefined ? changes.photoUrl : current.photoUrl,
+    });
+  }
 }
 
 module.exports = SupabaseProfileRepository;
+
