@@ -244,3 +244,54 @@ test('listar: requestId inválido 400, tipo distinto 400 y aliado 403', async ()
 test('listar: exige el repositorio', () => {
   assert.throws(() => new ListNotificationsUseCase({}), /notificacionRepository/);
 });
+
+// ---- perfil del aliado autenticado ----
+
+const GetOwnAllyProfileUseCase = require('../../../../src/application/useCases/dispatch/GetOwnAllyProfileUseCase');
+
+function allyProfileUseCase(aliado) {
+  const calls = [];
+  const useCase = new GetOwnAllyProfileUseCase({
+    aliadoRepository: { findByUsuarioId: async (...args) => { calls.push(args); return aliado; } },
+  });
+  return { useCase, calls };
+}
+
+test('perfil de aliado: busca por el tenant y el usuario del JWT y devuelve el estado canónico (Supabase)', async () => {
+  const { useCase, calls } = allyProfileUseCase({
+    id: ALLY, tenant_id: TENANT, usuario_id: 'u3', estado_verificacion: 'VERIFICADO',
+  });
+
+  const profile = await useCase.execute({ session: ally });
+
+  assert.deepEqual(calls, [[TENANT, 'u3']]);
+  assert.deepEqual(profile, { id: ALLY, tenantId: TENANT, usuarioId: 'u3', estadoVerificacion: 'VERIFICADO' });
+});
+
+test('perfil de aliado: traduce el literal del dominio (en memoria) al canónico', async () => {
+  const { useCase } = allyProfileUseCase({ id: ALLY, tenantId: TENANT, usuarioId: 'u3', estadoVerificacion: 'VERIFIED' });
+
+  const profile = await useCase.execute({ session: ally });
+
+  assert.equal(profile.estadoVerificacion, 'VERIFICADO');
+});
+
+test('perfil de aliado: un aliado pendiente se devuelve como PENDIENTE (Dispatch decide)', async () => {
+  const { useCase } = allyProfileUseCase({ id: ALLY, tenant_id: TENANT, usuario_id: 'u3', estado_verificacion: 'PENDIENTE' });
+
+  assert.equal((await useCase.execute({ session: ally })).estadoVerificacion, 'PENDIENTE');
+});
+
+test('perfil de aliado: sin fila responde 404; un cliente, un admin o sin tenant responden 403', async () => {
+  const { useCase } = allyProfileUseCase(null);
+
+  await assert.rejects(() => useCase.execute({ session: ally }), (err) => err.statusCode === 404);
+  await assert.rejects(() => useCase.execute({ session: client }), (err) => err.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ session: admin }), (err) => err.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ session: { userId: 'u', role: 'ALLY' } }), (err) => err.statusCode === 403);
+  await assert.rejects(() => useCase.execute({}), (err) => err.statusCode === 403);
+});
+
+test('perfil de aliado: exige el repositorio', () => {
+  assert.throws(() => new GetOwnAllyProfileUseCase({}), /aliadoRepository/);
+});

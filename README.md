@@ -40,6 +40,7 @@ flowchart LR
 | `GET` | `/api/v1/core/profiles/me/categories/available` | Categorías ACTIVO del tenant del aliado (`[{ id, name }]`, ordenadas por nombre). El tenant sale del JWT. | Sí (JWT) |
 | `GET` | `/api/v1/core/catalog` | Catálogo de servicios de manicura disponibles. | No |
 | `GET` | `/api/v1/core/allies/eligible` | Aliados elegibles (VERIFICADOS, con la categoría, cobertura en la zona o su ancestro, sin ausencia vigente ni rechazo). Query: `categoriaId`, `zonaId` (UUID, obligatorios), `requestId`, `tipo` (`PERSONA_NATURAL`/`PERSONA_JURIDICA`), `page`, `pageSize` (máx. 100). Lo consume Dispatch (ADR-0030). Roles CLIENT/ADMIN. | Sí (JWT) |
+| `GET` | `/api/v1/core/allies/me` | Perfil mínimo del aliado autenticado (`id`, `tenantId`, `usuarioId`, `estadoVerificacion` canónico). Solo rol ALLY; lo consume Dispatch al aceptar o rechazar una oferta (ADR-0030). 404 si no hay aliado en el tenant. | Sí (JWT) |
 | `GET` | `/api/v1/core/solicitudes/:id/context` | Zona y categoría de la solicitud del tenant (404 si no existe en el tenant). Roles CLIENT/ADMIN. | Sí (JWT) |
 | `POST` | `/api/v1/core/notifications` | Publica la oferta de despacho (`tipo: OFERTA_DESPACHO`, `canal: PUSH`) al usuario del aliado. Body: `{ allyId, tipo, canal, payload: { requestId, ... } }`. 403 si el cuerpo trae otro `tenantId`; 404 si el aliado no es del tenant. | Sí (JWT) |
 | `GET` | `/api/v1/core/notifications?requestId=` | Ofertas ya publicadas para una solicitud (Dispatch las usa para no duplicarlas). | Sí (JWT) |

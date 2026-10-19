@@ -222,3 +222,25 @@ test('GET /solicitudes/:id/context con un id inválido responde 400', async () =
     assert.equal(res.status, 400);
   })();
 });
+
+test('GET /allies/me devuelve el perfil del aliado del token y rechaza a un cliente', async () => {
+  const GetOwnAllyProfileUseCase = require('../../../src/application/useCases/dispatch/GetOwnAllyProfileUseCase');
+  const fake = {
+    getOwnAllyProfileUseCase: new GetOwnAllyProfileUseCase({
+      aliadoRepository: {
+        findByUsuarioId: async (tenantId, userId) => ({ id: ALLY, tenant_id: tenantId, usuario_id: userId, estado_verificacion: 'VERIFICADO' }),
+      },
+    }),
+  };
+  await withFakes(fake, async () => {
+    const ok = await request(app).get('/api/v1/allies/me').set('Authorization', bearer({ role: 'aliado' }));
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.body, { id: ALLY, tenantId: TENANT, usuarioId: 'user-1', estadoVerificacion: 'VERIFICADO' });
+
+    const cliente = await request(app).get('/api/v1/allies/me').set('Authorization', bearer({ role: 'cliente' }));
+    assert.equal(cliente.status, 403);
+
+    const sinToken = await request(app).get('/api/v1/allies/me');
+    assert.equal(sinToken.status, 401);
+  })();
+});

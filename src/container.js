@@ -50,6 +50,7 @@ const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListE
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
+const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 
 const config = require('./config');
 
@@ -163,6 +164,7 @@ class Container {
     this.getSolicitudContextUseCase = new GetSolicitudContextUseCase({
       solicitudContextRepository: this.solicitudContextRepository,
     });
+    this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
     this.publishNotificationUseCase = new PublishNotificationUseCase({ notificacionRepository: this.notificacionRepository });
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
 

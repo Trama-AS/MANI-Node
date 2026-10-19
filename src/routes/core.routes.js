@@ -22,6 +22,7 @@ router.get('/catalog', catalogController.listCategories);
 
 // Superficie que consume MANI-Dispatch (ADR-0030): Core es dueño de la elegibilidad y de la mensajería.
 router.get('/allies/eligible', authenticate, dispatchIntegrationController.listEligibleAllies);
+router.get('/allies/me', authenticate, dispatchIntegrationController.getOwnAllyProfile);
 router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
 router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
 router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);

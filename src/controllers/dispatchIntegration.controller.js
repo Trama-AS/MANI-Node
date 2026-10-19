@@ -30,6 +30,15 @@ async function publishNotification(req, res, next) {
   }
 }
 
+async function getOwnAllyProfile(req, res, next) {
+  try {
+    const profile = await container.getOwnAllyProfileUseCase.execute({ session: req.user });
+    res.status(200).json(profile);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listNotifications(req, res, next) {
   try {
     const offers = await container.listNotificationsUseCase.execute({ session: req.user, query: req.query });
@@ -39,4 +48,4 @@ async function listNotifications(req, res, next) {
   }
 }
 
-module.exports = { listEligibleAllies, getSolicitudContext, publishNotification, listNotifications };
+module.exports = { listEligibleAllies, getSolicitudContext, getOwnAllyProfile, publishNotification, listNotifications };
