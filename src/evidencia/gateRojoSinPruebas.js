@@ -25,4 +25,34 @@ function resumirPedido(items, impuesto) {
   return { total, cantidad, vacio: cantidad === 0 };
 }
 
-module.exports = { calcularTotalPedido, resumirPedido };
+function clasificarPedido(items, impuesto) {
+  const { total, cantidad, vacio } = resumirPedido(items, impuesto);
+  if (vacio) {
+    return 'VACIO';
+  }
+  if (total > 1000000) {
+    return 'GRANDE';
+  }
+  if (total > 100000) {
+    return 'MEDIANO';
+  }
+  if (cantidad > 10) {
+    return 'MUCHOS_ITEMS';
+  }
+  return 'PEQUENO';
+}
+
+function validarItems(items) {
+  const errores = [];
+  for (const item of items) {
+    if (typeof item.precio !== 'number') {
+      errores.push('precio invalido');
+    }
+    if (typeof item.cantidad !== 'number') {
+      errores.push('cantidad invalida');
+    }
+  }
+  return errores;
+}
+
+module.exports = { calcularTotalPedido, resumirPedido, clasificarPedido, validarItems };
