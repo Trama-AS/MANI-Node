@@ -37,6 +37,7 @@ const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/Lis
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const RegisterAllyCompanyUseCase = require('./application/useCases/auth/RegisterAllyCompanyUseCase');
+const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
 const CreateAllyAbsenceUseCase = require('./application/useCases/availability/CreateAllyAbsenceUseCase');
@@ -174,6 +175,15 @@ class Container {
       aliadoCategoriaRepository: this.aliadoCategoriaRepository,
       documentoKycRepository: this.documentoKycRepository,
       fileStorageService: this.fileStorageService,
+      authIdentityService: this.authIdentityService,
+    });
+
+    this.registerDirectEmployeeUseCase = new RegisterDirectEmployeeUseCase({
+      tenantRepository: this.tenantRepository,
+      catalogRepository: this.catalogRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
       authIdentityService: this.authIdentityService,
     });
 
