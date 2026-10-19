@@ -4,6 +4,7 @@ const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
 const availabilityController = require('../controllers/availability.controller');
+const dispatchIntegrationController = require('../controllers/dispatchIntegration.controller');
 const requestsController = require('../controllers/requests.controller');
 const { authenticate } = require('../middlewares/auth.middleware');
 
@@ -24,6 +25,12 @@ router.patch('/profiles/me/unavailability/:absenceId', availabilityController.up
 router.delete('/profiles/me/unavailability/:absenceId', availabilityController.deleteAbsence);
 router.get('/catalog', catalogController.listCategories);
 
+// Superficie que consume MANI-Dispatch (ADR-0030): Core es dueño de la elegibilidad y de la mensajería.
+router.get('/allies/eligible', authenticate, dispatchIntegrationController.listEligibleAllies);
+router.get('/allies/me', authenticate, dispatchIntegrationController.getOwnAllyProfile);
+router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
+router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
+router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
 // US-04.1.1-M2 (SCRUM-1072): el cliente crea la solicitud en Core; el despacho es un paso posterior en Dispatch.
 router.post('/solicitudes', authenticate, uploadFotosSolicitud.array('fotos', 5), requestsController.createRequest);
 
