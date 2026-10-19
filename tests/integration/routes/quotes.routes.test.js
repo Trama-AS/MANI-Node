@@ -81,102 +81,65 @@ test('POST /api/v1/cotizaciones (alias retirado) ya no existe', async () => {
   assert.equal(res.status, 404);
 });
 
-test('POST /api/v1/cotizaciones/:id/aceptar acepta la cotización exitosamente', async () => {
-  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
-  const clientToken = signTestToken({ sub: 'demo-client-1', tenantId: 'trama-demo', role: 'cliente' });
+const clientToken = () => signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
 
-  // Crear cotización
-  const createRes = await request(app)
-    .post('/api/v1/cotizaciones')
-    .set('Authorization', `Bearer ${allyToken}`)
-    .send({
-      solicitudId: 'sol-demo-1',
-      valorManoObra: 75000,
-    });
-  assert.equal(createRes.status, 201);
-  const cotId = createRes.body.cotizacion.id;
+async function emitirCotizacion() {
+  const res = await request(app).post(ruta).set('Authorization', `Bearer ${allyToken()}`).send({ valorManoObra: 50000, valorMateriales: 10000 });
+  assert.equal(res.status, 201);
+  return res.body.cotizacion.id;
+}
 
-  // Aceptar cotización por el cliente
-  const acceptRes = await request(app)
-    .post(`/api/v1/cotizaciones/${cotId}/aceptar`)
-    .set('Authorization', `Bearer ${clientToken}`)
-    .send({ comentario: 'Acepto la propuesta' });
+test('POST /cotizaciones/:id/aceptar: el cliente dueño acepta (200) y una segunda respuesta es 409', async () => {
+  const id = await emitirCotizacion();
 
-  assert.equal(acceptRes.status, 200);
-  assert.equal(acceptRes.body.cotizacion.estado, 'ACEPTADA');
-  assert.equal(acceptRes.body.solicitud.estado, 'ACEPTADA');
+  const ok = await request(app).post(`/api/v1/cotizaciones/${id}/aceptar`).set('Authorization', `Bearer ${clientToken()}`).send({});
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.cotizacion.estado, 'ACEPTADA');
 
-  // Doble acción protegida (409 Conflict)
-  const repeatRes = await request(app)
-    .post(`/api/v1/cotizaciones/${cotId}/aceptar`)
-    .set('Authorization', `Bearer ${clientToken}`);
-
-  assert.equal(repeatRes.status, 409);
-  assert.equal(repeatRes.body.code, 'CONFLICT');
+  const otra = await request(app).post(`/api/v1/cotizaciones/${id}/aceptar`).set('Authorization', `Bearer ${clientToken()}`).send({});
+  assert.equal(otra.status, 409);
 });
 
-test('POST /api/v1/cotizaciones/:id/rechazar rechaza con motivo válido', async () => {
-  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
-  const clientToken = signTestToken({ sub: 'demo-client-1', tenantId: 'trama-demo', role: 'cliente' });
+test('POST /cotizaciones/:id/ajustar: pide ajuste con comentario (200); sin comentario es 400', async () => {
+  const id = await emitirCotizacion();
 
-  // Crear una nueva solicitud limpia para esta prueba
-  const sol = await container.solicitudRepository.create({
-    tenantId: 'trama-demo',
-    clienteId: 'demo-client-1',
-    aliadoId: 'demo-ally-1',
-    categoriaId: 'cat-plomeria',
-    zonaId: 'zona-norte',
-    descripcion: 'Reparación tubería',
-    estado: 'ASIGNADA',
-  });
+  const sinComentario = await request(app).post(`/api/v1/cotizaciones/${id}/ajustar`).set('Authorization', `Bearer ${clientToken()}`).send({});
+  assert.equal(sinComentario.status, 400);
 
-  const createRes = await request(app)
-    .post('/api/v1/cotizaciones')
-    .set('Authorization', `Bearer ${allyToken}`)
-    .send({
-      solicitudId: sol.id,
-      valorManoObra: 120000,
-    });
-  const cotId = createRes.body.cotizacion.id;
-
-  // Sin motivo debe responder 400
-  const badRes = await request(app)
-    .post(`/api/v1/cotizaciones/${cotId}/rechazar`)
-    .set('Authorization', `Bearer ${clientToken}`)
-    .send({});
-  assert.equal(badRes.status, 400);
-
-  // Con motivo responde 200
-  const rejectRes = await request(app)
-    .post(`/api/v1/cotizaciones/${cotId}/rechazar`)
-    .set('Authorization', `Bearer ${clientToken}`)
-    .send({ motivo: 'Demasiado costoso para mi presupuesto actual' });
-
-  assert.equal(rejectRes.status, 200);
-  assert.equal(rejectRes.body.cotizacion.estado, 'RECHAZADA');
-  assert.equal(rejectRes.body.solicitud.estado, 'RECHAZADA');
+  const ok = await request(app).post(`/api/v1/cotizaciones/${id}/ajustar`).set('Authorization', `Bearer ${clientToken()}`).send({ comentario: 'Bajar materiales' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.cotizacion.estado, 'AJUSTE_SOLICITADO');
+  assert.equal(ok.body.solicitud.estado, 'COTIZANDO');
 });
 
-test('POST /api/v1/cotizaciones/:id/solicitar-ajuste solicita cambios en la cotización', async () => {
-  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
-  const clientToken = signTestToken({ sub: 'demo-client-1', tenantId: 'trama-demo', role: 'cliente' });
+test('responder: el aliado (403), un cliente de otro tenant (403/404) y sin token (401) no pueden', async () => {
+  const id = await emitirCotizacion();
+  const otroTenant = signTestToken({ sub: 'demo-user-1', tenantId: 'otro-tenant', role: 'cliente' });
 
-  const createRes = await request(app)
-    .post('/api/v1/cotizaciones')
-    .set('Authorization', `Bearer ${allyToken}`)
-    .send({
-      solicitudId: 'sol-demo-1',
-      valorManoObra: 95000,
-      valorMateriales: 35000,
-    });
-  const cotId = createRes.body.cotizacion.id;
+  const aliado = await request(app).post(`/api/v1/cotizaciones/${id}/aceptar`).set('Authorization', `Bearer ${allyToken()}`).send({});
+  assert.equal(aliado.status, 403);
+  const cruzado = await request(app).post(`/api/v1/cotizaciones/${id}/aceptar`).set('Authorization', `Bearer ${otroTenant}`).send({});
+  assert.ok([403, 404].includes(cruzado.status));
+  const sinToken = await request(app).post(`/api/v1/cotizaciones/${id}/aceptar`).send({});
+  assert.equal(sinToken.status, 401);
+});
 
-  const adjustRes = await request(app)
-    .post(`/api/v1/cotizaciones/${cotId}/solicitar-ajuste`)
-    .set('Authorization', `Bearer ${clientToken}`)
-    .send({ comentario: '¿Es posible usar materiales genéricos para bajar costos?' });
+test('los alias /solicitar-ajuste y /responder ya no existen', async () => {
+  const id = await emitirCotizacion();
 
-  assert.equal(adjustRes.status, 200);
-  assert.equal(adjustRes.body.cotizacion.estado, 'AJUSTE_SOLICITADO');
-  assert.equal(adjustRes.body.solicitud.estado, 'COTIZANDO');
+  for (const sufijo of ['solicitar-ajuste', 'responder']) {
+    const res = await request(app).post(`/api/v1/cotizaciones/${id}/${sufijo}`).set('Authorization', `Bearer ${clientToken()}`).send({ accion: 'ACEPTAR' });
+    assert.equal(res.status, 404);
+  }
+});
+
+test('POST /cotizaciones/:id/rechazar: exige motivo y rechaza (cierra la solicitud, por eso va al final)', async () => {
+  const id = await emitirCotizacion();
+
+  const sinMotivo = await request(app).post(`/api/v1/cotizaciones/${id}/rechazar`).set('Authorization', `Bearer ${clientToken()}`).send({});
+  assert.equal(sinMotivo.status, 400);
+
+  const ok = await request(app).post(`/api/v1/cotizaciones/${id}/rechazar`).set('Authorization', `Bearer ${clientToken()}`).send({ motivo: 'Muy costosa para el presupuesto' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.cotizacion.estado, 'RECHAZADA');
 });

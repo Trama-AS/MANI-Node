@@ -5,101 +5,96 @@ const {
   ConflictError,
 } = require('../../../domain/errors/DomainError');
 
+const TRANSICIONES = {
+  ACEPTAR: { cotizacion: 'ACEPTADA', solicitud: 'ACEPTADA', evento: 'COTIZACION_ACEPTADA' },
+  RECHAZAR: { cotizacion: 'RECHAZADA', solicitud: 'RECHAZADA', evento: 'COTIZACION_RECHAZADA' },
+  // La solicitud vuelve a COTIZANDO para que el aliado emita una nueva versión.
+  AJUSTAR: { cotizacion: 'AJUSTE_SOLICITADO', solicitud: 'COTIZANDO', evento: 'AJUSTE_SOLICITADO' },
+};
+
+/**
+ * US-04.2.3 (SCRUM-867): el cliente dueño de la solicitud acepta, rechaza o pide ajustar una cotización.
+ * - El cliente se resuelve desde el usuario del JWT y se compara `solicitud.cliente_id` con `cliente.id`.
+ * - La transición es atómica (solo desde PENDIENTE): dos respuestas simultáneas no se pisan (409).
+ */
 class RespondQuoteUseCase {
-  constructor({ cotizacionRepository, solicitudRepository, historialSolicitudRepository }) {
+  constructor({ cotizacionRepository, solicitudRepository, eventoServicioRepository, clienteRepository }) {
     if (!cotizacionRepository) throw new Error('cotizacionRepository es requerido');
     if (!solicitudRepository) throw new Error('solicitudRepository es requerido');
-    if (!historialSolicitudRepository) throw new Error('historialSolicitudRepository es requerido');
+    if (!eventoServicioRepository) throw new Error('eventoServicioRepository es requerido');
+    if (!clienteRepository) throw new Error('clienteRepository es requerido');
 
     this.cotizacionRepository = cotizacionRepository;
     this.solicitudRepository = solicitudRepository;
-    this.historialSolicitudRepository = historialSolicitudRepository;
+    this.eventoServicioRepository = eventoServicioRepository;
+    this.clienteRepository = clienteRepository;
   }
 
   async execute({ user, cotizacionId, accion, comentario, motivo }) {
-    if (!user) {
+    if (!user || !user.tenantId || !user.userId) {
       throw new ForbiddenError('Sesión requerida');
     }
     if (user.role !== 'CLIENT') {
       throw new ForbiddenError('Solo el cliente de la solicitud puede responder a la cotización');
     }
-
     if (!cotizacionId) {
       throw new ValidationError('El id de la cotización es obligatorio');
     }
 
     const accionNormalizada = String(accion || '').trim().toUpperCase();
-    const accionesValidas = ['ACEPTAR', 'RECHAZAR', 'AJUSTAR', 'SOLICITAR_AJUSTE'];
-    if (!accionesValidas.includes(accionNormalizada)) {
+    const transicion = TRANSICIONES[accionNormalizada];
+    if (!transicion) {
       throw new ValidationError('Acción no permitida. Debe ser ACEPTAR, RECHAZAR o AJUSTAR');
     }
 
-    const cotizacion = await this.cotizacionRepository.findById(cotizacionId);
+    let detalle = comentario ? String(comentario).trim() : '';
+    if (accionNormalizada === 'RECHAZAR') {
+      detalle = String(motivo || comentario || '').trim();
+      if (detalle.length < 5) throw new ValidationError('El motivo de rechazo es obligatorio (mínimo 5 caracteres)');
+    }
+    if (accionNormalizada === 'AJUSTAR' && detalle.length < 3) {
+      throw new ValidationError('Debes indicar el comentario u observación para solicitar el ajuste');
+    }
+
+    const ctx = { tenantId: user.tenantId, userId: user.userId, role: user.role };
+
+    const cliente = await this.clienteRepository.findByUsuarioId(user.tenantId, user.userId);
+    if (!cliente) {
+      throw new ForbiddenError('No existe un perfil de cliente para la cuenta en este tenant');
+    }
+
+    const cotizacion = await this.cotizacionRepository.findById(ctx, cotizacionId);
     if (!cotizacion) {
       throw new NotFoundError('Cotización no encontrada');
     }
 
-    const solicitud = await this.solicitudRepository.findById(cotizacion.solicitudId);
-    if (!solicitud || solicitud.tenantId !== user.tenantId) {
+    const solicitud = await this.solicitudRepository.findById(ctx, cotizacion.solicitudId);
+    if (!solicitud) {
       throw new NotFoundError('Solicitud no encontrada');
     }
-
-    if (solicitud.clienteId !== user.userId) {
+    if (solicitud.clienteId !== cliente.id) {
       throw new ForbiddenError('No tienes autorización para gestionar cotizaciones de una solicitud ajena');
     }
 
-    // Protección de doble acción (concurrencia / idempotencia)
-    if (cotizacion.estado !== 'PENDIENTE') {
-      throw new ConflictError(
-        `La cotización ya fue procesada previamente con estado ${cotizacion.estado}`
-      );
+    const actualizada = await this.cotizacionRepository.updateEstado(ctx, cotizacionId, transicion.cotizacion, {
+      soloSiEstado: 'PENDIENTE',
+    });
+    if (!actualizada) {
+      throw new ConflictError('La cotización ya fue procesada previamente');
     }
 
-    const estadoAnteriorSolicitud = solicitud.estado;
-    let observacionHistorial = '';
+    const solicitudActualizada = await this.solicitudRepository.updateEstado(ctx, solicitud.id, transicion.solicitud);
 
-    if (accionNormalizada === 'ACEPTAR') {
-      cotizacion.estado = 'ACEPTADA';
-      solicitud.estado = 'ACEPTADA';
-      observacionHistorial = comentario
-        ? `Cotización v${cotizacion.version} aceptada por el cliente: ${String(comentario).trim()}`
-        : `Cotización v${cotizacion.version} aceptada por el cliente`;
-    } else if (accionNormalizada === 'RECHAZAR') {
-      const motivoRechazo = String(motivo || comentario || '').trim();
-      if (!motivoRechazo || motivoRechazo.length < 5) {
-        throw new ValidationError('El motivo de rechazo es obligatorio (mínimo 5 caracteres)');
-      }
-      cotizacion.estado = 'RECHAZADA';
-      cotizacion.observacion = motivoRechazo;
-      solicitud.estado = 'RECHAZADA';
-      observacionHistorial = `Cotización v${cotizacion.version} rechazada: ${motivoRechazo}`;
-    } else if (accionNormalizada === 'AJUSTAR' || accionNormalizada === 'SOLICITAR_AJUSTE') {
-      const detalleAjuste = String(comentario || motivo || '').trim();
-      if (!detalleAjuste || detalleAjuste.length < 3) {
-        throw new ValidationError('Debes indicar el comentario u observación para solicitar el ajuste');
-      }
-      cotizacion.estado = 'AJUSTE_SOLICITADO';
-      cotizacion.observacion = detalleAjuste;
-      // La solicitud permanece en estado COTIZANDO para permitir una nueva versión de cotización del aliado
-      solicitud.estado = 'COTIZANDO';
-      observacionHistorial = `Ajuste solicitado para cotización v${cotizacion.version}: ${detalleAjuste}`;
-    }
-
-    await this.cotizacionRepository.update(cotizacion);
-    await this.solicitudRepository.update(solicitud);
-
-    await this.historialSolicitudRepository.create({
+    await this.eventoServicioRepository.create(ctx, {
       solicitudId: solicitud.id,
-      usuarioId: user.userId,
-      estadoAnterior: estadoAnteriorSolicitud,
-      estadoNuevo: solicitud.estado,
-      observacion: observacionHistorial,
+      actorId: user.userId,
+      tipoEvento: transicion.evento,
+      descripcion: detalle
+        ? `Cotización v${actualizada.version}: ${detalle}`
+        : `Cotización v${actualizada.version} ${transicion.cotizacion.toLowerCase()}`,
     });
 
-    return {
-      cotizacion,
-      solicitud,
-    };
+    return { cotizacion: actualizada, solicitud: solicitudActualizada };
   }
 }
 

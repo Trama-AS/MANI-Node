@@ -145,7 +145,8 @@ class Container {
     this.respondQuoteUseCase = new RespondQuoteUseCase({
       cotizacionRepository: this.cotizacionRepository,
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      clienteRepository: this.clienteRepository,
     });
 
     this.listTenantsUseCase = new ListTenantsUseCase({

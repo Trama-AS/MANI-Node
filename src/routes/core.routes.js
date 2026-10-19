@@ -27,7 +27,5 @@ router.post('/solicitudes/:solicitudId/cotizaciones', authenticate, quotesContro
 router.post('/cotizaciones/:id/aceptar', authenticate, quotesController.acceptQuote);
 router.post('/cotizaciones/:id/rechazar', authenticate, quotesController.rejectQuote);
 router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQuote);
-router.post('/cotizaciones/:id/solicitar-ajuste', authenticate, quotesController.adjustQuote);
-router.post('/cotizaciones/:id/responder', authenticate, quotesController.respondQuote);
 
 module.exports = router;
