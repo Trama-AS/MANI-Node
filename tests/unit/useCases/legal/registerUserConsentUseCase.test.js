@@ -27,6 +27,7 @@ describe('RegisterUserConsentUseCase', () => {
     });
 
     const consents = await useCase.execute({
+      tenantId: 'tenant-a',
       usuarioId: 'user-123',
       ipAddress: '192.168.1.1',
       userAgent: 'Mozilla/5.0',
@@ -56,6 +57,7 @@ describe('RegisterUserConsentUseCase', () => {
     });
 
     const consents = await useCase.execute({
+      tenantId: 'tenant-a',
       usuarioId: 'user-456',
       documentoLegalIds: ['doc-custom-1'],
     });
@@ -73,11 +75,13 @@ describe('RegisterUserConsentUseCase', () => {
     });
 
     const firstTime = await useCase.execute({
+      tenantId: 'tenant-a',
       usuarioId: 'user-789',
     });
     assert.strictEqual(firstTime.length, 2);
 
     const secondTime = await useCase.execute({
+      tenantId: 'tenant-a',
       usuarioId: 'user-789',
     });
     assert.strictEqual(secondTime.length, 0);
@@ -94,7 +98,8 @@ describe('RegisterUserConsentUseCase', () => {
     await assert.rejects(
       async () => {
         await useCase.execute({
-          usuarioId: 'user-789',
+          tenantId: 'tenant-a',
+      usuarioId: 'user-789',
           documentoLegalIds: ['documento-inexistente-xyz'],
         });
       },
@@ -129,6 +134,19 @@ describe('RegisterUserConsentUseCase', () => {
         });
       },
       (err) => err.code === 'LEGAL_DOCUMENT_NOT_FOUND' && err.statusCode === 404
+    );
+  });
+
+  test('lanza VALIDATION_ERROR si falta tenantId: un consentimiento siempre ocurre dentro de un tenant', async () => {
+    const consentRepo = new InMemoryUserConsentRepository();
+    const useCase = new RegisterUserConsentUseCase({
+      userConsentRepository: consentRepo,
+      legalDocumentRepository: new InMemoryLegalDocumentRepository(),
+    });
+
+    await assert.rejects(
+      () => useCase.execute({ usuarioId: 'user-1' }),
+      (err) => err.code === 'VALIDATION_ERROR' && /tenantId/.test(err.message)
     );
   });
 });

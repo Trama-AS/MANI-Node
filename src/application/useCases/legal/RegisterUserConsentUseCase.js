@@ -29,6 +29,10 @@ class RegisterUserConsentUseCase {
     if (!usuarioId || typeof usuarioId !== 'string') {
       throw new ValidationError('usuarioId es requerido para registrar consentimiento', 'VALIDATION_ERROR');
     }
+    // consentimiento_usuario.tenant_id es NOT NULL (migración 0010): el consentimiento siempre ocurre dentro de un tenant.
+    if (!tenantId) {
+      throw new ValidationError('tenantId es requerido para registrar consentimiento', 'VALIDATION_ERROR');
+    }
 
     let targetDocs = [];
 
