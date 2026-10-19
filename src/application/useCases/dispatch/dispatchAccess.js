@@ -1,7 +1,8 @@
 const { ForbiddenError, ValidationError } = require('../../../domain/errors/DomainError');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TIPOS_ALIADO = ['PERSONA_NATURAL', 'PERSONA_JURIDICA'];
+// Los tres tipos de aliado del SRS (RF-05), decisión de la PO en SCRUM-862.
+const TIPOS_ALIADO = ['PERSONA_NATURAL', 'PERSONA_JURIDICA', 'EMPLEADO_DIRECTO'];
 const MAX_PAGE_SIZE = 100;
 
 /**
