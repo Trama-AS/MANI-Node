@@ -42,8 +42,6 @@ router.post('/solicitudes/:id/eventos', authenticate, uploadEvidencia.single('fo
 
 // RF-18 / US-04.6.1 / SCRUM-879: Consultar historial de servicios
 router.get('/solicitudes/historial', authenticate, servicesController.getClientServicesHistory);
-router.get('/servicios/historial', authenticate, servicesController.getClientServicesHistory);
-router.get('/solicitudes/me', authenticate, servicesController.getClientServicesHistory);
 
 // RF-18 / US-04.3.3 / SCRUM-870: Cliente consulta el log del servicio
 router.get('/solicitudes/:id/log', authenticate, servicesController.getServiceLog);

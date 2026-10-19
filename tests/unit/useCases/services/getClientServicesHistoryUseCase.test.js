@@ -1,116 +1,59 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-
 const GetClientServicesHistoryUseCase = require('../../../../src/application/useCases/services/GetClientServicesHistoryUseCase');
 const InMemorySolicitudRepository = require('../../../../src/infrastructure/repositories/InMemorySolicitudRepository');
 const InMemoryCotizacionRepository = require('../../../../src/infrastructure/repositories/InMemoryCotizacionRepository');
-const Solicitud = require('../../../../src/domain/entities/Solicitud');
-const Cotizacion = require('../../../../src/domain/entities/Cotizacion');
 
-test('GetClientServicesHistoryUseCase - validaciones del constructor', () => {
-  assert.throws(() => new GetClientServicesHistoryUseCase({}), /solicitudRepository es requerido/);
+const TENANT = 'tenant-a';
+const cliente = { userId: 'u-cliente', tenantId: TENANT, role: 'CLIENT' };
+const base = { categoriaId: 'c', zonaId: 'z', aliadoId: 'aliado-1' };
+
+async function setup() {
+  const solicitudRepository = new InMemorySolicitudRepository();
+  const cotizacionRepository = new InMemoryCotizacionRepository();
+  solicitudRepository.seed({ ...base, id: 's1', tenantId: TENANT, clienteId: 'cliente-1', estado: 'FINALIZADA', fechaCreacion: '2026-10-01T00:00:00Z' });
+  solicitudRepository.seed({ ...base, id: 's2', tenantId: TENANT, clienteId: 'cliente-1', estado: 'COTIZANDO', fechaCreacion: '2026-10-02T00:00:00Z' });
+  solicitudRepository.seed({ ...base, id: 's3', tenantId: TENANT, clienteId: 'cliente-2', estado: 'FINALIZADA' });
+  solicitudRepository.seed({ ...base, id: 's4', tenantId: 'tenant-b', clienteId: 'cliente-1', estado: 'FINALIZADA' });
+  const ctx = { tenantId: TENANT };
+  await cotizacionRepository.create(ctx, { solicitudId: 's1', aliadoId: 'aliado-1', valorManoObra: 100, estado: 'RECHAZADA', version: 1 });
+  await cotizacionRepository.create(ctx, { solicitudId: 's1', aliadoId: 'aliado-1', valorManoObra: 90, estado: 'ACEPTADA', version: 2 });
+  await cotizacionRepository.create(ctx, { solicitudId: 's2', aliadoId: 'aliado-1', valorManoObra: 50, estado: 'PENDIENTE', version: 1 });
+  await cotizacionRepository.create(ctx, { solicitudId: 's2', aliadoId: 'aliado-1', valorManoObra: 60, estado: 'PENDIENTE', version: 2 });
+  const clienteRepository = { findByUsuarioId: async (t, u) => (t === TENANT && u === 'u-cliente' ? { id: 'cliente-1' } : null) };
+  return new GetClientServicesHistoryUseCase({ solicitudRepository, cotizacionRepository, clienteRepository });
+}
+
+test('lista solo las solicitudes de su cliente.id en su tenant, de la más reciente a la más antigua, con la cotización final', async () => {
+  const useCase = await setup();
+
+  const { servicios, total } = await useCase.execute({ user: cliente });
+
+  assert.equal(total, 2);
+  assert.deepEqual(servicios.map((s) => s.id), ['s2', 's1']);
+  assert.equal(servicios[1].cotizacion.estado, 'ACEPTADA');
+  assert.equal(servicios[1].cotizacion.version, 2);
+  assert.equal(servicios[0].cotizacion.version, 2);
 });
 
-test('GetClientServicesHistoryUseCase - rechaza si falta sesión o el rol no es CLIENT', async () => {
-  const useCase = new GetClientServicesHistoryUseCase({
-    solicitudRepository: new InMemorySolicitudRepository(),
-  });
+test('filtra por estado (sin distinguir mayúsculas)', async () => {
+  const useCase = await setup();
 
-  await assert.rejects(
-    () => useCase.execute({ user: null }),
-    { statusCode: 403, message: 'Sesión requerida' }
-  );
+  const { servicios } = await useCase.execute({ user: cliente, estado: ' finalizada ' });
 
-  await assert.rejects(
-    () => useCase.execute({ user: { userId: 'u-1', tenantId: 'trama-demo', role: 'ALLY' } }),
-    { statusCode: 403, message: /Solo los clientes/ }
-  );
+  assert.deepEqual(servicios.map((s) => s.id), ['s1']);
 });
 
-test('GetClientServicesHistoryUseCase - retorna lista vacía si el cliente no tiene servicios', async () => {
-  const useCase = new GetClientServicesHistoryUseCase({
-    solicitudRepository: new InMemorySolicitudRepository(),
-  });
+test('un cliente sin perfil en el tenant, un aliado o una sesión sin tenant reciben 403', async () => {
+  const useCase = await setup();
 
-  const user = { userId: 'cliente-sin-servicios', tenantId: 'trama-demo', role: 'CLIENT' };
-  const res = await useCase.execute({ user });
-
-  assert.equal(res.total, 0);
-  assert.deepEqual(res.servicios, []);
+  await assert.rejects(() => useCase.execute({ user: { ...cliente, userId: 'otro' } }), (e) => e.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ user: { ...cliente, role: 'ALLY' } }), (e) => e.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ user: { userId: 'u-cliente', role: 'CLIENT' } }), (e) => e.statusCode === 403);
 });
 
-test('GetClientServicesHistoryUseCase - retorna historial con cotizaciones y respeta filtro por estado', async () => {
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const cotizacionRepo = new InMemoryCotizacionRepository();
-  const useCase = new GetClientServicesHistoryUseCase({
-    solicitudRepository: solicitudRepo,
-    cotizacionRepository: cotizacionRepo,
-  });
-
-  const clienteId = 'cliente-vip';
-  const sol1 = await solicitudRepo.create(
-    new Solicitud({
-      tenantId: 'trama-demo',
-      clienteId,
-      aliadoId: 'aliado-1',
-      categoriaId: 'cat-plomeria',
-      zonaId: 'z-1',
-      descripcion: 'Arreglo fuga cocina',
-      estado: 'FINALIZADA',
-      fechaCreacion: '2026-10-10T10:00:00Z',
-    })
-  );
-
-  const sol2 = await solicitudRepo.create(
-    new Solicitud({
-      tenantId: 'trama-demo',
-      clienteId,
-      aliadoId: 'aliado-2',
-      categoriaId: 'cat-electricidad',
-      zonaId: 'z-1',
-      descripcion: 'Instalación lámpara',
-      estado: 'EN_EJECUCION',
-      fechaCreacion: '2026-10-15T10:00:00Z',
-    })
-  );
-
-  // Solicitud de otro tenant (no debe aparecer)
-  await solicitudRepo.create(
-    new Solicitud({
-      tenantId: 'otro-tenant',
-      clienteId,
-      categoriaId: 'cat-cerrajeria',
-      zonaId: 'z-2',
-      descripcion: 'Cambio de chapa',
-      estado: 'FINALIZADA',
-    })
-  );
-
-  // Cotización asociada a sol1
-  await cotizacionRepo.create(
-    new Cotizacion({
-      solicitudId: sol1.id,
-      aliadoId: 'aliado-1',
-      valorManoObra: 60000,
-      valorMateriales: 20000,
-      valor: 80000,
-      estado: 'ACEPTADA',
-    })
-  );
-
-  const user = { userId: clienteId, tenantId: 'trama-demo', role: 'CLIENT' };
-
-  // 1. Consulta todo el historial
-  const resTodos = await useCase.execute({ user });
-  assert.equal(resTodos.total, 2);
-  assert.equal(resTodos.servicios[0].id, sol2.id); // Más reciente primero
-  assert.equal(resTodos.servicios[1].id, sol1.id);
-  assert.ok(resTodos.servicios[1].cotizacion);
-  assert.equal(resTodos.servicios[1].cotizacion.valor, 80000);
-
-  // 2. Consulta filtrando por estado FINALIZADA
-  const resFiltrado = await useCase.execute({ user, estado: 'FINALIZADA' });
-  assert.equal(resFiltrado.total, 1);
-  assert.equal(resFiltrado.servicios[0].id, sol1.id);
-  assert.equal(resFiltrado.servicios[0].estado, 'FINALIZADA');
+test('exige sus dependencias', () => {
+  assert.throws(() => new GetClientServicesHistoryUseCase({}), /solicitudRepository/);
+  assert.throws(() => new GetClientServicesHistoryUseCase({ solicitudRepository: {} }), /cotizacionRepository/);
+  assert.throws(() => new GetClientServicesHistoryUseCase({ solicitudRepository: {}, cotizacionRepository: {} }), /clienteRepository/);
 });

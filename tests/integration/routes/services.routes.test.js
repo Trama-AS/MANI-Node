@@ -148,45 +148,30 @@ test('GET /solicitudes/:id/log: el cliente dueño ve el log cronológico de even
   }
 });
 
-test('GET /api/v1/solicitudes/historial devuelve la lista de servicios del cliente autenticado', async () => {
-  const clientToken = signTestToken({ sub: 'cliente-historial-1', tenantId: 'trama-demo', role: 'cliente' });
+test('GET /solicitudes/historial: servicios del cliente (por cliente.id) con filtro de estado; aliado y sin perfil 403; alias retirados', async () => {
+  const clientToken = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+  const finalizada = nuevaSolicitud('FINALIZADA');
+  const activa = nuevaSolicitud('EN_EJECUCION');
 
-  // Crear servicios para este cliente
-  await container.solicitudRepository.create({
-    tenantId: 'trama-demo',
-    clienteId: 'cliente-historial-1',
-    categoriaId: 'cat-plomeria',
-    zonaId: 'zona-norte',
-    descripcion: 'Servicio Antiguo',
-    estado: 'FINALIZADA',
-    fechaCreacion: '2026-10-01T10:00:00Z',
-  });
+  const todos = await request(app).get('/api/v1/solicitudes/historial').set('Authorization', `Bearer ${clientToken}`);
+  assert.equal(todos.status, 200);
+  const ids = todos.body.servicios.map((s) => s.id);
+  assert.ok(ids.includes(finalizada.id) && ids.includes(activa.id));
+  assert.ok(todos.body.servicios.every((s) => s.clienteId === 'demo-cliente-1' && s.tenantId === 'trama-demo'));
 
-  await container.solicitudRepository.create({
-    tenantId: 'trama-demo',
-    clienteId: 'cliente-historial-1',
-    categoriaId: 'cat-cerrajeria',
-    zonaId: 'zona-norte',
-    descripcion: 'Servicio Nuevo',
-    estado: 'EN_EJECUCION',
-    fechaCreacion: '2026-10-18T10:00:00Z',
-  });
+  const filtrados = await request(app).get('/api/v1/solicitudes/historial?estado=finalizada').set('Authorization', `Bearer ${clientToken}`);
+  assert.ok(filtrados.body.servicios.length >= 1);
+  assert.ok(filtrados.body.servicios.every((s) => s.estado === 'FINALIZADA'));
 
-  const res = await request(app)
-    .get('/api/v1/solicitudes/historial')
-    .set('Authorization', `Bearer ${clientToken}`);
+  const aliado = await request(app).get('/api/v1/solicitudes/historial').set('Authorization', `Bearer ${signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' })}`);
+  assert.equal(aliado.status, 403);
+  const sinPerfil = await request(app).get('/api/v1/solicitudes/historial').set('Authorization', `Bearer ${signTestToken({ sub: 'nadie', tenantId: 'trama-demo', role: 'cliente' })}`);
+  assert.equal(sinPerfil.status, 403);
+  const otroTenant = await request(app).get('/api/v1/solicitudes/historial').set('Authorization', `Bearer ${signTestToken({ sub: 'demo-user-1', tenantId: 'otro-tenant', role: 'cliente' })}`);
+  assert.equal(otroTenant.status, 403);
 
-  assert.equal(res.status, 200);
-  assert.equal(res.body.total, 2);
-  assert.equal(res.body.servicios[0].descripcion, 'Servicio Nuevo');
-  assert.equal(res.body.servicios[1].descripcion, 'Servicio Antiguo');
-
-  // Filtrado por estado
-  const resFiltro = await request(app)
-    .get('/api/v1/solicitudes/historial?estado=FINALIZADA')
-    .set('Authorization', `Bearer ${clientToken}`);
-
-  assert.equal(resFiltro.status, 200);
-  assert.equal(resFiltro.body.total, 1);
-  assert.equal(resFiltro.body.servicios[0].estado, 'FINALIZADA');
+  for (const ruta of ['/api/v1/servicios/historial', '/api/v1/solicitudes/me']) {
+    const alias = await request(app).get(ruta).set('Authorization', `Bearer ${clientToken}`);
+    assert.equal(alias.status, 404);
+  }
 });

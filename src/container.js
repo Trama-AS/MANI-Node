@@ -176,6 +176,7 @@ class Container {
     this.getClientServicesHistoryUseCase = new GetClientServicesHistoryUseCase({
       solicitudRepository: this.solicitudRepository,
       cotizacionRepository: this.cotizacionRepository,
+      clienteRepository: this.clienteRepository,
     });
 
     this.listTenantsUseCase = new ListTenantsUseCase({
