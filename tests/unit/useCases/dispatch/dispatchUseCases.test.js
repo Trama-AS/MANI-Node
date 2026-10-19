@@ -56,6 +56,14 @@ test('elegibilidad: normaliza el tipo y propaga requestId y paginación', async 
   assert.equal(calls[0].pageSize, 5);
 });
 
+test('elegibilidad: acepta el tipo EMPLEADO_DIRECTO (SCRUM-862)', async () => {
+  const { useCase, calls } = eligibleUseCase();
+
+  await useCase.execute({ session: admin, query: { categoriaId: CATEGORIA, zonaId: ZONA, tipo: 'empleado_directo' } });
+
+  assert.equal(calls[0].tipo, 'EMPLEADO_DIRECTO');
+});
+
 test('elegibilidad: un aliado no puede consultarla (403)', async () => {
   const { useCase } = eligibleUseCase();
 

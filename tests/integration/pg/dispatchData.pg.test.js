@@ -97,6 +97,10 @@ test('PG elegibilidad: solo aliados VERIFICADOS, sin ausencia vigente ni rechazo
 
   const otroTenant = await repo.findEligible({ ...base, tenantId: otro.tenant });
   assert.equal(otroTenant.totalCount, 0, 'el tenant ajeno no ve aliados con la categoría de otro tenant');
+
+  const eva = await addAliado(pool, s, { nombre: 'Eva', tipo: 'EMPLEADO_DIRECTO' });
+  const empleados = await repo.findEligible({ ...base, tipo: 'EMPLEADO_DIRECTO' });
+  assert.deepEqual(empleados.allies.map((a) => a.id), [eva.aliado]);
 });
 
 test('PG elegibilidad: la cobertura en una zona padre cubre sus descendientes', opts, async (t) => {
