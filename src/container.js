@@ -37,6 +37,12 @@ const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profi
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const GetActiveLegalDocumentsUseCase = require('./application/useCases/legal/GetActiveLegalDocumentsUseCase');
+const RegisterUserConsentUseCase = require('./application/useCases/legal/RegisterUserConsentUseCase');
+const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/InMemoryLegalDocumentRepository');
+const SupabaseLegalDocumentRepository = require('./infrastructure/repositories/SupabaseLegalDocumentRepository');
+const InMemoryUserConsentRepository = require('./infrastructure/repositories/InMemoryUserConsentRepository');
+const SupabaseUserConsentRepository = require('./infrastructure/repositories/SupabaseUserConsentRepository');
 const RegisterAllyCompanyUseCase = require('./application/useCases/auth/RegisterAllyCompanyUseCase');
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
@@ -115,6 +121,12 @@ class Container {
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
+      this.legalDocumentRepository = new SupabaseLegalDocumentRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
+      this.userConsentRepository = new SupabaseUserConsentRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
       if (this.pgPoolFactory.isConfigured()) {
         this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
       } else {
@@ -133,6 +145,8 @@ class Container {
       this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+      this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
+      this.userConsentRepository = new InMemoryUserConsentRepository();
       this.companyClientRepository = new InMemoryCompanyClientRepository();
     }
 
@@ -205,6 +219,15 @@ class Container {
       envLabel: config.envLabel,
     });
 
+    this.getActiveLegalDocumentsUseCase = new GetActiveLegalDocumentsUseCase({
+      legalDocumentRepository: this.legalDocumentRepository,
+      tenantRepository: this.tenantRepository,
+    });
+
+    this.registerUserConsentUseCase = new RegisterUserConsentUseCase({
+      legalDocumentRepository: this.legalDocumentRepository,
+      userConsentRepository: this.userConsentRepository,
+    });
     this.registerCompanyClientWithSitesUseCase = new RegisterCompanyClientWithSitesUseCase({
       companyClientRepository: this.companyClientRepository,
       authIdentityService: this.authIdentityService,
@@ -224,6 +247,8 @@ class Container {
       documentoKycRepository: this.documentoKycRepository,
       fileStorageService: this.fileStorageService,
       authIdentityService: this.authIdentityService,
+      registerUserConsentUseCase: this.registerUserConsentUseCase,
+      userConsentRepository: this.userConsentRepository,
     });
 
     this.registerAllyCompanyUseCase = new RegisterAllyCompanyUseCase({
