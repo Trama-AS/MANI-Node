@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 
+// El router resuelve el secreto al cargarse y falla si falta fuera de desarrollo/pruebas.
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const authRoutes = require('../src/routes/auth.routes');
 
 function makeApp() {
@@ -13,7 +15,8 @@ function makeApp() {
 }
 
 describe('CFG-22: Validación de Autenticación y Claims de Tenant en Gateway y Core', () => {
-  const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET || 'mani-jwt-secret-shared-development-token-key-2026';
+  const { resolveJwtSecret } = require('../src/config/jwtSecret');
+  const JWT_SECRET = resolveJwtSecret();
 
   test('Rechaza petición sin encabezado Authorization con 401', async () => {
     const app = makeApp();
