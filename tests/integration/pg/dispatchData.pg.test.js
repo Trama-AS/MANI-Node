@@ -92,6 +92,9 @@ test('PG elegibilidad: solo aliados VERIFICADOS, sin ausencia vigente ni rechazo
   assert.equal(pagina.allies.length, 2);
   assert.equal(pagina.totalCount, 4);
 
+  const fueraDeRango = await repo.findEligible({ ...base, page: 9 });
+  assert.deepEqual(fueraDeRango, { allies: [], totalCount: 4 });
+
   const otroTenant = await repo.findEligible({ ...base, tenantId: otro.tenant });
   assert.equal(otroTenant.totalCount, 0, 'el tenant ajeno no ve aliados con la categoría de otro tenant');
 });

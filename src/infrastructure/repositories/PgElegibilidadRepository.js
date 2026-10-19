@@ -1,8 +1,11 @@
 const IElegibilidadRepository = require('../../domain/ports/IElegibilidadRepository');
 const requirePool = require('../db/requirePool');
 
-// La cobertura declarada en una zona cubre también a sus descendientes: se sube por zona_padre_id.
-const ELIGIBLE_FROM = `
+// Una sola consulta, sin construir SQL por interpolación: devuelve siempre una fila con el total
+// y la página (aunque la página pedida esté vacía). La cobertura declarada en una zona cubre también
+// a sus descendientes: se sube por zona_padre_id. El orden es por id, estable para paginar; el
+// ranking del listado es de Rules (ADR-0022).
+const FIND_ELIGIBLE_SQL = `
   WITH RECURSIVE ascendencia AS (
     SELECT z.id, z.zona_padre_id, 1 AS nivel FROM zona z WHERE z.id = $3
     UNION ALL
@@ -30,7 +33,15 @@ const ELIGIBLE_FROM = `
         SELECT 1 FROM solicitud_rechazo r
         WHERE r.solicitud_id = $5::uuid AND r.aliado_id = a.id AND r.tenant_id = a.tenant_id
       ))
-  )`;
+  )
+  SELECT
+    (SELECT count(*)::int FROM elegibles) AS total,
+    COALESCE(
+      (SELECT json_agg(p ORDER BY p.id)
+       FROM (SELECT id, nombre_razon_social, tipo, estado_verificacion
+             FROM elegibles ORDER BY id OFFSET $6 LIMIT $7) p),
+      '[]'::json
+    ) AS allies`;
 
 class PgElegibilidadRepository extends IElegibilidadRepository {
   constructor({ pgPoolFactory }) {
@@ -41,26 +52,19 @@ class PgElegibilidadRepository extends IElegibilidadRepository {
 
   async findEligible({ tenantId, categoriaId, zonaId, requestId = null, tipo = null, page, pageSize }) {
     const pool = requirePool(this.pgPoolFactory);
-    const base = [tenantId, categoriaId, zonaId, tipo, requestId];
 
-    const count = await pool.query(`${ELIGIBLE_FROM} SELECT count(*)::int AS total FROM elegibles`, base);
-    const rows = await pool.query(
-      `${ELIGIBLE_FROM}
-       SELECT id, nombre_razon_social, tipo, estado_verificacion
-       FROM elegibles
-       ORDER BY id
-       OFFSET $6 LIMIT $7`,
-      [...base, (page - 1) * pageSize, pageSize]
-    );
+    const { rows } = await pool.query(FIND_ELIGIBLE_SQL, [
+      tenantId, categoriaId, zonaId, tipo, requestId, (page - 1) * pageSize, pageSize,
+    ]);
 
     return {
-      allies: rows.rows.map((row) => ({
+      allies: rows[0].allies.map((row) => ({
         id: row.id,
         nombreRazonSocial: row.nombre_razon_social,
         tipo: row.tipo,
         estadoVerificacion: row.estado_verificacion,
       })),
-      totalCount: count.rows[0].total,
+      totalCount: rows[0].total,
     };
   }
 }

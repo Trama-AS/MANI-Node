@@ -23,12 +23,13 @@ function fakeFactory(answer) {
   return { factory: { getPool: () => pool }, queries };
 }
 
-test('elegibilidad: consulta total y página con el tenant como primer parámetro y mapea las filas', async () => {
-  const { factory, queries } = fakeFactory((_sql, _params, n) =>
-    n === 1
-      ? { rows: [{ total: 3 }] }
-      : { rows: [{ id: ALLY, nombre_razon_social: 'Ana', tipo: 'PERSONA_NATURAL', estado_verificacion: 'VERIFICADO' }] }
-  );
+test('elegibilidad: una sola consulta con el tenant como primer parámetro y mapea las filas', async () => {
+  const { factory, queries } = fakeFactory(() => ({
+    rows: [{
+      total: 3,
+      allies: [{ id: ALLY, nombre_razon_social: 'Ana', tipo: 'PERSONA_NATURAL', estado_verificacion: 'VERIFICADO' }],
+    }],
+  }));
   const repo = new PgElegibilidadRepository({ pgPoolFactory: factory });
 
   const result = await repo.findEligible({
@@ -39,24 +40,21 @@ test('elegibilidad: consulta total y página con el tenant como primer parámetr
     allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO' }],
     totalCount: 3,
   });
-  assert.equal(queries.length, 2);
-  assert.deepEqual(queries[0].params, [TENANT, CATEGORIA, ZONA, 'PERSONA_NATURAL', SOLICITUD]);
-  assert.deepEqual(queries[1].params, [TENANT, CATEGORIA, ZONA, 'PERSONA_NATURAL', SOLICITUD, 20, 10]);
-  for (const { sql } of queries) {
-    assert.match(sql, /a\.tenant_id = \$1/);
-    assert.match(sql, /estado_verificacion = 'VERIFICADO'/);
-    assert.match(sql, /aa\.inicio <= now\(\) AND aa\.fin > now\(\)/);
-  }
+  assert.equal(queries.length, 1);
+  assert.deepEqual(queries[0].params, [TENANT, CATEGORIA, ZONA, 'PERSONA_NATURAL', SOLICITUD, 20, 10]);
+  assert.match(queries[0].sql, /a\.tenant_id = \$1/);
+  assert.match(queries[0].sql, /estado_verificacion = 'VERIFICADO'/);
+  assert.match(queries[0].sql, /aa\.inicio <= now\(\) AND aa\.fin > now\(\)/);
 });
 
 test('elegibilidad: sin tipo ni requestId envía null y devuelve lista vacía', async () => {
-  const { factory, queries } = fakeFactory((_sql, _params, n) => (n === 1 ? { rows: [{ total: 0 }] } : { rows: [] }));
+  const { factory, queries } = fakeFactory(() => ({ rows: [{ total: 0, allies: [] }] }));
   const repo = new PgElegibilidadRepository({ pgPoolFactory: factory });
 
   const result = await repo.findEligible({ tenantId: TENANT, categoriaId: CATEGORIA, zonaId: ZONA, page: 1, pageSize: 20 });
 
   assert.deepEqual(result, { allies: [], totalCount: 0 });
-  assert.deepEqual(queries[0].params, [TENANT, CATEGORIA, ZONA, null, null]);
+  assert.deepEqual(queries[0].params, [TENANT, CATEGORIA, ZONA, null, null, 0, 20]);
 });
 
 test('elegibilidad: un error de la base se propaga', async () => {

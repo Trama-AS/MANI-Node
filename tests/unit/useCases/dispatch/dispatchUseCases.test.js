@@ -163,9 +163,12 @@ test('publicar: un tenant distinto en el cuerpo es cross-tenant (403) y no escri
 });
 
 test('publicar: el mismo tenant en el cuerpo se acepta', async () => {
-  const { useCase } = publishUseCase();
+  const { useCase, calls } = publishUseCase();
 
-  await useCase.execute({ session: client, body: { ...validBody(), tenantId: TENANT } });
+  const created = await useCase.execute({ session: client, body: { ...validBody(), tenantId: TENANT } });
+
+  assert.deepEqual(created, { id: 'n1' });
+  assert.equal(calls.length, 1);
 });
 
 test('publicar: un aliado no puede publicar (403)', async () => {

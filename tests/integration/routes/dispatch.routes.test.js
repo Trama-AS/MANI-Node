@@ -183,8 +183,11 @@ test('GET /notifications devuelve las ofertas de la solicitud', async () => {
   })();
 });
 
-test('sin DATABASE_URL las rutas fallan cerrado con 503 en lugar de devolver datos', async () => {
-  if (container.pgPoolFactory.isConfigured()) return;
+test('sin DATABASE_URL las rutas fallan cerrado con 503 en lugar de devolver datos', async (t) => {
+  if (container.pgPoolFactory.isConfigured()) {
+    t.skip('DATABASE_URL está configurada');
+    return;
+  }
 
   const res = await request(app)
     .get('/api/v1/allies/eligible')
