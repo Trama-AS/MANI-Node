@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const app = require('../../../src/app');
 
 test('GET /health responde 200 con status UP cuando Supabase no está configurado (DEV)', async () => {

@@ -16,6 +16,8 @@ const SupabaseAliadoCategoriaRepository = require('./infrastructure/repositories
 const SupabaseDocumentoKycRepository = require('./infrastructure/repositories/SupabaseDocumentoKycRepository');
 const SupabaseClienteRepository = require('./infrastructure/repositories/SupabaseClienteRepository');
 const SupabaseSitioRepository = require('./infrastructure/repositories/SupabaseSitioRepository');
+const InMemoryAliadoAusenciaRepository = require('./infrastructure/repositories/InMemoryAliadoAusenciaRepository');
+const SupabaseAliadoAusenciaRepository = require('./infrastructure/repositories/SupabaseAliadoAusenciaRepository');
 const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
@@ -34,14 +36,19 @@ const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profi
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
+const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
+const CreateAllyAbsenceUseCase = require('./application/useCases/availability/CreateAllyAbsenceUseCase');
+const UpdateAllyAbsenceUseCase = require('./application/useCases/availability/UpdateAllyAbsenceUseCase');
+const DeleteAllyAbsenceUseCase = require('./application/useCases/availability/DeleteAllyAbsenceUseCase');
 
 const InMemoryCotizacionRepository = require('./infrastructure/repositories/InMemoryCotizacionRepository');
-const SupabaseCotizacionRepository = require('./infrastructure/repositories/SupabaseCotizacionRepository');
+const PgCotizacionRepository = require('./infrastructure/repositories/PgCotizacionRepository');
 const InMemorySolicitudRepository = require('./infrastructure/repositories/InMemorySolicitudRepository');
-const SupabaseSolicitudRepository = require('./infrastructure/repositories/SupabaseSolicitudRepository');
-const InMemoryHistorialSolicitudRepository = require('./infrastructure/repositories/InMemoryHistorialSolicitudRepository');
-const SupabaseHistorialSolicitudRepository = require('./infrastructure/repositories/SupabaseHistorialSolicitudRepository');
+const PgSolicitudRepository = require('./infrastructure/repositories/PgSolicitudRepository');
+const InMemoryEventoServicioRepository = require('./infrastructure/repositories/InMemoryEventoServicioRepository');
+const PgEventoServicioRepository = require('./infrastructure/repositories/PgEventoServicioRepository');
 
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
@@ -95,9 +102,9 @@ class Container {
       });
       this.clienteRepository = new SupabaseClienteRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.sitioRepository = new SupabaseSitioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.cotizacionRepository = new SupabaseCotizacionRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.solicitudRepository = new SupabaseSolicitudRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.historialSolicitudRepository = new SupabaseHistorialSolicitudRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.aliadoAusenciaRepository = new SupabaseAliadoAusenciaRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
@@ -114,40 +121,56 @@ class Container {
       this.documentoKycRepository = new InMemoryDocumentoKycRepository();
       this.clienteRepository = new InMemoryClienteRepository();
       this.sitioRepository = new InMemorySitioRepository();
-      this.cotizacionRepository = new InMemoryCotizacionRepository();
-      this.solicitudRepository = new InMemorySolicitudRepository();
-      this.historialSolicitudRepository = new InMemoryHistorialSolicitudRepository();
+      this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
+    // Cotización y ciclo de vida del servicio (SCRUM-865 en adelante): sobre `pg` con el contexto de tenant
+    // (withTenantContext, ADR-0032). Sin DATABASE_URL (DEV/test) se usan adaptadores en memoria.
+    if (this.pgPoolFactory.isConfigured()) {
+      this.cotizacionRepository = new PgCotizacionRepository({ pgPoolFactory: this.pgPoolFactory });
+      this.solicitudRepository = new PgSolicitudRepository({ pgPoolFactory: this.pgPoolFactory });
+      this.eventoServicioRepository = new PgEventoServicioRepository({ pgPoolFactory: this.pgPoolFactory });
+    } else {
+      this.cotizacionRepository = new InMemoryCotizacionRepository();
+      this.solicitudRepository = new InMemorySolicitudRepository();
+      this.eventoServicioRepository = new InMemoryEventoServicioRepository();
+    }
+
     this.createQuoteUseCase = new CreateQuoteUseCase({
       cotizacionRepository: this.cotizacionRepository,
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      aliadoRepository: this.aliadoRepository,
     });
 
     this.respondQuoteUseCase = new RespondQuoteUseCase({
       cotizacionRepository: this.cotizacionRepository,
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      clienteRepository: this.clienteRepository,
     });
 
     this.executionLifecycleUseCase = new ExecutionLifecycleUseCase({
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      aliadoRepository: this.aliadoRepository,
     });
 
     this.registerServiceEventUseCase = new RegisterServiceEventUseCase({
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      aliadoRepository: this.aliadoRepository,
       fileStorageService: this.fileStorageService,
     });
 
     this.getServiceLogUseCase = new GetServiceLogUseCase({
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      clienteRepository: this.clienteRepository,
+      aliadoRepository: this.aliadoRepository,
     });
 
     this.getClientServicesHistoryUseCase = new GetClientServicesHistoryUseCase({
@@ -179,6 +202,15 @@ class Container {
       catalogRepository: this.catalogRepository,
     });
 
+    const absenceDeps = {
+      aliadoRepository: this.aliadoRepository,
+      aliadoAusenciaRepository: this.aliadoAusenciaRepository,
+    };
+    this.listAllyAbsencesUseCase = new ListAllyAbsencesUseCase(absenceDeps);
+    this.createAllyAbsenceUseCase = new CreateAllyAbsenceUseCase(absenceDeps);
+    this.updateAllyAbsenceUseCase = new UpdateAllyAbsenceUseCase(absenceDeps);
+    this.deleteAllyAbsenceUseCase = new DeleteAllyAbsenceUseCase(absenceDeps);
+
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
     });
@@ -196,6 +228,15 @@ class Container {
       aliadoCategoriaRepository: this.aliadoCategoriaRepository,
       documentoKycRepository: this.documentoKycRepository,
       fileStorageService: this.fileStorageService,
+      authIdentityService: this.authIdentityService,
+    });
+
+    this.registerDirectEmployeeUseCase = new RegisterDirectEmployeeUseCase({
+      tenantRepository: this.tenantRepository,
+      catalogRepository: this.catalogRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
       authIdentityService: this.authIdentityService,
     });
 

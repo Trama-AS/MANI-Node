@@ -2,15 +2,16 @@ const container = require('../container');
 
 async function startExecution(req, res, next) {
   try {
-    const solicitudId = req.params.id || req.params.solicitudId;
+    const solicitudId = req.params.id;
     const result = await container.executionLifecycleUseCase.startExecution({
       user: req.user,
       solicitudId,
-      observacion: req.body.observacion || req.body.comentario,
+      observacion: req.body.observacion,
     });
 
     res.status(200).json({
       solicitud: result.solicitud.toJSON(),
+      evento: result.evento.toJSON(),
       correlationId: req.correlationId || 'none',
     });
   } catch (err) {
@@ -20,15 +21,16 @@ async function startExecution(req, res, next) {
 
 async function finishExecution(req, res, next) {
   try {
-    const solicitudId = req.params.id || req.params.solicitudId;
+    const solicitudId = req.params.id;
     const result = await container.executionLifecycleUseCase.finishExecution({
       user: req.user,
       solicitudId,
-      observacion: req.body.observacion || req.body.comentario,
+      observacion: req.body.observacion,
     });
 
     res.status(200).json({
       solicitud: result.solicitud.toJSON(),
+      evento: result.evento.toJSON(),
       correlationId: req.correlationId || 'none',
     });
   } catch (err) {
@@ -38,13 +40,12 @@ async function finishExecution(req, res, next) {
 
 async function registerEvent(req, res, next) {
   try {
-    const solicitudId = req.params.id || req.params.solicitudId;
     const result = await container.registerServiceEventUseCase.execute({
       user: req.user,
-      solicitudId,
-      observacion: req.body.observacion || req.body.comentario,
-      fotoUrl: req.body.fotoUrl || req.body.foto_url,
-      file: req.file || (req.files?.foto?.[0] || req.files?.photo?.[0]),
+      solicitudId: req.params.id,
+      observacion: req.body.observacion,
+      fotoUrl: req.body.fotoUrl ?? req.body.foto_url,
+      file: req.file || null,
     });
 
     res.status(201).json({
@@ -58,7 +59,7 @@ async function registerEvent(req, res, next) {
 
 async function getServiceLog(req, res, next) {
   try {
-    const solicitudId = req.params.id || req.params.solicitudId;
+    const solicitudId = req.params.id;
     const result = await container.getServiceLogUseCase.execute({
       user: req.user,
       solicitudId,
@@ -66,7 +67,7 @@ async function getServiceLog(req, res, next) {
 
     res.status(200).json({
       solicitud: result.solicitud.toJSON(),
-      log: result.log.map((e) => (typeof e.toJSON === 'function' ? e.toJSON() : e)),
+      log: result.log,
       correlationId: req.correlationId || 'none',
     });
   } catch (err) {
