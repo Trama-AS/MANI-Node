@@ -76,9 +76,19 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
         const reglasJson = site.reglas ? JSON.stringify(site.reglas) : null;
 
         await clientConn.query(
-          `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-          [siteId, companyClient.tenantId, clientId, site.zonaId, site.direccion, site.nombre, reglasJson]
+          `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+          [
+            siteId,
+            companyClient.tenantId,
+            clientId,
+            site.zonaId,
+            site.direccion,
+            site.nombre,
+            reglasJson,
+            site.contactoNombre ?? null,
+            site.contactoTelefono ?? null,
+          ]
         );
 
         savedSites.push(
@@ -89,6 +99,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
             nombre: site.nombre,
             direccion: site.direccion,
             zonaId: site.zonaId,
+            contactoNombre: site.contactoNombre,
+            contactoTelefono: site.contactoTelefono,
             reglas: site.reglas,
           })
         );
@@ -166,9 +178,19 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     const reglasJson = site.reglas ? JSON.stringify(site.reglas) : null;
 
     await pool.query(
-      `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [siteId, tenantId, clienteId, site.zonaId, site.direccion, site.nombre, reglasJson]
+      `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+      [
+        siteId,
+        tenantId,
+        clienteId,
+        site.zonaId,
+        site.direccion,
+        site.nombre,
+        reglasJson,
+        site.contactoNombre ?? null,
+        site.contactoTelefono ?? null,
+      ]
     );
 
     return new Site({
@@ -178,6 +200,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
       nombre: site.nombre,
       direccion: site.direccion,
       zonaId: site.zonaId,
+      contactoNombre: site.contactoNombre,
+      contactoTelefono: site.contactoTelefono,
       reglas: site.reglas,
     });
   }
@@ -185,7 +209,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   async findSitesByClientId(clienteId, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
-      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, created_at
+      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at
        FROM sitio
        WHERE cliente_id = $1 AND tenant_id = $2
        ORDER BY created_at ASC`,
@@ -226,6 +250,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
       nombre: row.nombre || row.direccion,
       direccion: row.direccion,
       zonaId: row.zona_id,
+      contactoNombre: row.contacto_nombre ?? null,
+      contactoTelefono: row.contacto_telefono ?? null,
       reglas,
       creadoEn: row.created_at,
     });

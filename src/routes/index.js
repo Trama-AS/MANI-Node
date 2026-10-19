@@ -18,7 +18,6 @@ router.use('/api/v1', employeesRoutes);
 router.use('/', authRoutes);
 router.use('/', coreRoutes);
 router.use('/clients', clientsRoutes);
-router.use('/clientes', clientsRoutes);
 router.use('/', employeesRoutes);
 
 module.exports = router;

@@ -74,30 +74,20 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
     assert.strictEqual(res.body.sitios[1].nombre, 'Centro Logístico Fontibón');
   });
 
-  it('POST /clientes (alias) funciona igual con token válido', async () => {
+  it('los alias POST /clientes, POST /api/v1/clients y /clients/companies/:id/sites ya no existen (una ruta por operación)', async () => {
     const token = signToken({ tenantId: 'trama-demo' });
 
-    const payload = {
-      razonSocial: 'Inversiones y Proyectos Alfa SAS',
-      nit: '900333444-2',
-      email: 'proyectos@alfa.com',
-      sitios: [
-        {
-          nombre: 'Edificio Alfa',
-          direccion: 'Calle 72 # 10-34',
-          zonaId: 'zona-bogota-centro',
-        },
-      ],
-    };
-
-    const res = await request(app)
-      .post('/clientes')
-      .set('Authorization', `Bearer ${token}`)
-      .send(payload);
-
-    assert.strictEqual(res.status, 201);
-    assert.strictEqual(res.body.client.razonSocial, 'Inversiones y Proyectos Alfa SAS');
+    for (const [method, ruta] of [
+      ['post', '/clientes'],
+      ['post', '/api/v1/clients'],
+      ['get', '/api/v1/clients/companies/x/sites'],
+      ['post', '/api/v1/clients/companies/x/sites'],
+    ]) {
+      const res = await request(app)[method](ruta).set('Authorization', `Bearer ${token}`).send({});
+      assert.strictEqual(res.status, 404, `${method} ${ruta}`);
+    }
   });
+
 
   it('POST /api/v1/clients/company debe responder 400 si los datos son inválidos (nit corto, sin sitios válidos)', async () => {
     const token = signToken({ tenantId: 'trama-demo' });
