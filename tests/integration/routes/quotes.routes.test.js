@@ -5,7 +5,6 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const app = require('../../../src/app');
 const config = require('../../../src/config');
-const container = require('../../../src/container');
 
 function signTestToken({ sub, tenantId, role, secret = config.supabaseJwtSecret, expiresIn = '1h' }) {
   return jwt.sign({ sub, app_metadata: { tenant_id: tenantId, user_role: role } }, secret, { algorithm: 'HS256', expiresIn });
