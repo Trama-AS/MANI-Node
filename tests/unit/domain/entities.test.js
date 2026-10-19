@@ -4,7 +4,26 @@ const assert = require('node:assert/strict');
 const Tenant = require('../../../src/domain/entities/Tenant');
 const Profile = require('../../../src/domain/entities/Profile');
 const Category = require('../../../src/domain/entities/Category');
+const DirectEmployee = require('../../../src/domain/entities/DirectEmployee');
 const { ValidationError, NotFoundError } = require('../../../src/domain/errors/DomainError');
+
+test('Domain Entity: DirectEmployee valida campos y entra como VERIFICADO', () => {
+  assert.throws(() => new DirectEmployee({ tenantId: '', fullName: 'Carlos', email: 'c@m.co' }), ValidationError);
+  assert.throws(() => new DirectEmployee({ tenantId: 't-1', fullName: 'C', email: 'c@m.co' }), ValidationError);
+  assert.throws(() => new DirectEmployee({ tenantId: 't-1', fullName: 'Carlos', email: 'invalido' }), ValidationError);
+
+  const emp = new DirectEmployee({
+    id: 'emp-1',
+    usuarioId: 'u-1',
+    tenantId: 't-1',
+    fullName: 'Carlos Gomez',
+    email: 'carlos@empresa.com',
+  });
+  assert.equal(emp.isDirectEmployee(), true);
+  assert.equal(emp.isVerified(), true);
+  assert.equal(emp.toJSON().tipoAliado, 'EMPLEADO_DIRECTO');
+  assert.equal(emp.toJSON().estadoVerificacion, 'VERIFICADO');
+});
 
 test('Domain Entity: Tenant valida campos obligatorios y status', () => {
   assert.throws(() => new Tenant({ id: '', name: 'Test' }), ValidationError);

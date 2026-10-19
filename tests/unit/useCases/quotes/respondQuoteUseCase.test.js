@@ -1,265 +1,115 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-
 const RespondQuoteUseCase = require('../../../../src/application/useCases/quotes/RespondQuoteUseCase');
 const InMemoryCotizacionRepository = require('../../../../src/infrastructure/repositories/InMemoryCotizacionRepository');
 const InMemorySolicitudRepository = require('../../../../src/infrastructure/repositories/InMemorySolicitudRepository');
-const InMemoryHistorialSolicitudRepository = require('../../../../src/infrastructure/repositories/InMemoryHistorialSolicitudRepository');
-const Cotizacion = require('../../../../src/domain/entities/Cotizacion');
-const Solicitud = require('../../../../src/domain/entities/Solicitud');
+const InMemoryEventoServicioRepository = require('../../../../src/infrastructure/repositories/InMemoryEventoServicioRepository');
 
-test('RespondQuoteUseCase - validaciones del constructor', () => {
-  assert.throws(() => new RespondQuoteUseCase({}), /cotizacionRepository es requerido/);
-  assert.throws(
-    () => new RespondQuoteUseCase({ cotizacionRepository: {} }),
-    /solicitudRepository es requerido/
+const TENANT = 'tenant-a';
+const clienteUser = { userId: 'usuario-cliente-1', tenantId: TENANT, role: 'CLIENT' };
+
+async function setup({ cliente = { id: 'cliente-1', usuarioId: 'usuario-cliente-1', tenantId: TENANT }, solicitud = {}, cotizacion = {} } = {}) {
+  const cotizacionRepository = new InMemoryCotizacionRepository();
+  const solicitudRepository = new InMemorySolicitudRepository();
+  const eventoServicioRepository = new InMemoryEventoServicioRepository();
+  solicitudRepository.seed({ id: 'sol-1', tenantId: TENANT, clienteId: 'cliente-1', categoriaId: 'c', zonaId: 'z', aliadoId: 'aliado-1', estado: 'COTIZANDO', ...solicitud });
+  const cot = await cotizacionRepository.create(
+    { tenantId: cotizacion.tenantId || TENANT },
+    { id: 'cot-1', solicitudId: 'sol-1', aliadoId: 'aliado-1', valorManoObra: 100, valorMateriales: 20, estado: 'PENDIENTE', version: 1, ...cotizacion }
   );
-  assert.throws(
-    () => new RespondQuoteUseCase({ cotizacionRepository: {}, solicitudRepository: {} }),
-    /historialSolicitudRepository es requerido/
-  );
+  const clienteRepository = {
+    findByUsuarioId: async (tenantId, usuarioId) =>
+      cliente && cliente.tenantId === tenantId && cliente.usuarioId === usuarioId ? cliente : null,
+  };
+  const useCase = new RespondQuoteUseCase({ cotizacionRepository, solicitudRepository, eventoServicioRepository, clienteRepository });
+  return { useCase, cot, cotizacionRepository, solicitudRepository, eventoServicioRepository };
+}
+
+for (const [accion, extra, estadoCot, estadoSol, evento] of [
+  ['ACEPTAR', {}, 'ACEPTADA', 'ACEPTADA', 'COTIZACION_ACEPTADA'],
+  ['RECHAZAR', { motivo: 'Muy costosa' }, 'RECHAZADA', 'RECHAZADA', 'COTIZACION_RECHAZADA'],
+  ['AJUSTAR', { comentario: 'Bajar materiales' }, 'AJUSTE_SOLICITADO', 'COTIZANDO', 'AJUSTE_SOLICITADO'],
+]) {
+  test(`${accion}: el cliente dueño (cliente.id) cambia la cotización y la solicitud y registra ${evento}`, async () => {
+    const { useCase, eventoServicioRepository } = await setup();
+
+    const result = await useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion, ...extra });
+
+    assert.equal(result.cotizacion.estado, estadoCot);
+    assert.equal(result.solicitud.estado, estadoSol);
+    const eventos = await eventoServicioRepository.findBySolicitudId({ tenantId: TENANT }, 'sol-1');
+    assert.equal(eventos.at(-1).tipoEvento, evento);
+    assert.equal(eventos.at(-1).actorId, 'usuario-cliente-1');
+  });
+}
+
+test('responder dos veces la misma cotización responde 409 (transición solo desde PENDIENTE)', async () => {
+  const { useCase } = await setup();
+  await useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'ACEPTAR' });
+
+  await assert.rejects(() => useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'RECHAZAR', motivo: 'Ya no quiero' }), (e) => e.statusCode === 409);
 });
 
-test('RespondQuoteUseCase - rechaza si falta sesión o el rol no es CLIENT', async () => {
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: new InMemoryCotizacionRepository(),
-    solicitudRepository: new InMemorySolicitudRepository(),
-    historialSolicitudRepository: new InMemoryHistorialSolicitudRepository(),
-  });
+test('dos respuestas simultáneas: solo una gana y la otra recibe 409', async () => {
+  const { useCase } = await setup();
 
-  await assert.rejects(
-    () => useCase.execute({ user: null, cotizacionId: 'cot-1', accion: 'ACEPTAR' }),
-    { statusCode: 403, message: 'Sesión requerida' }
-  );
+  const results = await Promise.allSettled([
+    useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'ACEPTAR' }),
+    useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'RECHAZAR', motivo: 'Muy costosa' }),
+  ]);
 
-  await assert.rejects(
-    () =>
-      useCase.execute({
-        user: { userId: 'u-1', tenantId: 'trama-demo', role: 'ALLY' },
-        cotizacionId: 'cot-1',
-        accion: 'ACEPTAR',
-      }),
-    { statusCode: 403, message: /Solo el cliente/ }
-  );
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(results.find((r) => r.status === 'rejected').reason.statusCode, 409);
 });
 
-test('RespondQuoteUseCase - valida cotizacionId y acción válida', async () => {
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: new InMemoryCotizacionRepository(),
-    solicitudRepository: new InMemorySolicitudRepository(),
-    historialSolicitudRepository: new InMemoryHistorialSolicitudRepository(),
-  });
-  const user = { userId: 'c-1', tenantId: 'trama-demo', role: 'CLIENT' };
+test('compara solicitud.cliente_id con cliente.id, no con el id del usuario: otro cliente recibe 403', async () => {
+  const { useCase } = await setup({ solicitud: { clienteId: 'cliente-2' } });
 
-  await assert.rejects(
-    () => useCase.execute({ user, cotizacionId: '', accion: 'ACEPTAR' }),
-    { statusCode: 400, message: 'El id de la cotización es obligatorio' }
-  );
-
-  await assert.rejects(
-    () => useCase.execute({ user, cotizacionId: 'cot-1', accion: 'ELIMINAR' }),
-    { statusCode: 400, message: /Acción no permitida/ }
-  );
+  await assert.rejects(() => useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'ACEPTAR' }), (e) => e.statusCode === 403);
 });
 
-test('RespondQuoteUseCase - rechaza si cotización no existe, o solicitud ajena o de otro tenant', async () => {
-  const cotizacionRepo = new InMemoryCotizacionRepository();
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const historialRepo = new InMemoryHistorialSolicitudRepository();
+test('un usuario sin perfil de cliente en el tenant recibe 403', async () => {
+  const { useCase } = await setup({ cliente: null });
 
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: cotizacionRepo,
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: historialRepo,
-  });
-
-  const user = { userId: 'demo-client-1', tenantId: 'trama-demo', role: 'CLIENT' };
-
-  await assert.rejects(
-    () => useCase.execute({ user, cotizacionId: 'cot-fantasma', accion: 'ACEPTAR' }),
-    { statusCode: 404, message: 'Cotización no encontrada' }
-  );
-
-  const cotizacion = await cotizacionRepo.create(
-    new Cotizacion({
-      solicitudId: 'sol-demo-1',
-      aliadoId: 'demo-ally-1',
-      valorManoObra: 50000,
-      valor: 50000,
-      estado: 'PENDIENTE',
-    })
-  );
-
-  const userOtroTenant = { userId: 'demo-client-1', tenantId: 'otro-tenant', role: 'CLIENT' };
-  await assert.rejects(
-    () => useCase.execute({ user: userOtroTenant, cotizacionId: cotizacion.id, accion: 'ACEPTAR' }),
-    { statusCode: 404, message: 'Solicitud no encontrada' }
-  );
-
-  const userClienteAjeno = { userId: 'cliente-ajeno', tenantId: 'trama-demo', role: 'CLIENT' };
-  await assert.rejects(
-    () => useCase.execute({ user: userClienteAjeno, cotizacionId: cotizacion.id, accion: 'ACEPTAR' }),
-    { statusCode: 403, message: /solicitud ajena/ }
-  );
+  await assert.rejects(() => useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'ACEPTAR' }), (e) => e.statusCode === 403);
 });
 
-test('RespondQuoteUseCase - protección de doble acción (concurrencia / 409 CONFLICT)', async () => {
-  const cotizacionRepo = new InMemoryCotizacionRepository();
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const historialRepo = new InMemoryHistorialSolicitudRepository();
+test('cross-tenant: la cotización de otro tenant no existe (404) y no cambia', async () => {
+  const { useCase, cotizacionRepository } = await setup({ cotizacion: { tenantId: 'tenant-b' } });
 
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: cotizacionRepo,
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: historialRepo,
-  });
-
-  const user = { userId: 'demo-client-1', tenantId: 'trama-demo', role: 'CLIENT' };
-
-  const cotizacion = await cotizacionRepo.create(
-    new Cotizacion({
-      solicitudId: 'sol-demo-1',
-      aliadoId: 'demo-ally-1',
-      valorManoObra: 60000,
-      valor: 60000,
-      estado: 'ACEPTADA',
-    })
-  );
-
-  await assert.rejects(
-    () => useCase.execute({ user, cotizacionId: cotizacion.id, accion: 'ACEPTAR' }),
-    { statusCode: 409, message: /ya fue procesada previamente con estado ACEPTADA/ }
-  );
+  await assert.rejects(() => useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', accion: 'ACEPTAR' }), (e) => e.statusCode === 404);
+  assert.equal((await cotizacionRepository.findById({ tenantId: 'tenant-b' }, 'cot-1')).estado, 'PENDIENTE');
 });
 
-test('RespondQuoteUseCase - flujo exitoso ACEPTAR: transiciona a ACEPTADA y registra historial', async () => {
-  const cotizacionRepo = new InMemoryCotizacionRepository();
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const historialRepo = new InMemoryHistorialSolicitudRepository();
+test('cotización inexistente responde 404', async () => {
+  const { useCase } = await setup();
 
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: cotizacionRepo,
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: historialRepo,
-  });
-
-  const user = { userId: 'demo-client-1', tenantId: 'trama-demo', role: 'CLIENT' };
-
-  const cot = await cotizacionRepo.create(
-    new Cotizacion({
-      solicitudId: 'sol-demo-1',
-      aliadoId: 'demo-ally-1',
-      valorManoObra: 80000,
-      valor: 80000,
-      estado: 'PENDIENTE',
-      version: 1,
-    })
-  );
-
-  const res = await useCase.execute({
-    user,
-    cotizacionId: cot.id,
-    accion: 'ACEPTAR',
-    comentario: 'Precio justo, por favor iniciar cuanto antes',
-  });
-
-  assert.equal(res.cotizacion.estado, 'ACEPTADA');
-  assert.equal(res.solicitud.estado, 'ACEPTADA');
-
-  const eventos = await historialRepo.findBySolicitudId('sol-demo-1');
-  assert.equal(eventos.length, 1);
-  assert.equal(eventos[0].estadoNuevo, 'ACEPTADA');
-  assert.ok(eventos[0].observacion.includes('Precio justo'));
+  await assert.rejects(() => useCase.execute({ user: clienteUser, cotizacionId: 'no-existe', accion: 'ACEPTAR' }), (e) => e.statusCode === 404);
 });
 
-test('RespondQuoteUseCase - flujo RECHAZAR: exige motivo y transiciona a RECHAZADA', async () => {
-  const cotizacionRepo = new InMemoryCotizacionRepository();
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const historialRepo = new InMemoryHistorialSolicitudRepository();
+for (const [name, input] of [
+  ['acción desconocida', { accion: 'BORRAR' }],
+  ['rechazo sin motivo', { accion: 'RECHAZAR', motivo: 'no' }],
+  ['ajuste sin comentario', { accion: 'AJUSTAR', comentario: '' }],
+  ['sin cotización', { accion: 'ACEPTAR', cotizacionId: '' }],
+]) {
+  test(`validación: ${name} responde 400`, async () => {
+    const { useCase } = await setup();
 
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: cotizacionRepo,
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: historialRepo,
+    await assert.rejects(() => useCase.execute({ user: clienteUser, cotizacionId: 'cot-1', ...input }), (e) => e.statusCode === 400);
   });
+}
 
-  const user = { userId: 'demo-client-1', tenantId: 'trama-demo', role: 'CLIENT' };
+test('un aliado o una sesión sin tenant no puede responder (403)', async () => {
+  const { useCase } = await setup();
 
-  const cot = await cotizacionRepo.create(
-    new Cotizacion({
-      solicitudId: 'sol-demo-1',
-      aliadoId: 'demo-ally-1',
-      valorManoObra: 150000,
-      valor: 150000,
-      estado: 'PENDIENTE',
-      version: 1,
-    })
-  );
-
-  await assert.rejects(
-    () => useCase.execute({ user, cotizacionId: cot.id, accion: 'RECHAZAR', motivo: '' }),
-    { statusCode: 400, message: /motivo de rechazo es obligatorio/ }
-  );
-
-  const res = await useCase.execute({
-    user,
-    cotizacionId: cot.id,
-    accion: 'RECHAZAR',
-    motivo: 'El valor supera mi presupuesto y conseguí otro servicio',
-  });
-
-  assert.equal(res.cotizacion.estado, 'RECHAZADA');
-  assert.equal(res.cotizacion.observacion, 'El valor supera mi presupuesto y conseguí otro servicio');
-  assert.equal(res.solicitud.estado, 'RECHAZADA');
-
-  const eventos = await historialRepo.findBySolicitudId('sol-demo-1');
-  assert.equal(eventos.length, 1);
-  assert.equal(eventos[0].estadoNuevo, 'RECHAZADA');
+  await assert.rejects(() => useCase.execute({ user: { ...clienteUser, role: 'ALLY' }, cotizacionId: 'cot-1', accion: 'ACEPTAR' }), (e) => e.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ user: { userId: 'x', role: 'CLIENT' }, cotizacionId: 'cot-1', accion: 'ACEPTAR' }), (e) => e.statusCode === 403);
 });
 
-test('RespondQuoteUseCase - flujo AJUSTAR: exige comentario y cotización pasa a AJUSTE_SOLICITADO', async () => {
-  const cotizacionRepo = new InMemoryCotizacionRepository();
-  const solicitudRepo = new InMemorySolicitudRepository();
-  const historialRepo = new InMemoryHistorialSolicitudRepository();
-
-  const useCase = new RespondQuoteUseCase({
-    cotizacionRepository: cotizacionRepo,
-    solicitudRepository: solicitudRepo,
-    historialSolicitudRepository: historialRepo,
-  });
-
-  const user = { userId: 'demo-client-1', tenantId: 'trama-demo', role: 'CLIENT' };
-
-  const cot = await cotizacionRepo.create(
-    new Cotizacion({
-      solicitudId: 'sol-demo-1',
-      aliadoId: 'demo-ally-1',
-      valorManoObra: 90000,
-      valorMateriales: 30000,
-      valor: 120000,
-      estado: 'PENDIENTE',
-      version: 1,
-    })
-  );
-
-  await assert.rejects(
-    () => useCase.execute({ user, cotizacionId: cot.id, accion: 'AJUSTAR', comentario: '  ' }),
-    { statusCode: 400, message: /Debes indicar el comentario/ }
-  );
-
-  const res = await useCase.execute({
-    user,
-    cotizacionId: cot.id,
-    accion: 'AJUSTAR',
-    comentario: 'Está muy caro, los materiales los puedo comprar yo mismo',
-  });
-
-  assert.equal(res.cotizacion.estado, 'AJUSTE_SOLICITADO');
-  assert.equal(res.cotizacion.observacion, 'Está muy caro, los materiales los puedo comprar yo mismo');
-  assert.equal(res.solicitud.estado, 'COTIZANDO');
-
-  const eventos = await historialRepo.findBySolicitudId('sol-demo-1');
-  assert.equal(eventos.length, 1);
-  assert.equal(eventos[0].estadoNuevo, 'COTIZANDO');
-  assert.ok(eventos[0].observacion.includes('Ajuste solicitado'));
+test('exige sus dependencias', () => {
+  assert.throws(() => new RespondQuoteUseCase({}), /cotizacionRepository/);
+  assert.throws(() => new RespondQuoteUseCase({ cotizacionRepository: {} }), /solicitudRepository/);
+  assert.throws(() => new RespondQuoteUseCase({ cotizacionRepository: {}, solicitudRepository: {} }), /eventoServicioRepository/);
+  assert.throws(() => new RespondQuoteUseCase({ cotizacionRepository: {}, solicitudRepository: {}, eventoServicioRepository: {} }), /clienteRepository/);
 });
