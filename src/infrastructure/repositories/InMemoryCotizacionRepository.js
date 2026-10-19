@@ -2,43 +2,38 @@ const crypto = require('crypto');
 const ICotizacionRepository = require('../../domain/ports/ICotizacionRepository');
 const Cotizacion = require('../../domain/entities/Cotizacion');
 
+/** Adaptador en memoria (DEV/test sin DATABASE_URL). Mismo aislamiento por tenant que el real. */
 class InMemoryCotizacionRepository extends ICotizacionRepository {
   constructor() {
     super();
     this.cotizaciones = new Map();
   }
 
-  async create(cotizacion) {
-    const id = cotizacion.id || crypto.randomUUID();
-    const entity = new Cotizacion({
-      ...cotizacion,
-      id,
-    });
-    this.cotizaciones.set(id, entity);
-    return entity;
+  async create(ctx, cotizacion) {
+    const entity = new Cotizacion({ ...cotizacion, id: cotizacion.id || crypto.randomUUID(), tenantId: ctx.tenantId });
+    this.cotizaciones.set(entity.id, entity);
+    return new Cotizacion(entity);
   }
 
-  async findById(id) {
+  async findById(ctx, id) {
     const found = this.cotizaciones.get(id);
-    return found ? new Cotizacion(found) : null;
+    return found && found.tenantId === ctx.tenantId ? new Cotizacion(found) : null;
   }
 
-  async findBySolicitudId(solicitudId) {
+  async findBySolicitudId(ctx, solicitudId) {
     return [...this.cotizaciones.values()]
-      .filter((c) => c.solicitudId === solicitudId)
+      .filter((c) => c.solicitudId === solicitudId && c.tenantId === ctx.tenantId)
       .sort((a, b) => a.version - b.version)
       .map((c) => new Cotizacion(c));
   }
 
-  async update(cotizacion) {
-    const existing = this.cotizaciones.get(cotizacion.id);
-    if (!existing) return null;
-    const updated = new Cotizacion({
-      ...existing,
-      ...cotizacion,
-    });
-    this.cotizaciones.set(cotizacion.id, updated);
-    return updated;
+  async updateEstado(ctx, id, estado, { soloSiEstado = null } = {}) {
+    const found = this.cotizaciones.get(id);
+    if (!found || found.tenantId !== ctx.tenantId) return null;
+    if (soloSiEstado && found.estado !== soloSiEstado) return null;
+    const updated = new Cotizacion({ ...found, estado });
+    this.cotizaciones.set(id, updated);
+    return new Cotizacion(updated);
   }
 }
 

@@ -25,6 +25,18 @@ class SupabaseClienteRepository extends IClienteRepository {
     return data;
   }
 
+  async findByUsuarioId(tenantId, usuarioId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('cliente')
+      .select('id, tenant_id, usuario_id, tipo')
+      .eq('tenant_id', tenantId)
+      .eq('usuario_id', usuarioId)
+      .maybeSingle();
+    if (error) throw new DomainError(`Error consultando cliente: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data ? { id: data.id, tenantId: data.tenant_id, usuarioId: data.usuario_id, tipo: data.tipo } : null;
+  }
+
   async deleteByUsuarioId(tenantId, usuarioId) {
     const client = this.supabaseClientFactory.getClient();
     const { error } = await client

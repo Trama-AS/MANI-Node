@@ -46,3 +46,29 @@ test('deleteByUsuarioId lanza DomainError INTERNAL_ERROR si Supabase reporta err
     }
   );
 });
+
+test('findByUsuarioId filtra por tenant y usuario y devuelve cliente.id (distinto del usuario)', async () => {
+  const filtros = [];
+  const builder = {
+    select: () => builder,
+    eq: (col, val) => { filtros.push([col, val]); return builder; },
+    maybeSingle: async () => ({ data: { id: 'cliente-1', tenant_id: 't1', usuario_id: 'u1', tipo: 'PERSONA_NATURAL' }, error: null }),
+  };
+  const repo = new SupabaseClienteRepository({ supabaseClientFactory: makeFakeClientFactory({ from: () => builder }) });
+
+  const cliente = await repo.findByUsuarioId('t1', 'u1');
+
+  assert.deepEqual(cliente, { id: 'cliente-1', tenantId: 't1', usuarioId: 'u1', tipo: 'PERSONA_NATURAL' });
+  assert.deepEqual(filtros, [['tenant_id', 't1'], ['usuario_id', 'u1']]);
+});
+
+test('findByUsuarioId devuelve null si no hay cliente y lanza INTERNAL_ERROR ante error', async () => {
+  const vacio = { select: () => vacio, eq: () => vacio, maybeSingle: async () => ({ data: null, error: null }) };
+  const falla = { select: () => falla, eq: () => falla, maybeSingle: async () => ({ data: null, error: { message: 'x' } }) };
+
+  assert.equal(await new SupabaseClienteRepository({ supabaseClientFactory: makeFakeClientFactory({ from: () => vacio }) }).findByUsuarioId('t', 'u'), null);
+  await assert.rejects(
+    () => new SupabaseClienteRepository({ supabaseClientFactory: makeFakeClientFactory({ from: () => falla }) }).findByUsuarioId('t', 'u'),
+    (e) => e.code === 'INTERNAL_ERROR'
+  );
+});

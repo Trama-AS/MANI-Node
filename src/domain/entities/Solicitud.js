@@ -1,37 +1,32 @@
 /**
- * Entidad de dominio Solicitud / Servicio (RF-12, RF-14, RF-18 / US-04.*).
+ * Entidad de dominio Solicitud (RF-12, RF-14, RF-18 / US-04.*). Refleja las columnas reales de `solicitud`.
+ * `aliadoId` es `aliado.id` (no el id del usuario) y lo fija Dispatch al aceptar (ADR-0016).
  */
 class Solicitud {
   constructor({
     id,
     tenantId,
     clienteId,
-    aliadoId = null,
     sitioId = null,
     categoriaId,
     zonaId,
-    descripcion,
-    direccion = null,
-    fechaServicio = null,
-    estado = 'CREADA',
+    aliadoId = null,
+    descripcion = null,
+    estado,
     fechaCreacion = new Date().toISOString(),
-    fechaInicioEjecucion = null,
-    fechaFinEjecucion = null,
+    fechaActualizacion = null,
   }) {
     this.id = id;
     this.tenantId = tenantId;
     this.clienteId = clienteId;
-    this.aliadoId = aliadoId;
     this.sitioId = sitioId;
     this.categoriaId = categoriaId;
     this.zonaId = zonaId;
+    this.aliadoId = aliadoId;
     this.descripcion = descripcion;
-    this.direccion = direccion;
-    this.fechaServicio = fechaServicio instanceof Date ? fechaServicio.toISOString() : fechaServicio;
     this.estado = estado;
     this.fechaCreacion = fechaCreacion instanceof Date ? fechaCreacion.toISOString() : fechaCreacion;
-    this.fechaInicioEjecucion = fechaInicioEjecucion instanceof Date ? fechaInicioEjecucion.toISOString() : fechaInicioEjecucion;
-    this.fechaFinEjecucion = fechaFinEjecucion instanceof Date ? fechaFinEjecucion.toISOString() : fechaFinEjecucion;
+    this.fechaActualizacion = fechaActualizacion instanceof Date ? fechaActualizacion.toISOString() : fechaActualizacion;
   }
 
   toJSON() {
@@ -39,17 +34,14 @@ class Solicitud {
       id: this.id,
       tenantId: this.tenantId,
       clienteId: this.clienteId,
-      aliadoId: this.aliadoId,
       sitioId: this.sitioId,
       categoriaId: this.categoriaId,
       zonaId: this.zonaId,
+      aliadoId: this.aliadoId,
       descripcion: this.descripcion,
-      direccion: this.direccion,
-      fechaServicio: this.fechaServicio,
       estado: this.estado,
       fechaCreacion: this.fechaCreacion,
-      fechaInicioEjecucion: this.fechaInicioEjecucion,
-      fechaFinEjecucion: this.fechaFinEjecucion,
+      fechaActualizacion: this.fechaActualizacion,
     };
   }
 }

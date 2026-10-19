@@ -1,4 +1,3 @@
-const Cotizacion = require('../../../domain/entities/Cotizacion');
 const {
   ValidationError,
   NotFoundError,
@@ -6,157 +5,106 @@ const {
   ConflictError,
 } = require('../../../domain/errors/DomainError');
 
+const ESTADOS_SIN_COTIZACION = ['FINALIZADA', 'CANCELADA', 'RECHAZADA'];
+
+function montoNoNegativo(valor, campo, { obligatorio }) {
+  if (valor === undefined || valor === null || valor === '') {
+    if (obligatorio) throw new ValidationError(`El valor de ${campo} es obligatorio y debe ser numérico`);
+    return 0;
+  }
+  const numero = Number(valor);
+  if (Number.isNaN(numero)) throw new ValidationError(`El valor de ${campo} debe ser numérico`);
+  if (numero < 0) throw new ValidationError(`El valor de ${campo} no puede ser negativo`);
+  return Math.round(numero * 100) / 100;
+}
+
+/**
+ * US-04.2.1 (SCRUM-865): el aliado asignado emite una cotización con mano de obra y materiales separados.
+ * - El aliado se resuelve desde el usuario del JWT (`aliado.id`, no el id del usuario).
+ * - La solicitud debe estar asignada a ese aliado: la asignación la hace Dispatch (ADR-0016), no Core.
+ * - El tarifario lo valida Rules Service (SAD §7.3): Core no inventa un umbral; queda PENDIENTE.
+ */
 class CreateQuoteUseCase {
-  constructor({
-    cotizacionRepository,
-    solicitudRepository,
-    historialSolicitudRepository,
-    rulesServiceClient = null,
-  }) {
+  constructor({ cotizacionRepository, solicitudRepository, eventoServicioRepository, aliadoRepository }) {
     if (!cotizacionRepository) throw new Error('cotizacionRepository es requerido');
     if (!solicitudRepository) throw new Error('solicitudRepository es requerido');
-    if (!historialSolicitudRepository) throw new Error('historialSolicitudRepository es requerido');
+    if (!eventoServicioRepository) throw new Error('eventoServicioRepository es requerido');
+    if (!aliadoRepository) throw new Error('aliadoRepository es requerido');
 
     this.cotizacionRepository = cotizacionRepository;
     this.solicitudRepository = solicitudRepository;
-    this.historialSolicitudRepository = historialSolicitudRepository;
-    this.rulesServiceClient = rulesServiceClient;
+    this.eventoServicioRepository = eventoServicioRepository;
+    this.aliadoRepository = aliadoRepository;
   }
 
-  async execute({
-    user,
-    solicitudId,
-    valorManoObra,
-    valorMateriales = 0,
-    valor,
-    moneda = 'COP',
-    observacion = null,
-  }) {
-    if (!user) {
+  async execute({ user, solicitudId, valorManoObra, valorMateriales, valor, observacion = null }) {
+    if (!user || !user.tenantId || !user.userId) {
       throw new ForbiddenError('Sesión requerida para emitir cotización');
     }
     if (user.role !== 'ALLY') {
       throw new ForbiddenError('Solo un aliado puede emitir cotizaciones');
     }
-
     if (!solicitudId) {
       throw new ValidationError('El id de la solicitud es obligatorio');
     }
 
-    const numManoObra = Number(valorManoObra);
-    if (valorManoObra === undefined || valorManoObra === null || isNaN(numManoObra)) {
-      throw new ValidationError('El valor de mano de obra es obligatorio y debe ser numérico');
-    }
-    if (numManoObra < 0) {
-      throw new ValidationError('El valor de mano de obra no puede ser negativo');
-    }
-
-    const numMateriales = Number(valorMateriales ?? 0);
-    if (isNaN(numMateriales)) {
-      throw new ValidationError('El valor de materiales debe ser numérico');
-    }
-    if (numMateriales < 0) {
-      throw new ValidationError('El valor de materiales no puede ser negativo');
-    }
-
-    // Redondeo exacto a 2 decimales según NUMERIC(14,2)
-    const manoObraRedondeada = Math.round(numManoObra * 100) / 100;
-    const materialesRedondeados = Math.round(numMateriales * 100) / 100;
-    const totalCalculado = Math.round((manoObraRedondeada + materialesRedondeados) * 100) / 100;
+    const manoObra = montoNoNegativo(valorManoObra, 'mano de obra', { obligatorio: true });
+    const materiales = montoNoNegativo(valorMateriales, 'materiales', { obligatorio: false });
+    const total = Math.round((manoObra + materiales) * 100) / 100;
 
     if (valor !== undefined && valor !== null) {
-      const numTotalEnviado = Number(valor);
-      if (isNaN(numTotalEnviado) || Math.abs(numTotalEnviado - totalCalculado) > 0.01) {
+      const totalEnviado = Number(valor);
+      if (Number.isNaN(totalEnviado) || Math.abs(totalEnviado - total) > 0.01) {
         throw new ValidationError(
-          `El total de la cotización (${numTotalEnviado}) debe coincidir exactamente con la suma de mano de obra y materiales (${totalCalculado})`
+          `El total de la cotización (${valor}) debe coincidir con la suma de mano de obra y materiales (${total})`
         );
       }
     }
 
-    const solicitud = await this.solicitudRepository.findById(solicitudId);
-    if (!solicitud || solicitud.tenantId !== user.tenantId) {
+    const ctx = { tenantId: user.tenantId, userId: user.userId, role: user.role };
+
+    const aliado = await this.aliadoRepository.findByUsuarioId(user.tenantId, user.userId);
+    if (!aliado) {
+      throw new ForbiddenError('No existe un perfil de aliado para la cuenta en este tenant');
+    }
+
+    const solicitud = await this.solicitudRepository.findById(ctx, solicitudId);
+    if (!solicitud) {
       throw new NotFoundError('Solicitud no encontrada');
     }
-
-    // Permisos y asignación: si la solicitud ya está asignada a otro aliado
-    if (solicitud.aliadoId && solicitud.aliadoId !== user.userId) {
+    if (!solicitud.aliadoId) {
+      throw new ConflictError('La solicitud aún no está asignada a un aliado');
+    }
+    if (solicitud.aliadoId !== aliado.id) {
       throw new ForbiddenError('No tienes autorización para cotizar en una solicitud asignada a otro aliado');
     }
-
-    // Validación de estado de la solicitud
-    const estadosInvalidos = ['FINALIZADA', 'CANCELADA', 'RECHAZADA'];
-    if (estadosInvalidos.includes(solicitud.estado)) {
+    if (ESTADOS_SIN_COTIZACION.includes(solicitud.estado)) {
       throw new ConflictError(`No se puede cotizar una solicitud en estado ${solicitud.estado}`);
     }
 
-    // Validación contra el tarifario de referencia (RF-16 / SECUENCIAS):
-    // El Rules Service o tarifario define rangos de referencia. Si está fuera de rango, se alerta pero NO se bloquea (RF-16).
-    let fueraDeRango = false;
-    let alerta = null;
+    const previas = await this.cotizacionRepository.findBySolicitudId(ctx, solicitudId);
+    const version = previas.length + 1;
 
-    if (this.rulesServiceClient && typeof this.rulesServiceClient.evaluateRate === 'function') {
-      try {
-        const rateResult = await this.rulesServiceClient.evaluateRate({
-          tenantId: user.tenantId,
-          solicitudId,
-          basePrice: totalCalculado,
-        });
-        if (rateResult && rateResult.fueraDeRango) {
-          fueraDeRango = true;
-          alerta = rateResult.alerta || 'La cotización excede el tarifario de referencia del tenant';
-        }
-      } catch {
-        // En caso de que no haya servicio externo, no bloquea el flujo principal
-      }
-    } else {
-      // Tarifario por defecto de referencia: si el total excede un umbral típico razonable (ej. 1'000.000 COP)
-      if (totalCalculado > 1000000) {
-        fueraDeRango = true;
-        alerta = 'La cotización excede el tarifario de referencia del tenant';
-      }
-    }
-
-    // Historial y versionado de cotizaciones para la solicitud (SAD §6.4: version incremental)
-    const cotizacionesPrevias = await this.cotizacionRepository.findBySolicitudId(solicitudId);
-    const version = cotizacionesPrevias.length + 1;
-
-    const nuevaCotizacion = new Cotizacion({
+    const cotizacion = await this.cotizacionRepository.create(ctx, {
       solicitudId,
-      aliadoId: user.userId,
-      valorManoObra: manoObraRedondeada,
-      valorMateriales: materialesRedondeados,
-      valor: totalCalculado,
-      moneda: moneda || 'COP',
-      fueraDeRango,
+      aliadoId: aliado.id,
+      valorManoObra: manoObra,
+      valorMateriales: materiales,
       estado: 'PENDIENTE',
       version,
       observacion: observacion ? String(observacion).trim() : null,
     });
 
-    const cotizacionGuardada = await this.cotizacionRepository.create(nuevaCotizacion);
+    await this.solicitudRepository.updateEstado(ctx, solicitudId, 'COTIZANDO');
 
-    // Actualiza el estado de la solicitud a COTIZANDO y asocia al aliado
-    const estadoAnterior = solicitud.estado;
-    solicitud.estado = 'COTIZANDO';
-    if (!solicitud.aliadoId) {
-      solicitud.aliadoId = user.userId;
-    }
-    await this.solicitudRepository.update(solicitud);
-
-    // Registra en el log/historial de la solicitud
-    await this.historialSolicitudRepository.create({
+    await this.eventoServicioRepository.create(ctx, {
       solicitudId,
-      usuarioId: user.userId,
-      estadoAnterior,
-      estadoNuevo: 'COTIZANDO',
-      observacion: `Cotización v${version} enviada: Mano de obra ${manoObraRedondeada}, Materiales ${materialesRedondeados}, Total ${totalCalculado}`,
+      actorId: user.userId,
+      tipoEvento: 'COTIZACION_ENVIADA',
+      descripcion: `Cotización v${version}: mano de obra ${manoObra}, materiales ${materiales}, total ${total}`,
     });
 
-    return {
-      cotizacion: cotizacionGuardada,
-      fueraDeRango,
-      alerta,
-    };
+    return { cotizacion, validacionTarifario: 'PENDIENTE' };
   }
 }
 
