@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const multer = require('multer');
 const tenantsController = require('../controllers/tenants.controller');
 const profilesController = require('../controllers/profiles.controller');
 const catalogController = require('../controllers/catalog.controller');
@@ -8,6 +9,9 @@ const authenticate = require('../middlewares/auth.middleware');
 const availabilityController = require('../controllers/availability.controller');
 
 const router = Router();
+
+// Evidencia de eventos del servicio (SCRUM-869): una imagen de hasta 5 MB en el campo `foto`.
+const uploadEvidencia = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 
 router.get('/tenants', tenantsController.listTenants);
 router.get('/profiles/me', profilesController.getOwnProfile);
@@ -34,7 +38,6 @@ router.post('/solicitudes/:id/iniciar', authenticate, servicesController.startEx
 router.post('/solicitudes/:id/finalizar', authenticate, servicesController.finishExecution);
 
 // RF-18 / US-04.3.2 / SCRUM-869: Registrar eventos durante la ejecución
-router.post('/solicitudes/:id/eventos', authenticate, servicesController.registerEvent);
-router.post('/servicios/:id/eventos', authenticate, servicesController.registerEvent);
+router.post('/solicitudes/:id/eventos', authenticate, uploadEvidencia.single('foto'), servicesController.registerEvent);
 
 module.exports = router;

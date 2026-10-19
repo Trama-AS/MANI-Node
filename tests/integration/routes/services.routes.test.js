@@ -91,29 +91,33 @@ test('cross-tenant y alias retirados: otro tenant no ve la solicitud y /iniciar-
   }
 });
 
-test('POST /api/v1/solicitudes/:id/eventos registra evento e imprevisto con 201 Created', async () => {
+test('POST /solicitudes/:id/eventos registra el evento en evento_servicio (201) con evidencia subida como archivo', async () => {
   const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
-  const sol = await container.solicitudRepository.create({
-    tenantId: 'trama-demo',
-    clienteId: 'demo-client-1',
-    aliadoId: 'demo-ally-1',
-    categoriaId: 'cat-plomeria',
-    zonaId: 'zona-norte',
-    descripcion: 'Reparación de calentador',
-    estado: 'EN_EJECUCION',
-  });
+  const sol = nuevaSolicitud('EN_EJECUCION');
 
   const res = await request(app)
     .post(`/api/v1/solicitudes/${sol.id}/eventos`)
     .set('Authorization', `Bearer ${allyToken}`)
-    .send({
-      observacion: 'Se encontró termostato quemado, se cotiza reemplazo',
-      fotoUrl: 'https://cdn.mani.local/fotos/termostato.png',
-    });
+    .field('observacion', 'Se encontró termostato quemado')
+    .attach('foto', Buffer.from('fake-png'), { filename: 'termostato.png', contentType: 'image/png' });
 
   assert.equal(res.status, 201);
-  assert.ok(res.body.evento.id);
   assert.equal(res.body.evento.solicitudId, sol.id);
-  assert.equal(res.body.evento.fotoUrl, 'https://cdn.mani.local/fotos/termostato.png');
-  assert.ok(res.body.evento.observacion.includes('termostato'));
+  assert.equal(res.body.evento.tipoEvento, 'EVENTO_EJECUCION');
+  assert.ok(res.body.evento.descripcion.includes('termostato'));
+  assert.match(res.body.evento.evidenciaRuta, /^trama-demo\/demo-ally-1\/eventos\//);
+});
+
+test('POST /solicitudes/:id/eventos rechaza una URL de foto en el cuerpo (400) y el alias /servicios/:id/eventos ya no existe', async () => {
+  const allyToken = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const sol = nuevaSolicitud('EN_EJECUCION');
+
+  const conUrl = await request(app)
+    .post(`/api/v1/solicitudes/${sol.id}/eventos`)
+    .set('Authorization', `Bearer ${allyToken}`)
+    .send({ observacion: 'Imprevisto', fotoUrl: 'https://evil.example/x.png' });
+  assert.equal(conUrl.status, 400);
+
+  const alias = await request(app).post(`/api/v1/servicios/${sol.id}/eventos`).set('Authorization', `Bearer ${allyToken}`).send({ observacion: 'x' });
+  assert.equal(alias.status, 404);
 });

@@ -144,7 +144,7 @@ test('evento_servicio: inserta con tenant_id y actor, y lista por solicitud en o
   assert.equal(creado.tipoEvento, 'COTIZACION_ENVIADA');
   assert.equal(lista.length, 1);
   const insert = queries.find((q) => q.sql.includes('INSERT INTO evento_servicio'));
-  assert.deepEqual(insert.params, [TENANT, SOL, USER, 'COTIZACION_ENVIADA', 'x']);
+  assert.deepEqual(insert.params, [TENANT, SOL, USER, 'COTIZACION_ENVIADA', 'x', null]);
   const select = queries.find((q) => q.sql.startsWith('SELECT') && q.sql.includes('evento_servicio'));
   assert.match(select.sql, /ORDER BY "timestamp"/);
 });

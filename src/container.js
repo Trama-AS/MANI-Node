@@ -159,7 +159,8 @@ class Container {
 
     this.registerServiceEventUseCase = new RegisterServiceEventUseCase({
       solicitudRepository: this.solicitudRepository,
-      historialSolicitudRepository: this.historialSolicitudRepository,
+      eventoServicioRepository: this.eventoServicioRepository,
+      aliadoRepository: this.aliadoRepository,
       fileStorageService: this.fileStorageService,
     });
 
