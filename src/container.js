@@ -36,6 +36,7 @@ const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profi
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const RegisterAllyCompanyUseCase = require('./application/useCases/auth/RegisterAllyCompanyUseCase');
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
 const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
@@ -209,6 +210,17 @@ class Container {
     this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
+      tenantRepository: this.tenantRepository,
+      catalogRepository: this.catalogRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      documentoKycRepository: this.documentoKycRepository,
+      fileStorageService: this.fileStorageService,
+      authIdentityService: this.authIdentityService,
+    });
+
+    this.registerAllyCompanyUseCase = new RegisterAllyCompanyUseCase({
       tenantRepository: this.tenantRepository,
       catalogRepository: this.catalogRepository,
       usuarioRepository: this.usuarioRepository,

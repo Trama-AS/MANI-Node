@@ -10,20 +10,29 @@ const ALLOWED_ALGORITHMS = ['HS256'];
 
 // Whitelist de documentos KYC que acepta el contrato (docs/openapi/core.yaml)
 const ALLOWED_DOCUMENT_FIELDS = ['cedula_ciudadania', 'rut_certificado'];
+const ALLOWED_COMPANY_DOCUMENT_FIELDS = ['camara_comercio', 'rut_empresa', 'cedula_representante'];
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+
+function fileFilter(req, file, cb) {
+  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    const err = new Error(`Tipo de archivo no permitido: ${file.mimetype}`);
+    err.statusCode = 400;
+    err.code = 'VALIDATION_ERROR';
+    return cb(err);
+  }
+  cb(null, true);
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: ALLOWED_DOCUMENT_FIELDS.length },
-  fileFilter: (req, file, cb) => {
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      const err = new Error(`Tipo de archivo no permitido: ${file.mimetype}`);
-      err.statusCode = 400;
-      err.code = 'VALIDATION_ERROR';
-      return cb(err);
-    }
-    cb(null, true);
-  },
+  fileFilter,
+});
+
+const uploadCompany = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: ALLOWED_COMPANY_DOCUMENT_FIELDS.length },
+  fileFilter,
 });
 
 function isNonEmptyString(value) {
@@ -152,6 +161,13 @@ function createAuthRouter(env = process.env) {
     '/auth/register/ally',
     upload.fields(ALLOWED_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
     authController.registerAllyNaturalPerson
+  );
+
+  // Registro de aliado empresa (SCRUM-1063): una sola ruta, la que declara el contrato.
+  router.post(
+    '/auth/register/ally/company',
+    uploadCompany.fields(ALLOWED_COMPANY_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+    authController.registerAllyCompany
   );
 
   // Sin multer: el registro de Cliente no lleva documentos KYC.

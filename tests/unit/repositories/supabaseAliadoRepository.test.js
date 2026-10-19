@@ -90,3 +90,36 @@ test('findByUsuarioId lanza DomainError INTERNAL_ERROR si Supabase reporta error
     }
   );
 });
+
+test('create persiste nombreRepresentante y docRepresentante en payload de aliado empresa', async () => {
+  let capturedPayload = null;
+  const client = {
+    from: () => ({
+      upsert: (payload) => {
+        capturedPayload = payload;
+        return {
+          select: () => ({
+            single: async () => ({ data: { id: 'a-emp-1', ...payload }, error: null }),
+          }),
+        };
+      },
+    }),
+  };
+  const repo = new SupabaseAliadoRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  const result = await repo.create({
+    tenantId: 't1',
+    usuarioId: 'u-emp-1',
+    tipo: 'PERSONA_JURIDICA',
+    nombreRazonSocial: 'Empresa SAS',
+    estadoVerificacion: 'PENDING',
+    documentType: 'NIT',
+    documentNumber: '900123456',
+    nombreRepresentante: 'Carlos Mario',
+    docRepresentante: '10203040',
+  });
+
+  assert.equal(capturedPayload.nombre_representante_legal, 'Carlos Mario');
+  assert.equal(capturedPayload.documento_representante_legal, '10203040');
+  assert.equal(result.id, 'a-emp-1');
+});
