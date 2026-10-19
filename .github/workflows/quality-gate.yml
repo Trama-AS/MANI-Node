@@ -1,0 +1,115 @@
+name: Quality Gate
+
+# QA4-02 (SCRUM-1265), continuación de CFG-41 (SCRUM-1116): análisis de SonarQube
+# Community con Quality Gate bloqueante (ADR-0005, Políticas §14.1).
+#
+# El servidor SonarQube vive en la VM de Calidad (red privada 10.43.x.x), que los
+# runners de GitHub no alcanzan. Por eso el trabajo se divide en dos jobs:
+#   1. pruebas_cobertura: corre en ubuntu-latest. Aquí se ejecuta el código del
+#      repositorio (npm ci, pruebas) y se genera coverage/lcov.info.
+#   2. sonar_quality_gate: corre en el runner self-hosted de la VM de Calidad
+#      (label "calidad"). Solo descarga el lcov y ejecuta el scanner; no instala
+#      dependencias ni corre código del repositorio en la VM.
+#
+# SonarQube Community no analiza ramas ni PRs, así que se usan dos proyectos:
+#   - mani-node: push a develop (estado oficial de la rama).
+#   - mani-node-pr: pull requests, para no pisar el estado de develop.
+#
+# Para que el gate BLOQUEE el merge, el ruleset de develop debe exigir los dos
+# checks: "Pruebas y cobertura" y "Sonar Quality Gate". Si las pruebas fallan,
+# el job de Sonar queda omitido y GitHub cuenta un job omitido como aprobado.
+#
+# Requisitos del repositorio: secreto SONAR_TOKEN y variable SONAR_HOST_URL
+# (http://localhost:9000, porque el runner corre en la misma VM que SonarQube).
+
+on:
+  pull_request:
+    branches: [develop, release, main]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+# En PR se cancela la corrida anterior; en push a develop cada commit conserva
+# su análisis.
+concurrency:
+  group: quality-gate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pruebas_cobertura:
+    name: Pruebas y cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas con cobertura
+        run: npm run test:coverage
+
+      # El reporter lcov de Node escribe rutas relativas (SF:src/...), así que
+      # el archivo sirve tal cual en el workspace del runner self-hosted.
+      - name: Publicar reporte lcov
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura_lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 3
+
+  sonar_quality_gate:
+    name: Sonar Quality Gate
+    needs: pruebas_cobertura
+    # Los PRs desde forks no llegan al runner de la VM: su código no es de
+    # confianza y no tienen acceso a los secretos.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, calidad]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Descargar reporte lcov
+        uses: actions/download-artifact@v4
+        with:
+          name: cobertura_lcov
+          path: coverage
+
+      # Si falta el secreto o la variable, el job falla. Un check omitido o en
+      # verde sin análisis daría una falsa señal de calidad.
+      - name: Verificar configuración de SonarQube
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::SONAR_TOKEN no está configurado en los secretos del repositorio."
+            exit 1
+          fi
+          if [ -z "$SONAR_HOST_URL" ]; then
+            echo "::error::SONAR_HOST_URL no está configurada en las variables del repositorio."
+            exit 1
+          fi
+
+      # v8.2.2 fijada por SHA del tag (ba9859e).
+      - name: Análisis de SonarQube y espera del Quality Gate
+        uses: sonarsource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ github.event_name == 'pull_request' && 'mani-node-pr' || 'mani-node' }}
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
