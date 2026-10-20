@@ -16,7 +16,21 @@ class Category {
   // editar (US-03.1.1-M6). La entidad solo exige la forma mínima, así que
   // rehidratar filas históricas (flujo_operativo NULL del seed QA, o un nombre
   // fuera de las reglas actuales) nunca rompe un listado.
-  constructor({ id, name, active = true, description = '', tenantId = null, flujoOperativo = null }) {
+  //
+  // createdAt y alliesCount solo los trae el listado de administración
+  // (US-03.1.2: el admin ve cuántos aliados dependen de la categoría antes de
+  // desactivarla). En null no se serializan, así la vitrina pública no expone
+  // cuántos aliados tiene cada categoría.
+  constructor({
+    id,
+    name,
+    active = true,
+    description = '',
+    tenantId = null,
+    flujoOperativo = null,
+    createdAt = null,
+    alliesCount = null,
+  }) {
     if (!id || typeof id !== 'string') {
       throw new ValidationError('Category id es requerido');
     }
@@ -33,6 +47,8 @@ class Category {
     this.description = description || '';
     this.tenantId = tenantId;
     this.flujoOperativo = flujoOperativo;
+    this.createdAt = createdAt;
+    this.alliesCount = alliesCount;
   }
 
   isActive() {
@@ -47,6 +63,8 @@ class Category {
       description: this.description,
       tenantId: this.tenantId,
       flujoOperativo: this.flujoOperativo,
+      ...(this.createdAt !== null && { createdAt: this.createdAt }),
+      ...(this.alliesCount !== null && { alliesCount: this.alliesCount }),
     };
   }
 }

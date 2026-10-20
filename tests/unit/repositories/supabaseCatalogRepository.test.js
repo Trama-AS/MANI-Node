@@ -308,3 +308,69 @@ test('findActiveByTenant lanza DomainError INTERNAL_ERROR si Supabase reporta er
     (err) => err.code === 'INTERNAL_ERROR'
   );
 });
+
+test('findAllByTenant (administración) trae created_at y el conteo de aliados embebido (US-03.1.2)', async () => {
+  const calls = [];
+  const client = withResult(makeChainableClient({ onFrom: (c) => calls.push(c) }), 'categoria_servicio', {
+    data: [
+      {
+        id: 'c1',
+        nombre: 'Peinados',
+        estado: 'INACTIVO',
+        flujo_operativo: 'TARIFA_ESTANDAR',
+        tenant_id: 't1',
+        created_at: '2026-10-01T12:00:00+00:00',
+        aliado_categoria: [{ count: 3 }],
+      },
+    ],
+    error: null,
+  });
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  const [category] = await repo.findAllByTenant('t1');
+
+  assert.match(calls.find((c) => c.op === 'select').args[0], /aliado_categoria\(count\)/);
+  assert.equal(category.alliesCount, 3);
+  assert.equal(category.createdAt, '2026-10-01T12:00:00+00:00');
+  assert.equal(category.toJSON().alliesCount, 3);
+  assert.equal(category.toJSON().active, false);
+});
+
+test('setActive devuelve el conteo de aliados para que el admin vea a quién afecta (US-03.1.2)', async () => {
+  const calls = [];
+  const client = withResult(makeChainableClient({ onFrom: (c) => calls.push(c) }), 'categoria_servicio', {
+    data: {
+      id: 'c1',
+      nombre: 'Peinados',
+      estado: 'INACTIVO',
+      flujo_operativo: 'TARIFA_ESTANDAR',
+      tenant_id: 't1',
+      created_at: '2026-10-01T12:00:00+00:00',
+      aliado_categoria: [{ count: 0 }],
+    },
+    error: null,
+  });
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  const category = await repo.setActive('t1', 'c1', false);
+
+  assert.deepEqual(calls.find((c) => c.op === 'update').payload, { estado: 'INACTIVO' });
+  assert.equal(category.active, false);
+  assert.equal(category.alliesCount, 0);
+});
+
+test('findActiveByTenant (vitrina pública) no consulta ni expone el conteo de aliados', async () => {
+  const calls = [];
+  const client = withResult(makeChainableClient({ onFrom: (c) => calls.push(c) }), 'categoria_servicio', {
+    data: [{ id: 'c1', nombre: 'Peinados', estado: 'ACTIVO', flujo_operativo: 'TARIFA_ESTANDAR', tenant_id: 't1' }],
+    error: null,
+  });
+  client.from = ((original) => (t) => Object.assign(original(t), { order() { return this; } }))(client.from);
+  const repo = new SupabaseCatalogRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
+
+  const [category] = await repo.findActiveByTenant('t1');
+
+  assert.doesNotMatch(calls.find((c) => c.op === 'select').args[0], /aliado_categoria/);
+  assert.equal('alliesCount' in category.toJSON(), false);
+  assert.equal('createdAt' in category.toJSON(), false);
+});
