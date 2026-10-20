@@ -81,7 +81,15 @@ class InMemoryCatalogRepository extends ICatalogRepository {
 
   async create(tenantId, { name, description, flujoOperativo }) {
     this._assertNameNotDuplicated(tenantId, name);
-    const category = new Category({ id: crypto.randomUUID(), name, description, active: true, tenantId, flujoOperativo });
+    const category = new Category({
+      id: crypto.randomUUID(),
+      name,
+      description,
+      active: true,
+      tenantId,
+      flujoOperativo,
+      createdAt: new Date().toISOString(),
+    });
     this.categories.push(category);
     return category;
   }
@@ -96,6 +104,7 @@ class InMemoryCatalogRepository extends ICatalogRepository {
 
     const current = this.categories[index];
     const updated = new Category({
+      ...current,
       id: current.id,
       name: name !== undefined ? name : current.name,
       description: description !== undefined ? description : current.description,

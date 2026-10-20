@@ -8,6 +8,11 @@ const { DomainError, ConflictError } = require('../../domain/errors/DomainError'
 // que vienen de Supabase hasta que una migración futura agregue esa columna.
 const SELECT_COLUMNS = 'id, nombre, estado, flujo_operativo, tenant_id';
 
+// Consultas de administración (US-03.1.2): además, fecha de creación y cuántos
+// aliados declaran la categoría (conteo embebido de PostgREST por la única FK
+// aliado_categoria.categoria_id). La vitrina pública sigue con SELECT_COLUMNS.
+const ADMIN_SELECT_COLUMNS = `${SELECT_COLUMNS}, created_at, aliado_categoria(count)`;
+
 // SQLSTATE de Postgres para violación de restricción UNIQUE (acá,
 // ux_categoria_tenant_nombre de MANI-APIGateway/database/migrations/
 // 003_categorias_servicio.sql: (tenant_id, lower(btrim(nombre)))).
@@ -23,7 +28,15 @@ function toDomain(row) {
     // Puede ser una fila histórica (flujo_operativo NULL): Category no aplica
     // reglas de negocio al rehidratar.
     flujoOperativo: row.flujo_operativo,
+    createdAt: row.created_at ?? null,
+    alliesCount: alliesCountOf(row),
   });
+}
+
+// PostgREST devuelve el conteo embebido como `aliado_categoria: [{ count: N }]`.
+function alliesCountOf(row) {
+  if (!Array.isArray(row.aliado_categoria)) return null;
+  return Number(row.aliado_categoria[0]?.count ?? 0);
 }
 
 function assertNoError(error, message) {
@@ -63,7 +76,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
     const client = this.supabaseClientFactory.getClient();
     const { data, error } = await client
       .from('categoria_servicio')
-      .select(SELECT_COLUMNS)
+      .select(ADMIN_SELECT_COLUMNS)
       .eq('tenant_id', tenantId)
       .eq('id', categoryId)
       .maybeSingle();
@@ -74,7 +87,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
 
   async findAllByTenant(tenantId, { onlyActive = false } = {}) {
     const client = this.supabaseClientFactory.getClient();
-    let query = client.from('categoria_servicio').select(SELECT_COLUMNS).eq('tenant_id', tenantId);
+    let query = client.from('categoria_servicio').select(ADMIN_SELECT_COLUMNS).eq('tenant_id', tenantId);
     if (onlyActive) query = query.eq('estado', 'ACTIVO');
 
     const { data, error } = await query;
@@ -87,7 +100,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
     const { data, error } = await client
       .from('categoria_servicio')
       .insert({ tenant_id: tenantId, nombre: name, estado: 'ACTIVO', flujo_operativo: flujoOperativo })
-      .select(SELECT_COLUMNS)
+      .select(ADMIN_SELECT_COLUMNS)
       .single();
 
     assertNoError(error, 'Error creando categoría');
@@ -105,7 +118,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
       .update(payload)
       .eq('tenant_id', tenantId)
       .eq('id', categoryId)
-      .select(SELECT_COLUMNS)
+      .select(ADMIN_SELECT_COLUMNS)
       .maybeSingle();
 
     assertNoError(error, 'Error actualizando categoría');
@@ -119,7 +132,7 @@ class SupabaseCatalogRepository extends ICatalogRepository {
       .update({ estado: active ? 'ACTIVO' : 'INACTIVO' })
       .eq('tenant_id', tenantId)
       .eq('id', categoryId)
-      .select(SELECT_COLUMNS)
+      .select(ADMIN_SELECT_COLUMNS)
       .maybeSingle();
 
     assertNoError(error, 'Error actualizando el estado de la categoría');
