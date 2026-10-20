@@ -20,13 +20,9 @@ function toDomain(row) {
     name: row.nombre,
     active: row.estado === 'ACTIVO',
     tenantId: row.tenant_id,
+    // Puede ser una fila histórica (flujo_operativo NULL): Category no aplica
+    // reglas de negocio al rehidratar.
     flujoOperativo: row.flujo_operativo,
-    // Esta fila viene de una SELECT (incluida la que devuelven create/update
-    // tras el INSERT/UPDATE): puede ser una categoría de seed anterior a
-    // US-03.1.1-M2.1 con flujo_operativo NULL. No volver a exigir el enum
-    // aquí; CreateCategoryUseCase/UpdateCategoryUseCase ya lo validaron
-    // antes de llegar al repositorio cuando el dato es realmente nuevo.
-    fromPersistence: true,
   });
 }
 
@@ -49,6 +45,18 @@ class SupabaseCatalogRepository extends ICatalogRepository {
     const { data, error } = await client.from('categoria_servicio').select(SELECT_COLUMNS);
     assertNoError(error, 'Error consultando categorías');
     return data.map(toDomain);
+  }
+
+  async findActiveByTenant(tenantId) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('categoria_servicio')
+      .select(SELECT_COLUMNS)
+      .eq('tenant_id', tenantId)
+      .eq('estado', 'ACTIVO')
+      .order('nombre', { ascending: true });
+    if (error) throw new DomainError(`Error consultando categorías: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return (data || []).map(toDomain);
   }
 
   async findById(tenantId, categoryId) {

@@ -261,3 +261,37 @@ test('SetCategoryStatusUseCase rechaza si active no es booleano', async () => {
     }
   );
 });
+
+// --- Reglas de datos nuevos en los casos de uso (la entidad no valida al leer) ---
+
+test('CreateCategoryUseCase aplica las reglas del nombre y persiste el nombre normalizado', async () => {
+  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository() });
+
+  for (const name of ['AB', 'A'.repeat(61), '123456']) {
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 't1', name, flujoOperativo: 'TARIFA_ESTANDAR' }),
+      (err) => err.code === 'VALIDATION_ERROR',
+      `debía rechazar ${JSON.stringify(name)}`
+    );
+  }
+
+  const created = await useCase.execute({ tenantId: 't1', name: '  Uñas   Acrílicas  ', flujoOperativo: 'TARIFA_ESTANDAR' });
+  assert.equal(created.name, 'Uñas Acrílicas');
+});
+
+test('UpdateCategoryUseCase permite editar una categoría histórica fuera de reglas sin tocar su nombre', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  // Fila histórica: nombre de 2 caracteres y sin flujo operativo (seed QA).
+  const Category = require('../../../../src/domain/entities/Category');
+  catalogRepository.categories.push(new Category({ id: 'hist-1', name: 'AB', tenantId: 't1', flujoOperativo: null }));
+  const useCase = new UpdateCategoryUseCase({ catalogRepository });
+
+  const result = await useCase.execute({ tenantId: 't1', categoryId: 'hist-1', flujoOperativo: 'COTIZACION_PREVIA' });
+  assert.equal(result.name, 'AB');
+  assert.equal(result.flujoOperativo, 'COTIZACION_PREVIA');
+
+  await assert.rejects(
+    () => useCase.execute({ tenantId: 't1', categoryId: 'hist-1', name: 'XY' }),
+    (err) => err.code === 'VALIDATION_ERROR'
+  );
+});

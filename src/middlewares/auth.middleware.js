@@ -23,16 +23,32 @@ async function authenticate(req, res, next) {
   }
 }
 
-// Autorización por rol (RBAC mínimo): debe montarse SIEMPRE después de
-// authenticate, que es quien puebla req.user.role a partir del JWT (ya
-// normalizado al dominio en inglés por claimRoleMap, ver TokenService).
+/**
+ * Middleware para exigir roles específicos en la sesión JWT.
+ * El rol 'ADMIN' valida tanto 'ADMIN' como 'ADMIN_TENANT' (claim emitido en DB).
+ * @param {...string} allowedRoles
+ */
 function requireRole(...allowedRoles) {
-  return function authorize(req, res, next) {
-    const role = req.user && req.user.role;
+  return (req, res, next) => {
+    if (!req.user || !req.user.role) {
+      return res.status(401).json({
+        error: 'No autenticado o sin rol asignado',
+        correlationId: req.correlationId || 'none',
+      });
+    }
 
-    if (!role || !allowedRoles.includes(role)) {
+    const userRole = String(req.user.role).toUpperCase();
+    const isAllowed = allowedRoles.some((role) => {
+      const r = String(role).toUpperCase();
+      if (r === 'ADMIN') {
+        return userRole === 'ADMIN' || userRole === 'ADMIN_TENANT';
+      }
+      return userRole === r;
+    });
+
+    if (!isAllowed) {
       return res.status(403).json({
-        error: `Rol no autorizado para esta operación. Roles permitidos: ${allowedRoles.join(', ')}`,
+        error: `Acceso denegado: se requiere uno de los siguientes roles: ${allowedRoles.join(', ')}`,
         code: 'FORBIDDEN',
         correlationId: req.correlationId || 'none',
       });
@@ -45,3 +61,4 @@ function requireRole(...allowedRoles) {
 module.exports = authenticate;
 module.exports.authenticate = authenticate;
 module.exports.requireRole = requireRole;
+

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 
@@ -47,24 +48,48 @@ test('GET /api/v1/profiles/me con un token sin firma válida responde 401', asyn
   assert.equal(res.body.code, 'TOKEN_INVALID');
 });
 
-test('GET /api/v1/catalog responde 200 con categorias activas', async () => {
-  const res = await request(app).get('/api/v1/catalog');
+test('GET /api/v1/catalog con X-Tenant-Slug responde 200 con las categorias activas del tenant', async () => {
+  const res = await request(app).get('/api/v1/catalog').set('X-Tenant-Slug', 'trama-demo');
 
   assert.equal(res.status, 200);
   assert.ok(res.body.categories.length > 0);
+  assert.ok(res.body.categories.every((c) => c.active === true));
 });
 
-test('GET /api/v1/catalog sin X-Tenant-Slug no incluye categorías aisladas de un tenant', async () => {
+test('GET /api/v1/catalog sin X-Tenant-Slug (o con un slug inexistente) responde 200 con lista vacía', async () => {
   const tenantId = 'tenant-catalogo-publico';
-  const createRes = await request(app)
+  await request(app)
     .post('/api/v1/catalog/categories')
     .set('Authorization', `Bearer ${adminToken(tenantId)}`)
     .send({ name: 'Solo Este Tenant', flujoOperativo: 'TARIFA_ESTANDAR' });
 
-  const res = await request(app).get('/api/v1/catalog');
+  const sinSlug = await request(app).get('/api/v1/catalog');
+  assert.equal(sinSlug.status, 200);
+  assert.deepEqual(sinSlug.body.categories, []);
 
-  assert.equal(res.status, 200);
-  assert.ok(!res.body.categories.some((c) => c.id === createRes.body.category.id));
+  const slugInexistente = await request(app).get('/api/v1/catalog').set('X-Tenant-Slug', 'no-existe');
+  assert.equal(slugInexistente.status, 200);
+  assert.deepEqual(slugInexistente.body.categories, []);
+});
+
+test('GET /api/v1/catalog muestra las categorías propias del tenant del slug, y no las inactivas', async () => {
+  const activa = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken('trama-demo')}`)
+    .send({ name: 'Vitrina Activa', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const inactiva = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken('trama-demo')}`)
+    .send({ name: 'Vitrina Inactiva', flujoOperativo: 'TARIFA_ESTANDAR' });
+  await request(app)
+    .patch(`/api/v1/catalog/categories/${inactiva.body.category.id}/deactivate`)
+    .set('Authorization', `Bearer ${adminToken('trama-demo')}`);
+
+  const res = await request(app).get('/api/v1/catalog').set('X-Tenant-Slug', 'trama-demo');
+  const ids = res.body.categories.map((c) => c.id);
+
+  assert.ok(ids.includes(activa.body.category.id));
+  assert.ok(!ids.includes(inactiva.body.category.id));
 });
 
 test('GET /api/v1/catalog con X-Tenant-Slug de otro tenant no filtra las categorías del tenant propio', async () => {
@@ -117,6 +142,40 @@ test('GET /api/v1/profiles/me/categories con rol ALLY responde 200 y retorna sus
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.body.categories));
   assert.ok(res.body.categories.includes('cat-1'));
+});
+
+test('GET /api/v1/profiles/me/categories/available sin Authorization responde 401', async () => {
+  const res = await request(app).get('/api/v1/profiles/me/categories/available');
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body.error, 'Encabezado Authorization requerido');
+});
+
+test('GET /api/v1/profiles/me/categories/available con rol CLIENT responde 403 (MANI-CAT-403)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  const res = await request(app)
+    .get('/api/v1/profiles/me/categories/available')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.code, 'MANI-CAT-403');
+});
+
+test('GET /api/v1/profiles/me/categories/available con rol ALLY lista solo categorías activas, ordenadas, con id y name', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .get('/api/v1/profiles/me/categories/available')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const ids = res.body.categories.map((c) => c.id);
+  assert.ok(ids.includes('cat-1'));
+  assert.ok(!ids.includes('cat-inactive'), 'una categoría inactiva no debe ofrecerse');
+  for (const c of res.body.categories) assert.deepEqual(Object.keys(c).sort(), ['id', 'name']);
+  const names = res.body.categories.map((c) => c.name);
+  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b, 'es')));
 });
 
 test('PUT /api/v1/profiles/me/categories con lista vacía responde 422 (MANI-CAT-422V)', async () => {
@@ -194,6 +253,108 @@ test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () 
 
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.categories, ['cat-2', 'cat-3']);
+});
+
+test('PATCH /api/v1/profiles/me actualiza datos propios y persiste los cambios en GET /api/v1/profiles/me (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  const patchRes = await request(app)
+    .patch('/api/v1/profiles/me')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      fullName: 'Laura Gómez',
+      phone: '+57 315 222 3344',
+      address: 'Carrera 15 # 85-30 Bogotá',
+    });
+
+  assert.equal(patchRes.status, 200);
+  assert.equal(patchRes.body.profile.fullName, 'Laura Gómez');
+  assert.equal(patchRes.body.profile.phone, '+57 315 222 3344');
+  assert.equal(patchRes.body.profile.address, 'Carrera 15 # 85-30 Bogotá');
+
+  const getRes = await request(app)
+    .get('/api/v1/profiles/me')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(getRes.status, 200);
+  assert.equal(getRes.body.profile.fullName, 'Laura Gómez');
+  assert.equal(getRes.body.profile.phone, '+57 315 222 3344');
+});
+
+test('No existe ruta para editar el perfil de otro usuario, y un cambio de rol responde 403 MANI-PRF-403 (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  for (const method of ['patch', 'put']) {
+    const foreignRes = await request(app)[method]('/api/v1/profiles/demo-ally-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: 'Intruso' });
+    assert.equal(foreignRes.status, 404);
+  }
+
+  const putMe = await request(app).put('/api/v1/profiles/me').set('Authorization', `Bearer ${token}`).send({ fullName: 'Laura' });
+  assert.equal(putMe.status, 404);
+
+  const privRes = await request(app)
+    .patch('/api/v1/profiles/me')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ fullName: 'Laura', role: 'ADMIN' });
+
+  assert.equal(privRes.status, 403);
+  assert.equal(privRes.body.code, 'MANI-PRF-403');
+});
+
+test('POST /api/v1/profiles/me/photo permite subir foto en formato soportado y rechaza formato inválido (SCRUM-1028 / SCRUM-1030)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const okRes = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .attach('photo', Buffer.from('fake-png-bytes'), { filename: 'avatar.png', contentType: 'image/png' });
+
+  assert.equal(okRes.status, 200);
+  assert.match(okRes.body.profile.photoUrl, /^trama-demo\/demo-ally-1\/avatar-/);
+
+  const badRes = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .attach('photo', Buffer.from('fake-pdf'), { filename: 'doc.pdf', contentType: 'application/pdf' });
+
+  assert.equal(badRes.status, 400);
+  assert.equal(badRes.body.code, 'MANI-PRF-422');
+});
+
+
+test('PATCH /api/v1/profiles/me rechaza una URL de foto en el cuerpo: la foto solo entra por subida (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  for (const field of ['photoUrl', 'fotoUrl', 'foto_url']) {
+    const res = await request(app)
+      .patch('/api/v1/profiles/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: 'Laura Gómez', [field]: 'https://evil.example/x.png' });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.code, 'MANI-PRF-422');
+  }
+});
+
+test('POST /api/v1/profiles/me/photo sin archivo responde 400 MANI-PRF-422 (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ photoUrl: 'https://evil.example/x.png' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'MANI-PRF-422');
+});
+
+test('POST /api/v1/profiles/me/photo sin Authorization responde 401 (SCRUM-854)', async () => {
+  const res = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .attach('photo', Buffer.from('fake-png-bytes'), { filename: 'avatar.png', contentType: 'image/png' });
+
+  assert.equal(res.status, 401);
 });
 
 // --- Gestión de categoría de servicio (US-03.1.1-M2.1) ---

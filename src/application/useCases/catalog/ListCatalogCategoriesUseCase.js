@@ -6,20 +6,17 @@ class ListCatalogCategoriesUseCase {
     this.catalogRepository = catalogRepository;
   }
 
-  // tenantId resuelto desde X-Tenant-Slug por el controller (vitrina
-  // pre-auth, no hay JWT todavía). Nunca se listan categorías de OTRO
-  // tenant: solo las globales de fixtures (tenantId null) más, si el
-  // caller manda un tenant resuelto, las propias de ese tenant.
-  async execute({ onlyActive = false, tenantId = null } = {}) {
-    const categories = await this.catalogRepository.findAllCategories();
-    const visible = categories.filter((c) => c.tenantId === null || c.tenantId === tenantId);
-    const filtered = onlyActive
-      ? visible.filter((c) => (typeof c.isActive === 'function' ? c.isActive() : c.active !== false))
-      : visible;
-
-    return filtered.map((c) => (typeof c.toJSON === 'function' ? c.toJSON() : c));
+  // Vitrina pre-auth: tenantId lo resuelve el controller desde X-Tenant-Slug.
+  // Sin tenant no hay a quién mostrarle categorías, así que no se consulta
+  // nada (nunca se listan las de otros tenants). Con tenant, el filtro por
+  // tenant_id y estado ACTIVO va en la consulta, no en memoria.
+  async execute({ tenantId = null } = {}) {
+    if (!tenantId) {
+      return [];
+    }
+    const categories = await this.catalogRepository.findActiveByTenant(tenantId);
+    return categories.map((c) => (typeof c.toJSON === 'function' ? c.toJSON() : c));
   }
 }
 
 module.exports = ListCatalogCategoriesUseCase;
-

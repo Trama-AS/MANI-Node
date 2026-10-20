@@ -16,23 +16,21 @@ class UpdateCategoryUseCase {
     if (!categoryId || typeof categoryId !== 'string') {
       throw new ValidationError('categoryId es requerido');
     }
-    if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
-      throw new ValidationError('name no puede estar vacío');
-    }
+    // Solo se validan los campos que cambian: una categoría histórica con un
+    // nombre fuera de las reglas actuales puede editarse sin renombrarla.
+    const normalizedName = name !== undefined ? Category.assertValidName(name) : undefined;
     if (description !== undefined && typeof description !== 'string') {
       throw new ValidationError('description debe ser una cadena');
     }
-    if (flujoOperativo !== undefined && !Category.VALID_FLUJO_OPERATIVO.includes(flujoOperativo)) {
-      throw new ValidationError(
-        `flujoOperativo inválido. Valores permitidos: ${Category.VALID_FLUJO_OPERATIVO.join(', ')}`
-      );
+    if (flujoOperativo !== undefined) {
+      Category.assertValidFlujoOperativo(flujoOperativo);
     }
     if (name === undefined && description === undefined && flujoOperativo === undefined) {
       throw new ValidationError('Se requiere al menos un campo para actualizar (name, description o flujoOperativo)');
     }
 
     const category = await this.catalogRepository.update(tenantId, categoryId, {
-      name,
+      name: normalizedName,
       description,
       flujoOperativo,
     });

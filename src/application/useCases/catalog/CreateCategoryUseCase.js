@@ -13,23 +13,22 @@ class CreateCategoryUseCase {
     if (!tenantId || typeof tenantId !== 'string') {
       throw new ValidationError('tenantId es requerido');
     }
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      throw new ValidationError('name es requerido');
-    }
+    // Reglas de negocio de datos nuevos (la entidad no las aplica al leer).
+    const normalizedName = Category.assertValidName(name);
     if (description !== undefined && typeof description !== 'string') {
       throw new ValidationError('description debe ser una cadena');
     }
-    if (!Category.VALID_FLUJO_OPERATIVO.includes(flujoOperativo)) {
-      throw new ValidationError(
-        `flujoOperativo es requerido. Valores permitidos: ${Category.VALID_FLUJO_OPERATIVO.join(', ')}`
-      );
-    }
+    Category.assertValidFlujoOperativo(flujoOperativo);
 
     // La detección de nombre duplicado por tenant vive en el repositorio
     // (InMemory la hace de forma síncrona in-process; Supabase confía en el
     // índice único ux_categoria_tenant_nombre y traduce 23505 a
     // ConflictError), para no duplicar esa regla en dos capas.
-    const category = await this.catalogRepository.create(tenantId, { name, description, flujoOperativo });
+    const category = await this.catalogRepository.create(tenantId, {
+      name: normalizedName,
+      description,
+      flujoOperativo,
+    });
     return category.toJSON();
   }
 }

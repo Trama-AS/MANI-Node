@@ -6,9 +6,7 @@ const DESCRIPTION_MAX_LENGTH = 500;
 // Debe contener al menos una letra (cualquier idioma); NO se exige que sea
 // *solo* letras. Mismo criterio que crear_categoria_servicio() en
 // MANI-APIGateway/database/migrations/003_categorias_servicio.sql
-// (`v_nombre !~ '[[:alpha:]]'`), para no divergir entre la RPC de Postgres
-// (que valida directamente en BD) y esta validación de Core Node sobre la
-// misma tabla `categoria_servicio`.
+// (`v_nombre !~ '[[:alpha:]]'`).
 const NAME_HAS_LETTER_PATTERN = /\p{L}/u;
 
 // Flujo operativo de la categoría (US-03.1.1-M2.1 / migración 003):
@@ -17,48 +15,34 @@ const NAME_HAS_LETTER_PATTERN = /\p{L}/u;
 //                      cotización previa.
 const VALID_FLUJO_OPERATIVO = ['COTIZACION_PREVIA', 'TARIFA_ESTANDAR'];
 
+function normalizeName(name) {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
 class Category {
   // tenantId = null identifica las categorías "globales" de las fixtures de
-  // desarrollo (compartidas por cualquier tenant en DEV/test); toda categoría
-  // creada vía el CRUD de Backoffice (US-03.1.1-M2.1) lleva un tenantId real.
-  // flujoOperativo es OBLIGATORIO (sin default): es un dato de negocio que el
-  // Backoffice debe elegir explícitamente, igual que exige la migración 003.
+  // desarrollo; toda categoría creada vía el CRUD de Backoffice lleva un
+  // tenantId real.
   //
-  // `fromPersistence = true` identifica una fila YA existente en BD que se
-  // está rehidratando a entidad (toDomain de los repositorios), nunca un
-  // dato nuevo entrando por el CRUD de Backoffice. flujoOperativo no se
-  // revalida en ese camino: filas previas a US-03.1.1-M2.1 (fixtures de
-  // seed QA, columna NOT VALID) pueden tener flujo_operativo NULL en BD, y
-  // Category no puede romper la lectura de datos que ella misma no creó.
-  // CreateCategoryUseCase/UpdateCategoryUseCase ya exigen un flujoOperativo
-  // válido ANTES de llamar al repositorio, así que la regla sigue aplicando
-  // en el único lugar donde de verdad hay un dato nuevo.
-  constructor({ id, name, active = true, description = '', tenantId = null, flujoOperativo, fromPersistence = false }) {
+  // El constructor solo exige la forma mínima, porque también rehidrata filas
+  // existentes: filas históricas (seed QA con flujo_operativo NULL, columna
+  // NOT VALID) o con un nombre fuera de las reglas actuales deben poder
+  // leerse sin romper todo el listado. Las reglas de negocio se aplican a los
+  // datos NUEVOS, en CreateCategoryUseCase/UpdateCategoryUseCase, mediante
+  // assertValidName/assertValidFlujoOperativo.
+  constructor({ id, name, active = true, description = '', tenantId = null, flujoOperativo = null }) {
     if (!id || typeof id !== 'string') {
       throw new ValidationError('Category id es requerido');
     }
     if (!name || typeof name !== 'string' || !name.trim()) {
       throw new ValidationError('Category name es requerido');
     }
-    // Colapsa espacios internos repetidos, igual que crear_categoria_servicio().
-    const normalizedName = name.trim().replace(/\s+/g, ' ');
-    if (normalizedName.length < NAME_MIN_LENGTH || normalizedName.length > NAME_MAX_LENGTH) {
-      throw new ValidationError(`Category name debe tener entre ${NAME_MIN_LENGTH} y ${NAME_MAX_LENGTH} caracteres`);
-    }
-    if (!NAME_HAS_LETTER_PATTERN.test(normalizedName)) {
-      throw new ValidationError('Category name debe contener al menos una letra');
-    }
     if (description && description.length > DESCRIPTION_MAX_LENGTH) {
       throw new ValidationError(`Category description no puede superar los ${DESCRIPTION_MAX_LENGTH} caracteres`);
     }
-    if (!fromPersistence && !VALID_FLUJO_OPERATIVO.includes(flujoOperativo)) {
-      throw new ValidationError(
-        `flujoOperativo inválido: "${flujoOperativo}". Valores permitidos: ${VALID_FLUJO_OPERATIVO.join(', ')}`
-      );
-    }
 
     this.id = id;
-    this.name = normalizedName;
+    this.name = normalizeName(name);
     this.active = Boolean(active);
     this.description = description || '';
     this.tenantId = tenantId;
@@ -79,9 +63,33 @@ class Category {
       flujoOperativo: this.flujoOperativo,
     };
   }
+
+  /** Reglas del nombre para datos nuevos; devuelve el nombre normalizado. */
+  static assertValidName(name) {
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      throw new ValidationError('name es requerido');
+    }
+    const normalized = normalizeName(name);
+    if (normalized.length < NAME_MIN_LENGTH || normalized.length > NAME_MAX_LENGTH) {
+      throw new ValidationError(`name debe tener entre ${NAME_MIN_LENGTH} y ${NAME_MAX_LENGTH} caracteres`);
+    }
+    if (!NAME_HAS_LETTER_PATTERN.test(normalized)) {
+      throw new ValidationError('name debe contener al menos una letra');
+    }
+    return normalized;
+  }
+
+  /** Reglas del flujo operativo para datos nuevos (obligatorio, sin default). */
+  static assertValidFlujoOperativo(flujoOperativo) {
+    if (!VALID_FLUJO_OPERATIVO.includes(flujoOperativo)) {
+      throw new ValidationError(
+        `flujoOperativo inválido: "${flujoOperativo}". Valores permitidos: ${VALID_FLUJO_OPERATIVO.join(', ')}`
+      );
+    }
+    return flujoOperativo;
+  }
 }
 
 Category.VALID_FLUJO_OPERATIVO = VALID_FLUJO_OPERATIVO;
 
 module.exports = Category;
-

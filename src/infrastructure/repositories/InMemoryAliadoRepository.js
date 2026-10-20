@@ -32,7 +32,7 @@ class InMemoryAliadoRepository extends IAliadoRepository {
 
   async create(aliado) {
     const record = {
-      id: aliado.id || `aliado-${aliado.usuarioId}`,
+      id: aliado.id || `ally-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       ...aliado,
     };
     this.aliados.set(aliado.usuarioId, record);
