@@ -30,6 +30,7 @@ const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectio
 
 const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUseCase');
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
+const UpdateOwnProfileUseCase = require('./application/useCases/profiles/UpdateOwnProfileUseCase');
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
 const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
@@ -40,6 +41,20 @@ const ListAlliesVerificationUseCase = require('./application/useCases/verificati
 const GetAllyVerificationDetailUseCase = require('./application/useCases/verification/GetAllyVerificationDetailUseCase');
 const GetKycDocumentSignedUrlUseCase = require('./application/useCases/verification/GetKycDocumentSignedUrlUseCase');
 const ResolveAllyVerificationUseCase = require('./application/useCases/verification/ResolveAllyVerificationUseCase');
+const ConfigureSiteRulesUseCase = require('./application/useCases/sites/ConfigureSiteRulesUseCase');
+const GetSiteRulesForAllyUseCase = require('./application/useCases/sites/GetSiteRulesForAllyUseCase');
+const ValidateAllyScheduleUseCase = require('./application/useCases/sites/ValidateAllyScheduleUseCase');
+const InMemorySiteRepository = require('./infrastructure/repositories/InMemorySiteRepository');
+const PostgresSiteRepository = require('./infrastructure/repositories/PostgresSiteRepository');
+const InMemoryClientRepository = require('./infrastructure/repositories/InMemoryClientRepository');
+const PostgresClientRepository = require('./infrastructure/repositories/PostgresClientRepository');
+const GetActiveLegalDocumentsUseCase = require('./application/useCases/legal/GetActiveLegalDocumentsUseCase');
+const RegisterUserConsentUseCase = require('./application/useCases/legal/RegisterUserConsentUseCase');
+const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/InMemoryLegalDocumentRepository');
+const SupabaseLegalDocumentRepository = require('./infrastructure/repositories/SupabaseLegalDocumentRepository');
+const InMemoryUserConsentRepository = require('./infrastructure/repositories/InMemoryUserConsentRepository');
+const SupabaseUserConsentRepository = require('./infrastructure/repositories/SupabaseUserConsentRepository');
+const RegisterAllyCompanyUseCase = require('./application/useCases/auth/RegisterAllyCompanyUseCase');
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
 const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
@@ -52,6 +67,14 @@ const CreateAllyAbsenceUseCase = require('./application/useCases/availability/Cr
 const UpdateAllyAbsenceUseCase = require('./application/useCases/availability/UpdateAllyAbsenceUseCase');
 const DeleteAllyAbsenceUseCase = require('./application/useCases/availability/DeleteAllyAbsenceUseCase');
 
+const PgElegibilidadRepository = require('./infrastructure/repositories/PgElegibilidadRepository');
+const PgSolicitudContextRepository = require('./infrastructure/repositories/PgSolicitudContextRepository');
+const PgNotificacionRepository = require('./infrastructure/repositories/PgNotificacionRepository');
+const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListEligibleAlliesUseCase');
+const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
+const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
+const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
+const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
 
@@ -109,9 +132,19 @@ class Container {
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
+      this.legalDocumentRepository = new SupabaseLegalDocumentRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
+      this.userConsentRepository = new SupabaseUserConsentRepository({
+        supabaseClientFactory: this.supabaseClientFactory,
+      });
       if (this.pgPoolFactory.isConfigured()) {
+        this.siteRepository = new PostgresSiteRepository({ pgPoolFactory: this.pgPoolFactory });
+        this.clientRepository = new PostgresClientRepository({ pgPoolFactory: this.pgPoolFactory });
         this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
       } else {
+        this.siteRepository = new InMemorySiteRepository();
+        this.clientRepository = new InMemoryClientRepository();
         this.companyClientRepository = new InMemoryCompanyClientRepository();
       }
     } else {
@@ -127,6 +160,10 @@ class Container {
       this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+      this.siteRepository = new InMemorySiteRepository();
+      this.clientRepository = new InMemoryClientRepository();
+      this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
+      this.userConsentRepository = new InMemoryUserConsentRepository();
       this.companyClientRepository = new InMemoryCompanyClientRepository();
     }
 
@@ -137,6 +174,11 @@ class Container {
 
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
+    });
+
+    this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
+      profileRepository: this.profileRepository,
+      fileStorageService: this.fileStorageService,
     });
 
     this.getAllyCategoriesUseCase = new GetAllyCategoriesUseCase({
@@ -164,6 +206,19 @@ class Container {
     this.updateAllyAbsenceUseCase = new UpdateAllyAbsenceUseCase(absenceDeps);
     this.deleteAllyAbsenceUseCase = new DeleteAllyAbsenceUseCase(absenceDeps);
 
+    // Elegibilidad y mensajería para Dispatch (ADR-0030): consultas directas a PostgreSQL con el tenant del JWT.
+    // Sin DATABASE_URL no hay respaldo en memoria: las rutas responden 503 en lugar de inventar datos.
+    this.elegibilidadRepository = new PgElegibilidadRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.solicitudContextRepository = new PgSolicitudContextRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.notificacionRepository = new PgNotificacionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.listEligibleAlliesUseCase = new ListEligibleAlliesUseCase({ elegibilidadRepository: this.elegibilidadRepository });
+    this.getSolicitudContextUseCase = new GetSolicitudContextUseCase({
+      solicitudContextRepository: this.solicitudContextRepository,
+    });
+    this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
+    this.publishNotificationUseCase = new PublishNotificationUseCase({ notificacionRepository: this.notificacionRepository });
+    this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
+
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
     });
@@ -181,6 +236,29 @@ class Container {
       envLabel: config.envLabel,
     });
 
+    this.configureSiteRulesUseCase = new ConfigureSiteRulesUseCase({
+      siteRepository: this.siteRepository,
+      clientRepository: this.clientRepository,
+    });
+
+    this.getSiteRulesForAllyUseCase = new GetSiteRulesForAllyUseCase({
+      siteRepository: this.siteRepository,
+      clientRepository: this.clientRepository,
+    });
+
+    this.validateAllyScheduleUseCase = new ValidateAllyScheduleUseCase({
+      siteRepository: this.siteRepository,
+    });
+
+    this.getActiveLegalDocumentsUseCase = new GetActiveLegalDocumentsUseCase({
+      legalDocumentRepository: this.legalDocumentRepository,
+      tenantRepository: this.tenantRepository,
+    });
+
+    this.registerUserConsentUseCase = new RegisterUserConsentUseCase({
+      legalDocumentRepository: this.legalDocumentRepository,
+      userConsentRepository: this.userConsentRepository,
+    });
     this.registerCompanyClientWithSitesUseCase = new RegisterCompanyClientWithSitesUseCase({
       companyClientRepository: this.companyClientRepository,
       authIdentityService: this.authIdentityService,
@@ -192,6 +270,19 @@ class Container {
     this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
+      tenantRepository: this.tenantRepository,
+      catalogRepository: this.catalogRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoRepository: this.aliadoRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      documentoKycRepository: this.documentoKycRepository,
+      fileStorageService: this.fileStorageService,
+      authIdentityService: this.authIdentityService,
+      registerUserConsentUseCase: this.registerUserConsentUseCase,
+      userConsentRepository: this.userConsentRepository,
+    });
+
+    this.registerAllyCompanyUseCase = new RegisterAllyCompanyUseCase({
       tenantRepository: this.tenantRepository,
       catalogRepository: this.catalogRepository,
       usuarioRepository: this.usuarioRepository,

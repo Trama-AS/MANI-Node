@@ -40,22 +40,33 @@ class SupabaseAliadoRepository extends IAliadoRepository {
     return data;
   }
 
-  async create({ tenantId, usuarioId, tipo, nombreRazonSocial, estadoVerificacion, documentType, documentNumber }) {
+  async create({
+    tenantId,
+    usuarioId,
+    tipo,
+    nombreRazonSocial,
+    estadoVerificacion,
+    documentType,
+    documentNumber,
+    nombreRepresentante,
+    docRepresentante,
+  }) {
     const client = this.supabaseClientFactory.getClient();
+    const payload = {
+      tenant_id: tenantId,
+      usuario_id: usuarioId,
+      tipo,
+      nombre_razon_social: nombreRazonSocial,
+      estado_verificacion: ESTADO_VERIFICACION_TO_DB[estadoVerificacion] || estadoVerificacion,
+      tipo_documento_identidad: documentType,
+      numero_documento_identidad: documentNumber,
+    };
+    if (nombreRepresentante) payload.nombre_representante_legal = nombreRepresentante;
+    if (docRepresentante) payload.documento_representante_legal = docRepresentante;
+
     const { data, error } = await client
       .from('aliado')
-      .upsert(
-        {
-          tenant_id: tenantId,
-          usuario_id: usuarioId,
-          tipo,
-          nombre_razon_social: nombreRazonSocial,
-          estado_verificacion: ESTADO_VERIFICACION_TO_DB[estadoVerificacion] || estadoVerificacion,
-          tipo_documento_identidad: documentType,
-          numero_documento_identidad: documentNumber,
-        },
-        { onConflict: 'usuario_id' }
-      )
+      .upsert(payload, { onConflict: 'usuario_id' })
       .select()
       .single();
 

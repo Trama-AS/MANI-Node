@@ -30,6 +30,7 @@ async function registerAllyOnTenant(tenantSlug = 'trama-demo') {
     .field('email', `candidato.${unique}@mani.test`)
     .field('password', 'Cambiar123!')
     .field('categoriaId', 'cat-1')
+    .field('acceptsTerms', 'true') // obligatorio desde SCRUM-856 (MANI-Node#14)
     .attach('cedula_ciudadania', Buffer.from('pdf-content'), 'cedula.pdf');
 
   assert.equal(res.status, 201);

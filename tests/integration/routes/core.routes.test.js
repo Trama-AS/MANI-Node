@@ -192,3 +192,105 @@ test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () 
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.categories, ['cat-2', 'cat-3']);
 });
+
+test('PATCH /api/v1/profiles/me actualiza datos propios y persiste los cambios en GET /api/v1/profiles/me (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  const patchRes = await request(app)
+    .patch('/api/v1/profiles/me')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      fullName: 'Laura Gómez',
+      phone: '+57 315 222 3344',
+      address: 'Carrera 15 # 85-30 Bogotá',
+    });
+
+  assert.equal(patchRes.status, 200);
+  assert.equal(patchRes.body.profile.fullName, 'Laura Gómez');
+  assert.equal(patchRes.body.profile.phone, '+57 315 222 3344');
+  assert.equal(patchRes.body.profile.address, 'Carrera 15 # 85-30 Bogotá');
+
+  const getRes = await request(app)
+    .get('/api/v1/profiles/me')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(getRes.status, 200);
+  assert.equal(getRes.body.profile.fullName, 'Laura Gómez');
+  assert.equal(getRes.body.profile.phone, '+57 315 222 3344');
+});
+
+test('No existe ruta para editar el perfil de otro usuario, y un cambio de rol responde 403 MANI-PRF-403 (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  for (const method of ['patch', 'put']) {
+    const foreignRes = await request(app)[method]('/api/v1/profiles/demo-ally-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: 'Intruso' });
+    assert.equal(foreignRes.status, 404);
+  }
+
+  const putMe = await request(app).put('/api/v1/profiles/me').set('Authorization', `Bearer ${token}`).send({ fullName: 'Laura' });
+  assert.equal(putMe.status, 404);
+
+  const privRes = await request(app)
+    .patch('/api/v1/profiles/me')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ fullName: 'Laura', role: 'ADMIN' });
+
+  assert.equal(privRes.status, 403);
+  assert.equal(privRes.body.code, 'MANI-PRF-403');
+});
+
+test('POST /api/v1/profiles/me/photo permite subir foto en formato soportado y rechaza formato inválido (SCRUM-1028 / SCRUM-1030)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const okRes = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .attach('photo', Buffer.from('fake-png-bytes'), { filename: 'avatar.png', contentType: 'image/png' });
+
+  assert.equal(okRes.status, 200);
+  assert.match(okRes.body.profile.photoUrl, /^trama-demo\/demo-ally-1\/avatar-/);
+
+  const badRes = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .attach('photo', Buffer.from('fake-pdf'), { filename: 'doc.pdf', contentType: 'application/pdf' });
+
+  assert.equal(badRes.status, 400);
+  assert.equal(badRes.body.code, 'MANI-PRF-422');
+});
+
+
+test('PATCH /api/v1/profiles/me rechaza una URL de foto en el cuerpo: la foto solo entra por subida (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-user-1', tenantId: 'trama-demo', role: 'cliente' });
+
+  for (const field of ['photoUrl', 'fotoUrl', 'foto_url']) {
+    const res = await request(app)
+      .patch('/api/v1/profiles/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: 'Laura Gómez', [field]: 'https://evil.example/x.png' });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.code, 'MANI-PRF-422');
+  }
+});
+
+test('POST /api/v1/profiles/me/photo sin archivo responde 400 MANI-PRF-422 (SCRUM-854)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+
+  const res = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ photoUrl: 'https://evil.example/x.png' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'MANI-PRF-422');
+});
+
+test('POST /api/v1/profiles/me/photo sin Authorization responde 401 (SCRUM-854)', async () => {
+  const res = await request(app)
+    .post('/api/v1/profiles/me/photo')
+    .attach('photo', Buffer.from('fake-png-bytes'), { filename: 'avatar.png', contentType: 'image/png' });
+
+  assert.equal(res.status, 401);
+});
