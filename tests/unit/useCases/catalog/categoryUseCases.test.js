@@ -369,3 +369,30 @@ test('SetCategoryStatusUseCase rechaza si active no es booleano', async () => {
     }
   );
 });
+
+// --- Filas históricas y reglas: en US-03.1.1-M6 las reglas las decide Rules, no Core ---
+
+test('UpdateCategoryUseCase edita una categoría histórica fuera de reglas: Core no la revalida y Rules solo evalúa lo que cambia', async () => {
+  const Category = require('../../../../src/domain/entities/Category');
+  const catalogRepository = new InMemoryCatalogRepository();
+  // Fila histórica: nombre de 2 caracteres y sin flujo operativo (seed QA).
+  catalogRepository.categories.push(new Category({ id: 'hist-1', name: 'AB', tenantId: 't1', flujoOperativo: null }));
+  const rules = fakeRules();
+  const useCase = new UpdateCategoryUseCase({ catalogRepository, ruleEvaluationService: rules });
+
+  const result = await useCase.execute({ tenantId: 't1', categoryId: 'hist-1', flujoOperativo: 'cotizacion_previa', role: 'ADMIN' });
+
+  assert.equal(result.name, 'AB');
+  assert.equal(result.flujoOperativo, 'COTIZACION_PREVIA');
+  assert.deepEqual(rules.calls[0].context, { operation: 'UPDATE', name: undefined, flujoOperativo: 'cotizacion_previa' });
+});
+
+test('CreateCategoryUseCase no aplica reglas locales de nombre: el veredicto es el de Rules', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  // Rules aprueba un nombre de 2 caracteres (p. ej. override por tenant): Core lo acepta.
+  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules() });
+
+  const created = await useCase.execute({ tenantId: 't1', name: '  A   B ', flujoOperativo: 'TARIFA_ESTANDAR', role: 'ADMIN' });
+
+  assert.equal(created.name, 'A B');
+});

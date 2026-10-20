@@ -4,7 +4,26 @@ const assert = require('node:assert/strict');
 const Tenant = require('../../../src/domain/entities/Tenant');
 const Profile = require('../../../src/domain/entities/Profile');
 const Category = require('../../../src/domain/entities/Category');
+const DirectEmployee = require('../../../src/domain/entities/DirectEmployee');
 const { ValidationError, NotFoundError } = require('../../../src/domain/errors/DomainError');
+
+test('Domain Entity: DirectEmployee valida campos y entra como VERIFICADO', () => {
+  assert.throws(() => new DirectEmployee({ tenantId: '', fullName: 'Carlos', email: 'c@m.co' }), ValidationError);
+  assert.throws(() => new DirectEmployee({ tenantId: 't-1', fullName: 'C', email: 'c@m.co' }), ValidationError);
+  assert.throws(() => new DirectEmployee({ tenantId: 't-1', fullName: 'Carlos', email: 'invalido' }), ValidationError);
+
+  const emp = new DirectEmployee({
+    id: 'emp-1',
+    usuarioId: 'u-1',
+    tenantId: 't-1',
+    fullName: 'Carlos Gomez',
+    email: 'carlos@empresa.com',
+  });
+  assert.equal(emp.isDirectEmployee(), true);
+  assert.equal(emp.isVerified(), true);
+  assert.equal(emp.toJSON().tipoAliado, 'EMPLEADO_DIRECTO');
+  assert.equal(emp.toJSON().estadoVerificacion, 'VERIFICADO');
+});
 
 test('Domain Entity: Tenant valida campos obligatorios y status', () => {
   assert.throws(() => new Tenant({ id: '', name: 'Test' }), ValidationError);
@@ -51,10 +70,20 @@ test('Domain Entity: Category solo exige forma mínima; las reglas de negocio la
   assert.equal(new Category({ id: 'c-1', name: 'Manicura', flujoOperativo: 'NUEVO_FLUJO' }).flujoOperativo, 'NUEVO_FLUJO');
 });
 
-test('Domain Entity: Category rehidrata filas históricas con flujo_operativo NULL (seed QA)', () => {
-  const legacy = new Category({ id: 'c-1', name: 'Plomeria', tenantId: 't1', flujoOperativo: null });
-  assert.equal(legacy.toJSON().flujoOperativo, null);
-  assert.equal(new Category({ id: 'c-2', name: 'Electricidad' }).flujoOperativo, null);
+test('Domain Entity: Category rehidrata filas históricas sin aplicar reglas de negocio', () => {
+  // Seed QA: flujo_operativo NULL (ck_categoria_flujo es NOT VALID).
+  const sinFlujo = new Category({ id: 'c-1', name: 'Plomeria', tenantId: 't1', flujoOperativo: null });
+  assert.equal(sinFlujo.flujoOperativo, null);
+
+  // Fila que solo trae id, nombre y estado (p. ej. una consulta parcial).
+  assert.equal(new Category({ id: 'c-2', name: 'Electricidad', active: true }).flujoOperativo, null);
+
+  // Nombre fuera de las reglas actuales: no debe romper el listado completo.
+  assert.equal(new Category({ id: 'c-3', name: 'AB', flujoOperativo: 'TARIFA_ESTANDAR' }).name, 'AB');
+  assert.equal(new Category({ id: 'c-4', name: '  Uñas   Gel ' }).name, 'Uñas Gel');
+
+  // La forma mínima sí se exige.
+  assert.throws(() => new Category({ id: 'c-5', name: '   ' }), ValidationError);
 });
 
 test('Domain Errors tienen códigos de error y statusCodes adecuados', () => {

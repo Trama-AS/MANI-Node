@@ -47,6 +47,15 @@ class InMemoryCatalogRepository extends ICatalogRepository {
     return [...this.categories];
   }
 
+  // Vitrina del catálogo: categorías globales de fixtures (tenantId null) más
+  // las del tenant pedido. Con el CRUD de Backoffice (US-03.1.1-M2.1) hay
+  // categorías de varios tenants en memoria, así que sí se filtra por tenant.
+  async findActiveByTenant(tenantId) {
+    return this.categories
+      .filter((c) => c.isActive() && (c.tenantId === null || c.tenantId === tenantId))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
+
   async findById(tenantId, categoryId) {
     return (
       this.categories.find((c) => c.id === categoryId && (c.tenantId === null || c.tenantId === tenantId)) || null

@@ -47,7 +47,8 @@ test('requireRole responde 403 FORBIDDEN cuando el rol no está permitido', () =
   assert.equal(res.body.code, 'FORBIDDEN');
 });
 
-test('requireRole responde 403 cuando no hay req.user (no debería pasar si va después de authenticate)', () => {
+// requireRole es el de develop (SCRUM-850): sin sesión responde 401, no 403.
+test('requireRole responde 401 cuando no hay req.user (no debería pasar si va después de authenticate)', () => {
   const middleware = requireRole('ADMIN');
   const req = {};
   const res = mockRes();
@@ -58,7 +59,16 @@ test('requireRole responde 403 cuando no hay req.user (no debería pasar si va d
   });
 
   assert.equal(nextCalled, false);
-  assert.equal(res.statusCode, 403);
+  assert.equal(res.statusCode, 401);
+});
+
+test('requireRole("ADMIN") acepta también ADMIN_TENANT, el valor del claim en BD', () => {
+  const middleware = requireRole('ADMIN');
+  let nextCalled = false;
+  middleware({ user: { role: 'ADMIN_TENANT' } }, mockRes(), () => {
+    nextCalled = true;
+  });
+  assert.equal(nextCalled, true);
 });
 
 test('requireRole acepta múltiples roles permitidos', () => {

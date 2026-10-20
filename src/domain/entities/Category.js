@@ -2,15 +2,20 @@ const { ValidationError } = require('../errors/DomainError');
 
 const DESCRIPTION_MAX_LENGTH = 500;
 
+function normalizeName(name) {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
 class Category {
   // tenantId = null identifica las categorías "globales" de las fixtures de
   // desarrollo (compartidas por cualquier tenant en DEV/test); toda categoría
   // creada vía el CRUD de Backoffice (US-03.1.1-M2.1) lleva un tenantId real.
   //
   // Las reglas operativas (longitud y letras del nombre, flujos permitidos)
-  // NO viven aquí: las decide el Rules Service antes de crear o editar
-  // (US-03.1.1-M6). La entidad solo exige la forma mínima, así que rehidratar
-  // filas históricas (p. ej. flujo_operativo NULL del seed QA) nunca falla.
+  // NO viven aquí ni en Core: las decide el Rules Service antes de crear o
+  // editar (US-03.1.1-M6). La entidad solo exige la forma mínima, así que
+  // rehidratar filas históricas (flujo_operativo NULL del seed QA, o un nombre
+  // fuera de las reglas actuales) nunca rompe un listado.
   constructor({ id, name, active = true, description = '', tenantId = null, flujoOperativo = null }) {
     if (!id || typeof id !== 'string') {
       throw new ValidationError('Category id es requerido');
@@ -23,7 +28,7 @@ class Category {
     }
 
     this.id = id;
-    this.name = name.trim();
+    this.name = normalizeName(name);
     this.active = Boolean(active);
     this.description = description || '';
     this.tenantId = tenantId;

@@ -1,0 +1,140 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const PgServiceRequestRepository = require('../../../src/infrastructure/repositories/PgServiceRequestRepository');
+
+const TENANT = '11111111-1111-4111-8111-111111111111';
+const USER = '22222222-2222-4222-8222-222222222222';
+const ctx = { tenantId: TENANT, userId: USER, role: 'CLIENT' };
+const datosBase = {
+  categoriaId: 'cat', descripcion: 'Fuga de agua en el baño principal', sitioId: null, direccion: 'Calle 1', zonaId: 'zona', fotos: ['t/u/a.png'], claveIdempotencia: null,
+};
+const filaProyeccion = {
+  id: 'sol-1', estado: 'PENDIENTE', categoria_id: 'cat', categoria: 'Plomería', flujo_operativo: 'COTIZACION_PREVIA', descripcion: 'd',
+  sitio_id: 'sitio-1', direccion: 'Calle 1', zona_id: 'zona', zona: 'Chapinero', zona_padre: 'Bogotá', fotos: 1, created_at: new Date('2026-10-19T00:00:00Z'),
+};
+
+// Pool simulado de `pg`: responde según la sentencia y registra el orden de la transacción.
+function fakeFactory(respuestas = {}) {
+  const sentencias = [];
+  const responder = (sql) => {
+    for (const [clave, valor] of Object.entries(respuestas)) {
+      if (sql.includes(clave)) return typeof valor === 'function' ? valor(sql) : valor;
+    }
+    return { rows: [] };
+  };
+  const client = {
+    query: async (sql, params) => {
+      sentencias.push({ sql: sql.trim(), params });
+      return responder(sql);
+    },
+    release: () => {},
+  };
+  return { factory: { getPool: () => ({ connect: async () => client }) }, sentencias };
+}
+
+const exito = () => ({
+  'FROM cliente c JOIN usuario u': { rows: [{ id: 'cliente-1' }] },
+  'FROM categoria_servicio WHERE id': { rows: [{}] },
+  'FROM zona WHERE id': { rows: [{}] },
+  'INSERT INTO sitio': { rows: [{ id: 'sitio-1' }] },
+  'INSERT INTO solicitud (': { rows: [{ id: 'sol-1' }] },
+  'FROM solicitud s': { rows: [filaProyeccion] },
+});
+
+test('crea sitio, solicitud PENDIENTE, fotos y evento en una transacción con el contexto del tenant', async () => {
+  const { factory, sentencias } = fakeFactory(exito());
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, datosBase);
+
+  assert.equal(r.creada, true);
+  assert.equal(r.solicitud.id, 'sol-1');
+  assert.equal(r.solicitud.flujoOperativo, 'COTIZACION_PREVIA');
+  const orden = sentencias.map((s) => s.sql.split(/\s+/).slice(0, 3).join(' '));
+  assert.equal(orden[0], 'BEGIN');
+  assert.match(sentencias[1].sql, /^SELECT app\.set_context/);
+  assert.deepEqual(sentencias[1].params, [TENANT, USER, 'cliente']);
+  const insercion = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud ('));
+  assert.match(insercion.sql, /'PENDIENTE'/);
+  assert.deepEqual(insercion.params, [TENANT, 'cliente-1', 'sitio-1', 'cat', 'zona', datosBase.descripcion, null]);
+  const foto = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud_foto'));
+  assert.deepEqual(foto.params, [TENANT, 'sol-1', 't/u/a.png', 1]);
+  const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
+  assert.match(evento.sql, /'SOLICITUD_CREADA'/);
+  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+});
+
+test('con sitio propio usa su zona y no crea sitio', async () => {
+  const resp = { ...exito(), 'FROM sitio WHERE id': { rows: [{ id: 'sitio-9', zona_id: 'zona-9' }] } };
+  const { factory, sentencias } = fakeFactory(resp);
+
+  await new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, { ...datosBase, sitioId: 'sitio-9', direccion: null, zonaId: null });
+
+  assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT INTO sitio')));
+  const insercion = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud ('));
+  assert.equal(insercion.params[2], 'sitio-9');
+  assert.equal(insercion.params[4], 'zona-9');
+});
+
+test('la misma clave de idempotencia devuelve la solicitud existente sin insertar (creada=false)', async () => {
+  const resp = { ...exito(), 'clave_idempotencia = $2': { rows: [{ id: 'sol-previa' }] } };
+  const { factory, sentencias } = fakeFactory(resp);
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, { ...datosBase, claveIdempotencia: 'k' });
+
+  assert.equal(r.creada, false);
+  assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT')));
+});
+
+test('carrera de idempotencia: un unique_violation vuelve al savepoint y devuelve la ganadora', async () => {
+  let consultasClave = 0;
+  const resp = {
+    ...exito(),
+    'clave_idempotencia = $2': () => { consultasClave += 1; return { rows: consultasClave === 1 ? [] : [{ id: 'sol-ganadora' }] }; },
+    'INSERT INTO solicitud (': () => { const e = new Error('duplicate key'); e.code = '23505'; throw e; },
+  };
+  const { factory, sentencias } = fakeFactory(resp);
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, { ...datosBase, claveIdempotencia: 'k' });
+
+  assert.equal(r.creada, false);
+  assert.ok(sentencias.some((s) => s.sql === 'ROLLBACK TO SAVEPOINT crear_solicitud'));
+  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+});
+
+for (const [name, quitar, codigo, status] of [
+  ['cliente inactivo o inexistente', 'FROM cliente c JOIN usuario u', 'MANI-SOL-403C', 403],
+  ['categoría no disponible', 'FROM categoria_servicio WHERE id', 'MANI-SOL-422C', 422],
+  ['zona no disponible', 'FROM zona WHERE id', 'MANI-SOL-422Z', 422],
+]) {
+  test(`${name} responde ${status} ${codigo} y revierte`, async () => {
+    const resp = exito();
+    delete resp[quitar];
+    const { factory, sentencias } = fakeFactory(resp);
+
+    await assert.rejects(() => new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, datosBase), (e) => e.statusCode === status && e.code === codigo);
+    assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
+    assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT')));
+  });
+}
+
+test('un sitio que no es del cliente responde 422 MANI-SOL-422S', async () => {
+  const { factory } = fakeFactory(exito());
+
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, { ...datosBase, sitioId: 'ajeno' }),
+    (e) => e.code === 'MANI-SOL-422S'
+  );
+});
+
+test('otros errores de la base se propagan y revierten', async () => {
+  const resp = { ...exito(), 'INSERT INTO solicitud (': () => { throw new Error('caída'); } };
+  const { factory, sentencias } = fakeFactory(resp);
+
+  await assert.rejects(() => new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, datosBase), /caída/);
+  assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
+});
+
+test('sin DATABASE_URL falla cerrado con 503 y exige pgPoolFactory', async () => {
+  await assert.rejects(() => new PgServiceRequestRepository({ pgPoolFactory: { getPool: () => null } }).crear(ctx, datosBase), (e) => e.statusCode === 503);
+  assert.throws(() => new PgServiceRequestRepository({}), /pgPoolFactory/);
+});
