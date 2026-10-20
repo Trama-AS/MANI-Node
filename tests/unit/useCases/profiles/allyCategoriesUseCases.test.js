@@ -175,7 +175,9 @@ test('DeclareAllyCategoriesUseCase: lanza MANI-CAT-422C si una categoría no exi
   const useCase = new DeclareAllyCategoriesUseCase({
     aliadoRepository: makeFakeAliadoRepo(),
     aliadoCategoriaRepository: makeFakeAliadoCategoriaRepo(),
-    catalogRepository: makeFakeCatalogRepo([new Category({ id: 'cat-1', name: 'Cat 1', active: true })]),
+    catalogRepository: makeFakeCatalogRepo([
+      new Category({ id: 'cat-1', name: 'Cat 1', active: true, flujoOperativo: 'COTIZACION_PREVIA' }),
+    ]),
   });
 
   await assert.rejects(
@@ -193,8 +195,8 @@ test('DeclareAllyCategoriesUseCase: lanza MANI-CAT-422C si una categoría está 
     aliadoRepository: makeFakeAliadoRepo(),
     aliadoCategoriaRepository: makeFakeAliadoCategoriaRepo(),
     catalogRepository: makeFakeCatalogRepo([
-      new Category({ id: 'cat-1', name: 'Cat 1', active: true }),
-      new Category({ id: 'cat-inactive', name: 'Inactiva', active: false }),
+      new Category({ id: 'cat-1', name: 'Cat 1', active: true, flujoOperativo: 'COTIZACION_PREVIA' }),
+      new Category({ id: 'cat-inactive', name: 'Inactiva', active: false, flujoOperativo: 'COTIZACION_PREVIA' }),
     ]),
   });
 
@@ -213,8 +215,8 @@ test('DeclareAllyCategoriesUseCase: guarda exitosamente deduplicando IDs y retor
     aliadoRepository: makeFakeAliadoRepo(),
     aliadoCategoriaRepository: makeFakeAliadoCategoriaRepo(['cat-1']),
     catalogRepository: makeFakeCatalogRepo([
-      new Category({ id: 'cat-1', name: 'Cat 1', active: true }),
-      new Category({ id: 'cat-2', name: 'Cat 2', active: true }),
+      new Category({ id: 'cat-1', name: 'Cat 1', active: true, flujoOperativo: 'COTIZACION_PREVIA' }),
+      new Category({ id: 'cat-2', name: 'Cat 2', active: true, flujoOperativo: 'TARIFA_ESTANDAR' }),
     ]),
   });
 

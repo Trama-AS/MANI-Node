@@ -6,7 +6,7 @@ const catalogController = require('../controllers/catalog.controller');
 const availabilityController = require('../controllers/availability.controller');
 const dispatchIntegrationController = require('../controllers/dispatchIntegration.controller');
 const requestsController = require('../controllers/requests.controller');
-const { authenticate } = require('../middlewares/auth.middleware');
+const { authenticate, requireRole } = require('../middlewares/auth.middleware');
 
 const router = Router();
 
@@ -37,7 +37,6 @@ router.get('/profiles/me/unavailability', availabilityController.listAbsences);
 router.post('/profiles/me/unavailability', availabilityController.createAbsence);
 router.patch('/profiles/me/unavailability/:absenceId', availabilityController.updateAbsence);
 router.delete('/profiles/me/unavailability/:absenceId', availabilityController.deleteAbsence);
-router.get('/catalog', catalogController.listCategories);
 
 // Superficie que consume MANI-Dispatch (ADR-0030): Core es dueño de la elegibilidad y de la mensajería.
 router.get('/allies/eligible', authenticate, dispatchIntegrationController.listEligibleAllies);
@@ -47,6 +46,22 @@ router.post('/notifications', authenticate, dispatchIntegrationController.publis
 router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
 // US-04.1.1-M2 (SCRUM-1072): el cliente crea la solicitud en Core; el despacho es un paso posterior en Dispatch.
 router.post('/solicitudes', authenticate, uploadFotosSolicitud.array('fotos', 5), requestsController.createRequest);
+
+// Vitrina pública del catálogo (usada por el formulario de registro de
+// aliado, pre-auth): devuelve las categorías globales de fixtures más las
+// del tenant resuelto desde X-Tenant-Slug (si el caller lo envía). Sin ese
+// encabezado solo se ven las globales, nunca las de otro tenant.
+router.get('/catalog', catalogController.listCategories);
+
+// Gestión de categoría de servicio (US-03.1.1-M2.1), aislada por tenant:
+// solo Backoffice (rol ADMIN) y siempre autenticado.
+const requireAdmin = requireRole('ADMIN');
+router.get('/catalog/categories', authenticate, requireAdmin, catalogController.listCategoriesForTenant);
+router.post('/catalog/categories', authenticate, requireAdmin, catalogController.createCategory);
+router.get('/catalog/categories/:id', authenticate, requireAdmin, catalogController.getCategory);
+router.put('/catalog/categories/:id', authenticate, requireAdmin, catalogController.updateCategory);
+router.patch('/catalog/categories/:id/activate', authenticate, requireAdmin, catalogController.activateCategory);
+router.patch('/catalog/categories/:id/deactivate', authenticate, requireAdmin, catalogController.deactivateCategory);
 
 module.exports = router;
 

@@ -35,6 +35,11 @@ const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAll
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
 const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
+const ListCategoriesForTenantUseCase = require('./application/useCases/catalog/ListCategoriesForTenantUseCase');
+const GetCategoryUseCase = require('./application/useCases/catalog/GetCategoryUseCase');
+const CreateCategoryUseCase = require('./application/useCases/catalog/CreateCategoryUseCase');
+const UpdateCategoryUseCase = require('./application/useCases/catalog/UpdateCategoryUseCase');
+const SetCategoryStatusUseCase = require('./application/useCases/catalog/SetCategoryStatusUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const ConfigureSiteRulesUseCase = require('./application/useCases/sites/ConfigureSiteRulesUseCase');
@@ -218,6 +223,14 @@ class Container {
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
     });
+
+    this.listCategoriesForTenantUseCase = new ListCategoriesForTenantUseCase({
+      catalogRepository: this.catalogRepository,
+    });
+    this.getCategoryUseCase = new GetCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.createCategoryUseCase = new CreateCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.updateCategoryUseCase = new UpdateCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.setCategoryStatusUseCase = new SetCategoryStatusUseCase({ catalogRepository: this.catalogRepository });
 
     // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).
     // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
