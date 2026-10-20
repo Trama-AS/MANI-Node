@@ -37,6 +37,13 @@ const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profi
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const ConfigureSiteRulesUseCase = require('./application/useCases/sites/ConfigureSiteRulesUseCase');
+const GetSiteRulesForAllyUseCase = require('./application/useCases/sites/GetSiteRulesForAllyUseCase');
+const ValidateAllyScheduleUseCase = require('./application/useCases/sites/ValidateAllyScheduleUseCase');
+const InMemorySiteRepository = require('./infrastructure/repositories/InMemorySiteRepository');
+const PostgresSiteRepository = require('./infrastructure/repositories/PostgresSiteRepository');
+const InMemoryClientRepository = require('./infrastructure/repositories/InMemoryClientRepository');
+const PostgresClientRepository = require('./infrastructure/repositories/PostgresClientRepository');
 const GetActiveLegalDocumentsUseCase = require('./application/useCases/legal/GetActiveLegalDocumentsUseCase');
 const RegisterUserConsentUseCase = require('./application/useCases/legal/RegisterUserConsentUseCase');
 const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/InMemoryLegalDocumentRepository');
@@ -128,8 +135,12 @@ class Container {
         supabaseClientFactory: this.supabaseClientFactory,
       });
       if (this.pgPoolFactory.isConfigured()) {
+        this.siteRepository = new PostgresSiteRepository({ pgPoolFactory: this.pgPoolFactory });
+        this.clientRepository = new PostgresClientRepository({ pgPoolFactory: this.pgPoolFactory });
         this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
       } else {
+        this.siteRepository = new InMemorySiteRepository();
+        this.clientRepository = new InMemoryClientRepository();
         this.companyClientRepository = new InMemoryCompanyClientRepository();
       }
     } else {
@@ -145,6 +156,8 @@ class Container {
       this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+      this.siteRepository = new InMemorySiteRepository();
+      this.clientRepository = new InMemoryClientRepository();
       this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
       this.userConsentRepository = new InMemoryUserConsentRepository();
       this.companyClientRepository = new InMemoryCompanyClientRepository();
@@ -217,6 +230,20 @@ class Container {
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
       envLabel: config.envLabel,
+    });
+
+    this.configureSiteRulesUseCase = new ConfigureSiteRulesUseCase({
+      siteRepository: this.siteRepository,
+      clientRepository: this.clientRepository,
+    });
+
+    this.getSiteRulesForAllyUseCase = new GetSiteRulesForAllyUseCase({
+      siteRepository: this.siteRepository,
+      clientRepository: this.clientRepository,
+    });
+
+    this.validateAllyScheduleUseCase = new ValidateAllyScheduleUseCase({
+      siteRepository: this.siteRepository,
     });
 
     this.getActiveLegalDocumentsUseCase = new GetActiveLegalDocumentsUseCase({
