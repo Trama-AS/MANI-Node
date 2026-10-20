@@ -48,6 +48,8 @@ async function createCategory(req, res, next) {
       name,
       description,
       flujoOperativo,
+      role: req.user.role,
+      correlationId: req.correlationId,
     });
     res.status(201).json({ category });
   } catch (err) {
@@ -64,6 +66,8 @@ async function updateCategory(req, res, next) {
       name,
       description,
       flujoOperativo,
+      role: req.user.role,
+      correlationId: req.correlationId,
     });
     res.status(200).json({ category });
   } catch (err) {

@@ -90,6 +90,7 @@ test('assertValid pasa en qa cuando las variables requeridas existen', () => {
       SUPABASE_JWT_SECRET: 'qa-jwt-secret',
       SUPABASE_ANON_KEY: 'qa-anon-key',
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/mani',
+      RULES_SERVICE_URL: 'http://rules-service:8080',
     },
     (config) => {
       assert.doesNotThrow(() => config.assertValid());
@@ -108,11 +109,31 @@ test('assertValid falla en production si solo falta DATABASE_URL, sin exponer su
       SUPABASE_JWT_SECRET: 'prod-jwt-secret',
       SUPABASE_ANON_KEY: 'prod-anon-key',
       DATABASE_URL: undefined,
+      RULES_SERVICE_URL: 'http://rules-service:8080',
     },
     (config) => {
       assert.throws(() => config.assertValid(), /DATABASE_URL/);
     }
   );
+});
+
+// US-03.1.1-M6: sin Rules no hay reglas de categoría (Core ya no tiene copia
+// local), así que QA y producción deben fallar al arrancar.
+test('assertValid falla en qa si falta RULES_SERVICE_URL y la expone en config cuando existe', () => {
+  const base = {
+    NODE_ENV: 'qa',
+    SUPABASE_URL: 'https://qa-project.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'qa-key',
+    SUPABASE_JWT_SECRET: 'qa-jwt-secret',
+    SUPABASE_ANON_KEY: 'qa-anon-key',
+    DATABASE_URL: 'postgresql://user:pass@localhost:5432/mani',
+  };
+  withEnv({ ...base, RULES_SERVICE_URL: undefined }, (config) => {
+    assert.throws(() => config.assertValid(), /RULES_SERVICE_URL/);
+  });
+  withEnv({ ...base, RULES_SERVICE_URL: 'http://rules-service:8080' }, (config) => {
+    assert.equal(config.rulesServiceUrl, 'http://rules-service:8080');
+  });
 });
 
 test('en development DATABASE_URL es opcional y se expone cuando existe', () => {

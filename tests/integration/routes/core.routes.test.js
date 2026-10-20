@@ -1,10 +1,26 @@
 const test = require('node:test');
+const { before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const app = require('../../../src/app');
 const config = require('../../../src/config');
+const container = require('../../../src/container');
+const { startFakeRulesService } = require('../../helpers/fakeRulesService');
+
+let rules;
+
+before(async () => {
+  rules = await startFakeRulesService();
+  container.ruleEvaluationService.baseUrl = rules.url;
+});
+
+beforeEach(() => rules.reset());
+
+after(async () => {
+  await rules.close();
+});
 
 function signTestToken({ sub, tenantId, role }) {
   return jwt.sign({ sub, app_metadata: { tenant_id: tenantId, user_role: role } }, config.supabaseJwtSecret, {
@@ -494,4 +510,86 @@ test('PATCH /api/v1/catalog/categories/:id/deactivate y /activate alternan el fl
     .set('Authorization', `Bearer ${adminToken(tenantId)}`);
   assert.equal(activateRes.status, 200);
   assert.equal(activateRes.body.category.active, true);
+});
+
+// --- Reglas de categoría delegadas al Rules Service (US-03.1.1-M6) ---
+
+test('POST /api/v1/catalog/categories delega en Rules con el tenant y el rol del token, y persiste lo normalizado', async () => {
+  const tenantId = 'tenant-rules-delegacion';
+  const res = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .set('X-Correlation-ID', 'corr-rules-1')
+    .send({ name: '  Pintura   Interior ', flujoOperativo: 'cotizacion_previa' });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.category.name, 'Pintura Interior');
+  assert.equal(res.body.category.flujoOperativo, 'COTIZACION_PREVIA');
+
+  assert.equal(rules.requests.length, 1);
+  const [call] = rules.requests;
+  assert.equal(call.url, '/api/v1/rules/categories/evaluate');
+  assert.equal(call.headers['x-tenant-id'], tenantId);
+  assert.equal(call.headers['x-user-role'], 'ADMIN');
+  assert.equal(call.headers['x-correlation-id'], 'corr-rules-1');
+  assert.deepEqual(call.body, {
+    categoryId: null,
+    context: { operation: 'CREATE', name: '  Pintura   Interior ', flujoOperativo: 'cotizacion_previa' },
+  });
+});
+
+test('POST /api/v1/catalog/categories responde 400 con las violaciones cuando Rules no aprueba, sin persistir', async () => {
+  const tenantId = 'tenant-rules-rechazo';
+  rules.respondWith(() => ({
+    status: 200,
+    body: {
+      allowed: false,
+      ruleSetVersion: 'fake-rules-v1',
+      violations: [{ code: 'MANI-CAT-422N', field: 'name', message: 'el nombre debe tener entre 3 y 60 caracteres' }],
+    },
+  }));
+
+  const res = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ name: 'AB', flujoOperativo: 'TARIFA_ESTANDAR' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+  assert.equal(res.body.violations[0].code, 'MANI-CAT-422N');
+
+  rules.reset();
+  const listRes = await request(app)
+    .get('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`);
+  assert.equal(listRes.body.categories.length, 0);
+});
+
+test('POST /api/v1/catalog/categories responde 503 RULES_SERVICE_UNAVAILABLE si Rules falla (no cae a reglas locales)', async () => {
+  rules.respondWith(() => ({ status: 500, body: { code: 'INTERNAL_ERROR' } }));
+
+  const res = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken('tenant-rules-caido')}`)
+    .send({ name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+
+  assert.equal(res.status, 503);
+  assert.equal(res.body.code, 'RULES_SERVICE_UNAVAILABLE');
+});
+
+test('PUT /api/v1/catalog/categories/:id solo con description no consulta a Rules', async () => {
+  const tenantId = 'tenant-rules-descripcion';
+  const createRes = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+  rules.reset();
+
+  const res = await request(app)
+    .put(`/api/v1/catalog/categories/${createRes.body.category.id}`)
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ description: 'Solo cambia la descripción' });
+
+  assert.equal(res.status, 200);
+  assert.equal(rules.requests.length, 0);
 });

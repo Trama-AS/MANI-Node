@@ -22,6 +22,7 @@ function errorHandler(err, req, res, _next) {
   res.status(statusCode).json({
     error: err.message || 'Error interno del servidor',
     code,
+    ...(Array.isArray(err.violations) && { violations: err.violations }),
     correlationId: req.correlationId || 'none',
   });
 }

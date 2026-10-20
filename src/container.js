@@ -27,6 +27,7 @@ const TransactionalAliadoCategoriaRepository = require('./infrastructure/reposit
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
+const RulesServiceHttpClient = require('./infrastructure/clients/RulesServiceHttpClient');
 
 const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUseCase');
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
@@ -94,6 +95,10 @@ class Container {
     this.supabaseConnectionChecker = new SupabaseConnectionChecker({
       supabaseClientFactory: this.supabaseClientFactory,
     });
+    // Reglas de categoría en MANI-Java (US-03.1.1-M6). Sin RULES_SERVICE_URL
+    // (solo permitido en DEV/test) crear o editar categorías responde 503: no
+    // hay copia local de las reglas a la que caer.
+    this.ruleEvaluationService = new RulesServiceHttpClient({ baseUrl: config.rulesServiceUrl });
 
     // Con Supabase configurado (QA/producción) se usa la persistencia e identidad
     // reales; sin configurar (DEV/test sin credenciales) cae a implementaciones
@@ -228,8 +233,14 @@ class Container {
       catalogRepository: this.catalogRepository,
     });
     this.getCategoryUseCase = new GetCategoryUseCase({ catalogRepository: this.catalogRepository });
-    this.createCategoryUseCase = new CreateCategoryUseCase({ catalogRepository: this.catalogRepository });
-    this.updateCategoryUseCase = new UpdateCategoryUseCase({ catalogRepository: this.catalogRepository });
+    this.createCategoryUseCase = new CreateCategoryUseCase({
+      catalogRepository: this.catalogRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    this.updateCategoryUseCase = new UpdateCategoryUseCase({
+      catalogRepository: this.catalogRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
     this.setCategoryStatusUseCase = new SetCategoryStatusUseCase({ catalogRepository: this.catalogRepository });
 
     // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).

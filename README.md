@@ -63,25 +63,24 @@ Viven en **MANI-APIGateway** (`docs/openapi/core.yaml`, `postman/`, `.github/wor
 
 > Las rutas de elegibilidad y notificaciones toman el tenant y el rol **solo del JWT** que Dispatch reenvía (nunca de `X-Tenant-Id` ni del cuerpo) y requieren `DATABASE_URL`: sin ella responden `503` en lugar de devolver datos.
 
-## 🧭 Frontera declarada hacia el Rules Service (US-03.1.1-M2.2)
+## 🧭 Reglas de categoría en el Rules Service (US-03.1.1-M2.2 → US-03.1.1-M6)
 
-La historia padre **US-03.1.1-M2** separó explícitamente dos responsabilidades que antes vivían mezcladas: la **gestión de categoría de servicio** (implementada en Core Node, ver `US-02.1.1-M2`/`US-03.1.1-M2.1` abajo) y la **evaluación de reglas de negocio** sobre esas categorías, que le corresponde a `MANI-Java` (Rules Service), no a Core.
+La gestión de categoría vive en Core; **las reglas operativas de la categoría las decide `MANI-Java`** (Rules Service), para poder cambiarlas sin desplegar Core. El puerto se declaró en US-03.1.1-M2.2 y se implementó en US-03.1.1-M6:
 
-Esta subtarea (**US-03.1.1-M2.2**) declara y documenta esa frontera, **sin implementarla**:
+* `src/domain/ports/IRuleEvaluationService.js`: puerto `evaluateCategoryRules({ tenantId, categoryId, role, correlationId, context })`.
+* `src/infrastructure/clients/RulesServiceHttpClient.js`: adaptador real. Hace `POST ${RULES_SERVICE_URL}/api/v1/rules/categories/evaluate` por la red interna, con el tenant y el rol del JWT como `X-Tenant-Id` / `X-User-Role` (nunca en el cuerpo) y `X-Correlation-ID`. Timeout de 3 s y un reintento ante error de red o 502/503/504 (la evaluación es idempotente).
+* `CreateCategoryUseCase` / `UpdateCategoryUseCase` validan solo la **forma** de la petición, delegan las reglas a Rules (`CREATE` / `UPDATE` parcial) y persisten los valores `normalized` que devuelve Rules. Un cambio solo de `description` no consulta a Rules.
+* `Category` ya no valida longitud/letras del nombre ni el enum de flujo: el camino antiguo dejó de existir en Core.
 
-* `src/domain/ports/IRuleEvaluationService.js` — el puerto de dominio. Define `evaluateCategoryRules({ tenantId, categoryId, context })`, el método que Core usará para delegar la evaluación a `MANI-Java`. Su implementación por defecto **lanza un error explícito** ("contrato declarado, sin implementación") en vez de simular un resultado: así ningún caso de uso puede depender silenciosamente de una evaluación de reglas que todavía no existe.
-* `src/domain/entities/RuleEvaluationResult.js` — la forma de datos (`{ allowed, ruleSetVersion, violations[] }`) que esa evaluación deberá devolver una vez implementada, para que un futuro adaptador HTTP y cualquier caso de uso que lo consuma compartan el mismo contrato.
+| Situación | Respuesta de Core |
+| :--- | :--- |
+| Rules aprueba | `201`/`200` con nombre y flujo normalizados por Rules |
+| Rules no aprueba (`allowed=false`) | `400 VALIDATION_ERROR` con `violations[]` (`MANI-CAT-422N`, `MANI-CAT-422F`) |
+| Rules caído, timeout o 5xx | `503 RULES_SERVICE_UNAVAILABLE`: **falla cerrado**, no hay reglas locales de respaldo |
+| Rules responde 4xx o fuera de contrato | `502 RULES_SERVICE_ERROR` (falla de integración) |
+| Nombre duplicado en el tenant | `409 CATEGORY_NAME_ALREADY_EXISTS`: lo decide el índice único, porque necesita estado |
 
-**Arquitectura de destino** (ADR-0019, ver diagrama arriba):
-```
-Flutter -> NGINX API Gateway (/api/v1/rules/*) -> MANI-Java (Rules Service)
-```
-Core Node consumiría `MANI-Java` como servicio interno (`config.rulesServiceUrl`, hoy `http://rules-service:8080`) — nunca expone esa URL al cliente final, y el cliente final nunca llama a `MANI-Java` directamente.
-
-**Qué falta (fuera de alcance de M2.2, historia futura):**
-* Un adaptador real, p. ej. `src/infrastructure/clients/RulesServiceHttpClient.js`, que implemente `IRuleEvaluationService` haciendo HTTP contra `MANI-Java` y envuelva errores de red/5xx en `DomainError('INTERNAL_ERROR', 500)` (mismo patrón que el resto de infraestructura de este repo).
-* El contrato OpenAPI de `/api/v1/rules/*` lo define `MANI-Java`/`MANI-APIGateway` (mismo principio que CFG-16 para `/api/v1/core/*`: el Gateway es dueño del contrato público), no este repo.
-* Wiring en `container.js` y en el/los caso(s) de uso que necesiten invocar la evaluación de reglas (p. ej. al crear o activar una categoría).
+`RULES_SERVICE_URL` (p. ej. `http://rules-service:8080`) es **obligatoria en QA y producción** (`config.assertValid`). En DEV/test sin ella, crear o editar categorías responde 503. Las pruebas de integración levantan un doble HTTP del contrato (`tests/helpers/fakeRulesService.js`). El contrato público lo publica `MANI-APIGateway/docs/openapi/rules.yaml`.
 
 ---
 

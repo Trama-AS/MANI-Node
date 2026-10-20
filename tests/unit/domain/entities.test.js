@@ -59,21 +59,15 @@ test('Domain Entity: Category valida identificador y activo', () => {
   assert.equal(category.toJSON().name, 'Acrílicas');
 });
 
-test('Category.assertValidName: reglas del nombre para datos nuevos (3-60 caracteres, al menos una letra)', () => {
-  assert.throws(() => Category.assertValidName('AB'), ValidationError); // < 3
-  assert.throws(() => Category.assertValidName('A'.repeat(61)), ValidationError); // > 60
-  assert.throws(() => Category.assertValidName('123456'), ValidationError); // sin letras
-  assert.throws(() => Category.assertValidName(''), ValidationError);
-  assert.throws(() => Category.assertValidName(undefined), ValidationError);
+test('Domain Entity: Category solo exige forma mínima; las reglas de negocio las decide Rules (US-03.1.1-M6)', () => {
+  assert.throws(() => new Category({ id: 'c-1', name: '' }), ValidationError);
+  assert.throws(() => new Category({ id: 'c-1', name: '   ' }), ValidationError);
+  assert.throws(() => new Category({ id: 'c-1', name: 'Manicura', description: 'x'.repeat(501) }), ValidationError);
 
-  // Colapsa espacios internos repetidos, igual que crear_categoria_servicio().
-  assert.equal(Category.assertValidName('  Uñas   Acrílicas  '), 'Uñas Acrílicas');
-});
-
-test('Category.assertValidFlujoOperativo: obligatorio y en COTIZACION_PREVIA | TARIFA_ESTANDAR', () => {
-  assert.throws(() => Category.assertValidFlujoOperativo('OTRO'), ValidationError);
-  assert.throws(() => Category.assertValidFlujoOperativo(undefined), ValidationError); // sin default
-  assert.equal(Category.assertValidFlujoOperativo('COTIZACION_PREVIA'), 'COTIZACION_PREVIA');
+  // Longitud, letras y flujo ya no se validan aquí: un cambio de reglas en
+  // Rules no debe exigir desplegar Core.
+  assert.equal(new Category({ id: 'c-1', name: 'AB', flujoOperativo: 'TARIFA_ESTANDAR' }).name, 'AB');
+  assert.equal(new Category({ id: 'c-1', name: 'Manicura', flujoOperativo: 'NUEVO_FLUJO' }).flujoOperativo, 'NUEVO_FLUJO');
 });
 
 test('Domain Entity: Category rehidrata filas históricas sin aplicar reglas de negocio', () => {
