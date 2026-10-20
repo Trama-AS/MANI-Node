@@ -22,6 +22,19 @@ class IAliadoRepository {
   async deleteByUsuarioId(_tenantId, _usuarioId) {
     throw new Error('Método deleteByUsuarioId() no implementado en IAliadoRepository');
   }
+
+  async findById(_tenantId, _aliadoId) {
+    throw new Error('Método findById() no implementado en IAliadoRepository');
+  }
+
+  async findByTenant(_tenantId, _filters) {
+    throw new Error('Método findByTenant() no implementado en IAliadoRepository');
+  }
+
+  async updateVerificationStatus(_tenantId, _aliadoId, _decisionData) {
+    throw new Error('Método updateVerificationStatus() no implementado en IAliadoRepository');
+  }
 }
 
 module.exports = IAliadoRepository;
+

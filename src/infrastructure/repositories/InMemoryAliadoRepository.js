@@ -32,7 +32,10 @@ class InMemoryAliadoRepository extends IAliadoRepository {
 
   async create(aliado) {
     const record = {
-      id: aliado.id || `ally-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: aliado.id || `aliado-${aliado.usuarioId}`,
+      fechaRegistro: aliado.fechaRegistro || new Date().toISOString(),
+      motivoRechazo: aliado.motivoRechazo ?? null,
+      fechaVerificacion: aliado.fechaVerificacion ?? null,
       ...aliado,
     };
     this.aliados.set(aliado.usuarioId, record);
@@ -45,6 +48,49 @@ class InMemoryAliadoRepository extends IAliadoRepository {
       this.aliados.delete(usuarioId);
     }
   }
+
+  async findById(tenantId, aliadoId) {
+    if (!tenantId || !aliadoId) return null;
+    return (
+      [...this.aliados.values()].find(
+        (a) => a.tenantId === tenantId && (a.id === aliadoId || a.usuarioId === aliadoId)
+      ) || null
+    );
+  }
+
+  async findByTenant(tenantId, { estadoVerificacion } = {}) {
+    if (!tenantId) return [];
+    const items = [...this.aliados.values()].filter((a) => {
+      if (a.tenantId !== tenantId) return false;
+      if (estadoVerificacion) {
+        return a.estadoVerificacion === estadoVerificacion;
+      }
+      return true;
+    });
+    return items.sort((a, b) => {
+      const da = a.fechaRegistro ? new Date(a.fechaRegistro).getTime() : 0;
+      const db = b.fechaRegistro ? new Date(b.fechaRegistro).getTime() : 0;
+      return da - db;
+    });
+  }
+
+  async updateVerificationStatus(
+    tenantId,
+    aliadoId,
+    { estadoVerificacion, motivoRechazo = null, fechaVerificacion, verificadoPor = null }
+  ) {
+    const aliado = await this.findById(tenantId, aliadoId);
+    if (!aliado) return null;
+    if (aliado.estadoVerificacion !== 'PENDING' && aliado.estadoVerificacion !== 'PENDIENTE') {
+      return null;
+    }
+    aliado.estadoVerificacion = estadoVerificacion;
+    aliado.motivoRechazo = motivoRechazo;
+    aliado.fechaVerificacion = fechaVerificacion || new Date().toISOString();
+    aliado.verificadoPor = verificadoPor;
+    return { ...aliado };
+  }
 }
 
 module.exports = InMemoryAliadoRepository;
+

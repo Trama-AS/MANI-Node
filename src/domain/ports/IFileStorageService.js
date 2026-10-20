@@ -16,6 +16,11 @@ class IFileStorageService {
   async delete(_path) {
     throw new Error('Método delete() no implementado en IFileStorageService');
   }
+
+  async createSignedUrl(_path, _expiresInSeconds) {
+    throw new Error('Método createSignedUrl() no implementado en IFileStorageService');
+  }
 }
 
 module.exports = IFileStorageService;
+

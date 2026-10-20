@@ -11,6 +11,15 @@ class IDocumentoKycRepository {
   async deleteByAliadoId(_tenantId, _aliadoId) {
     throw new Error('Método deleteByAliadoId() no implementado en IDocumentoKycRepository');
   }
+
+  async findByAliadoId(_tenantId, _aliadoId) {
+    throw new Error('Método findByAliadoId() no implementado en IDocumentoKycRepository');
+  }
+
+  async updateStatusByAliadoId(_tenantId, _aliadoId, _estado) {
+    throw new Error('Método updateStatusByAliadoId() no implementado en IDocumentoKycRepository');
+  }
 }
 
 module.exports = IDocumentoKycRepository;
+

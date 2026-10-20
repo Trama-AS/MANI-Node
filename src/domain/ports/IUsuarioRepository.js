@@ -18,6 +18,11 @@ class IUsuarioRepository {
   async deleteById(_tenantId, _id) {
     throw new Error('Método deleteById() no implementado en IUsuarioRepository');
   }
+
+  async findById(_tenantId, _id) {
+    throw new Error('Método findById() no implementado en IUsuarioRepository');
+  }
 }
 
 module.exports = IUsuarioRepository;
+

@@ -43,6 +43,10 @@ const UpdateCategoryUseCase = require('./application/useCases/catalog/UpdateCate
 const SetCategoryStatusUseCase = require('./application/useCases/catalog/SetCategoryStatusUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
+const ListAlliesVerificationUseCase = require('./application/useCases/verification/ListAlliesVerificationUseCase');
+const GetAllyVerificationDetailUseCase = require('./application/useCases/verification/GetAllyVerificationDetailUseCase');
+const GetKycDocumentSignedUrlUseCase = require('./application/useCases/verification/GetKycDocumentSignedUrlUseCase');
+const ResolveAllyVerificationUseCase = require('./application/useCases/verification/ResolveAllyVerificationUseCase');
 const ConfigureSiteRulesUseCase = require('./application/useCases/sites/ConfigureSiteRulesUseCase');
 const GetSiteRulesForAllyUseCase = require('./application/useCases/sites/GetSiteRulesForAllyUseCase');
 const ValidateAllyScheduleUseCase = require('./application/useCases/sites/ValidateAllyScheduleUseCase');
@@ -313,6 +317,36 @@ class Container {
       authIdentityService: this.authIdentityService,
     });
 
+    this.listAlliesVerificationUseCase = new ListAlliesVerificationUseCase({
+      aliadoRepository: this.aliadoRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+      documentoKycRepository: this.documentoKycRepository,
+    });
+
+    this.getAllyVerificationDetailUseCase = new GetAllyVerificationDetailUseCase({
+      aliadoRepository: this.aliadoRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+      documentoKycRepository: this.documentoKycRepository,
+    });
+
+    this.getKycDocumentSignedUrlUseCase = new GetKycDocumentSignedUrlUseCase({
+      aliadoRepository: this.aliadoRepository,
+      documentoKycRepository: this.documentoKycRepository,
+      fileStorageService: this.fileStorageService,
+    });
+
+    this.resolveAllyVerificationUseCase = new ResolveAllyVerificationUseCase({
+      aliadoRepository: this.aliadoRepository,
+      usuarioRepository: this.usuarioRepository,
+      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      catalogRepository: this.catalogRepository,
+      documentoKycRepository: this.documentoKycRepository,
+    });
+
     this.registerDirectEmployeeUseCase = new RegisterDirectEmployeeUseCase({
       tenantRepository: this.tenantRepository,
       catalogRepository: this.catalogRepository,
@@ -337,3 +371,4 @@ class Container {
 const container = new Container();
 
 module.exports = container;
+
