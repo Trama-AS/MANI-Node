@@ -164,11 +164,13 @@ test('un algoritmo no soportado (ninguno de HS256/ES256) es rechazado', async ()
 test('ES256: verifica usando la clave pública resuelta vía JWKS (doble inyectado)', async () => {
   const { generateKeyPairSync } = require('node:crypto');
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const issuer = 'https://proyecto.supabase.co/auth/v1';
 
+  // Forma de un token real de Supabase Auth (SCRUM-1362): aud e iss del proyecto.
   const token = jwt.sign(
     { sub: 'user-1', app_metadata: { tenant_id: 'trama-demo', user_role: 'aliado' } },
     privateKey,
-    { algorithm: 'ES256', expiresIn: '1h', keyid: 'test-kid-1' }
+    { algorithm: 'ES256', expiresIn: '1h', keyid: 'test-kid-1', audience: 'authenticated', issuer }
   );
 
   const fakeJwks = {
@@ -177,10 +179,19 @@ test('ES256: verifica usando la clave pública resuelta vía JWKS (doble inyecta
       callback(null, { getPublicKey: () => publicKey });
     },
   };
+  const service = tokenService({ jwks: fakeJwks, jwtSecret: undefined, issuer });
 
-  const session = await tokenService({ jwks: fakeJwks, jwtSecret: undefined }).verifyToken(`Bearer ${token}`);
+  const session = await service.verifyToken(`Bearer ${token}`);
 
   assert.deepEqual(session, { userId: 'user-1', tenantId: 'trama-demo', role: 'ALLY' });
+
+  // Mismo par de claves, pero emitido por otro proyecto: se rechaza.
+  const otroIssuer = jwt.sign(
+    { sub: 'user-1', app_metadata: { tenant_id: 'trama-demo', user_role: 'aliado' } },
+    privateKey,
+    { algorithm: 'ES256', expiresIn: '1h', keyid: 'test-kid-1', audience: 'authenticated', issuer: 'https://otro.supabase.co/auth/v1' }
+  );
+  await assert.rejects(() => service.verifyToken(`Bearer ${otroIssuer}`), (err) => err.code === 'TOKEN_INVALID');
 });
 
 test('ES256 sin JWKS configurado es rechazado', async () => {
