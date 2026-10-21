@@ -5,6 +5,7 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const app = require('../../../src/app');
 const config = require('../../../src/config');
+const container = require('../../../src/container');
 
 function signToken({ userId = 'user-test-1', tenantId = 'trama-demo', role = 'aliado' } = {}) {
   return jwt.sign(
@@ -140,14 +141,59 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
     assert.strictEqual(res.body.siteId, demoSiteId);
   });
 
-  // Aliado asignado y no asignado: mientras la asignación no esté en Core (MANI-.NET#1 depende de
-  // MANI-Node#43), ningún aliado lee las reglas. Cuando exista, el asignado pasará a 200.
+  // Asignación del aliado: en la prueba, Dispatch se sustituye por un doble que responde según el JWT reenviado;
+  // la solicitud asignada queda en el sitio demo del repositorio en memoria (Core es dueño del sitio de la solicitud).
+  function conDispatch(asignacionesPorUsuario) {
+    const useCase = container.getSiteRulesForAllyUseCase;
+    const original = useCase.dispatchAssignmentService;
+    useCase.dispatchAssignmentService = {
+      async listMyAssignedRequestIds({ authorization }) {
+        const { sub } = jwt.decode(String(authorization).replace(/^Bearer /, ''));
+        return asignacionesPorUsuario[sub] || [];
+      },
+    };
+    return () => {
+      useCase.dispatchAssignmentService = original;
+    };
+  }
+
+  it('GET /api/v1/sites/:id/rules con el aliado asignado a una solicitud del sitio responde 200 (criterio C1)', async () => {
+    container.siteRepository.addRequest('sol-asignada-853', demoSiteId, 'trama-demo');
+    const restaurar = conDispatch({ 'aliado-asignado-1': ['sol-asignada-853'] });
+    try {
+      const token = signToken({ tenantId: 'trama-demo', role: 'aliado', userId: 'aliado-asignado-1' });
+      for (const ruta of ['rules', 'reglas']) {
+        const res = await request(app)
+          .get(`/api/v1/sites/${demoSiteId}/${ruta}`)
+          .set('Authorization', `Bearer ${token}`);
+
+        assert.strictEqual(res.status, 200, ruta);
+        assert.strictEqual(res.body.siteId, demoSiteId);
+        assert.ok(res.body.reglasDestacadas.totalRequisitos >= 1);
+      }
+    } finally {
+      restaurar();
+    }
+  });
+
+  it('GET /api/v1/sites/:id/rules responde 503 al aliado si Dispatch no está configurado (criterio T2)', async () => {
+    const token = signToken({ tenantId: 'trama-demo', role: 'aliado', userId: 'aliado-asignado-1' });
+
+    const res = await request(app)
+      .get(`/api/v1/sites/${demoSiteId}/rules`)
+      .set('Authorization', `Bearer ${token}`);
+
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual(res.body.code, 'DISPATCH_SERVICE_UNAVAILABLE');
+    assert.strictEqual(res.body.reglasRaw, undefined);
+  });
+
   for (const [caso, claims] of [
-    ['un aliado asignado (aún sin asignación en Core)', { role: 'aliado', userId: 'aliado-asignado-1' }],
     ['un aliado no asignado', { role: 'aliado', userId: 'aliado-no-asignado-1' }],
     ['otro cliente del mismo tenant', { role: 'cliente', userId: 'cliente-ajeno-no-dueno' }],
   ]) {
-    it(`GET /api/v1/sites/:id/rules con ${caso} responde 403 sin datos de la sede`, async () => {
+    it(`GET /api/v1/sites/:id/rules con ${caso} responde 403 sin datos de la sede (criterio C2)`, async () => {
+      const restaurar = conDispatch({});
       const token = signToken({ tenantId: 'trama-demo', ...claims });
 
       for (const ruta of ['rules', 'reglas']) {
@@ -161,6 +207,7 @@ describe('Sites Presentation Layer - HTTP Endpoints (RF-09 / QS-06)', () => {
         assert.strictEqual(res.body.reglasRaw, undefined);
         assert.strictEqual(res.body.direccion, undefined);
       }
+      restaurar();
     });
   }
 

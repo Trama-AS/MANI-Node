@@ -23,6 +23,20 @@ class InMemorySiteRepository extends ISiteRepository {
       }),
     });
     this.sites.set(demoSite.id, demoSite);
+
+    // Solicitudes por sitio (id de solicitud -> { siteId, tenantId }), para pruebas locales.
+    this.solicitudes = new Map();
+  }
+
+  addRequest(requestId, siteId, tenantId) {
+    this.solicitudes.set(requestId, { siteId, tenantId });
+  }
+
+  async hasRequestInSite(siteId, tenantId, requestIds) {
+    return (requestIds || []).some((id) => {
+      const solicitud = this.solicitudes.get(id);
+      return Boolean(solicitud) && solicitud.siteId === siteId && solicitud.tenantId === tenantId;
+    });
   }
 
   async findById(id, tenantId) {
