@@ -76,6 +76,8 @@ async function getSiteRulesForAlly(req, res, next) {
       tenantId,
       userId: req.user?.userId,
       role: req.user?.role,
+      authorization: req.headers.authorization,
+      correlationId,
     });
 
     return res.status(200).json({

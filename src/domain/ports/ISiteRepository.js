@@ -31,6 +31,18 @@ class ISiteRepository {
   async create(_site) {
     throw new Error('Método create() no implementado.');
   }
+
+  /**
+   * Indica si alguna de las solicitudes dadas es de este sitio en el tenant (SCRUM-853). Core es dueño de la
+   * solicitud y de su sitio; la asignación la entrega Dispatch.
+   * @param {string} _siteId
+   * @param {string} _tenantId
+   * @param {string[]} _requestIds
+   * @returns {Promise<boolean>}
+   */
+  async hasRequestInSite(_siteId, _tenantId, _requestIds) {
+    throw new Error('Método hasRequestInSite() no implementado.');
+  }
 }
 
 module.exports = ISiteRepository;

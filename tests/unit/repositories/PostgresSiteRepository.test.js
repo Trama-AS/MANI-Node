@@ -19,6 +19,35 @@ function createMockPgPool(queryHandler) {
 }
 
 describe('PostgresSiteRepository (SQL Path Coverage)', () => {
+  it('hasRequestInSite busca las solicitudes dadas en ese sitio y tenant (SCRUM-853)', async () => {
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [{ '?column?': 1 }] }));
+    const repo = new PostgresSiteRepository({ pgPool: mockPool });
+
+    const resultado = await repo.hasRequestInSite('sitio-1', 'tenant-1', ['sol-1', 'sol-2']);
+
+    assert.equal(resultado, true);
+    assert.equal(queries.length, 1);
+    assert.match(queries[0].sql, /FROM solicitud/);
+    assert.match(queries[0].sql, /tenant_id = \$1 AND sitio_id = \$2 AND id = ANY\(\$3::uuid\[\]\)/);
+    assert.deepEqual(queries[0].params, ['tenant-1', 'sitio-1', ['sol-1', 'sol-2']]);
+  });
+
+  it('hasRequestInSite sin solicitudes no consulta la base y responde false', async () => {
+    const { mockPool, queries } = createMockPgPool();
+    const repo = new PostgresSiteRepository({ pgPool: mockPool });
+
+    assert.equal(await repo.hasRequestInSite('sitio-1', 'tenant-1', []), false);
+    assert.equal(await repo.hasRequestInSite('sitio-1', 'tenant-1', undefined), false);
+    assert.equal(queries.length, 0);
+  });
+
+  it('hasRequestInSite responde false si ninguna solicitud es del sitio', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresSiteRepository({ pgPool: mockPool });
+
+    assert.equal(await repo.hasRequestInSite('sitio-1', 'tenant-1', ['sol-otra']), false);
+  });
+
   it('findById consulta con siteId y tenantId y mapea a Site con SiteRules', async () => {
     const { mockPool, queries } = createMockPgPool((sql, params) => {
       if (sql.includes('SELECT id, tenant_id')) {

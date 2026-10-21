@@ -2,11 +2,8 @@ const { ForbiddenError } = require('../../../domain/errors/DomainError');
 
 /**
  * Control de acceso a la sede (SCRUM-853 / RF-09, DoD §9.3): solo el cliente dueño de la sede o el admin
- * del tenant la gestionan y leen sus reglas. El rol y el usuario salen del JWT (`authenticate`).
- *
- * El aliado asignado a una solicitud del sitio también debe poder leer las reglas (criterio C2), pero la
- * asignación todavía no está en Core (MANI-.NET#1 depende de MANI-Node#43). Hasta entonces se le niega:
- * negar es lo seguro, porque las reglas incluyen instrucciones y contacto de acceso al inmueble.
+ * del tenant la gestionan. El rol y el usuario salen del JWT (`authenticate`). La lectura de reglas suma al
+ * aliado asignado a una solicitud del sitio, que verifica GetSiteRulesForAllyUseCase con Dispatch.
  *
  * @param {object} params
  * @param {object} params.site          - Sede ya encontrada en el tenant
