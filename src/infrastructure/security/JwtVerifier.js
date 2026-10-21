@@ -15,8 +15,11 @@ class JwtVerificationError extends Error {
   }
 }
 
+// Sin expresión regular: un patrón como /\/+$/ tiene backtracking super-lineal.
 function trimTrailingSlashes(url) {
-  return url.replace(/\/+$/, '');
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end -= 1;
+  return url.slice(0, end);
 }
 
 /**

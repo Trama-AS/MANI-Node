@@ -40,14 +40,9 @@ class TokenService extends ITokenService {
       throw new UnauthorizedError('Formato de token inválido. Debe ser: Bearer <token>', 'TOKEN_INVALID');
     }
 
-    const token = parts[1];
-    if (!token) {
-      throw new UnauthorizedError('Token no provisto', 'TOKEN_INVALID');
-    }
-
     let payload;
     try {
-      payload = await this.verifier.verify(token);
+      payload = await this.verifier.verify(parts[1]);
     } catch (err) {
       if (err.code === 'TOKEN_EXPIRED') {
         throw new UnauthorizedError('El token de autenticación ha expirado', 'TOKEN_EXPIRED');
