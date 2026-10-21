@@ -41,7 +41,7 @@ class SupabaseDocumentoKycRepository extends IDocumentoKycRepository {
     const client = this.supabaseClientFactory.getClient();
     const { data, error } = await client
       .from('documento_kyc')
-      .select('id, tenant_id, aliado_id, tipo_documento, ruta_storage, estado, created_at')
+      .select('id, tenant_id, aliado_id, tipo_documento, ruta_storage, estado, fecha_carga')
       .eq('tenant_id', tenantId)
       .eq('aliado_id', aliadoId);
     if (error) throw new DomainError(`Error consultando documentos KYC: ${error.message}`, 'INTERNAL_ERROR', 500);
