@@ -35,6 +35,21 @@ class PostgresSiteRepository extends ISiteRepository {
     return rows.length > 0 ? this._rowToSite(rows[0]) : null;
   }
 
+  async hasRequestInSite(siteId, tenantId, requestIds) {
+    const ids = (requestIds || []).filter(Boolean);
+    if (ids.length === 0) return false;
+
+    const pool = this._getPool();
+    const { rows } = await pool.query(
+      `SELECT 1
+       FROM solicitud
+       WHERE tenant_id = $1 AND sitio_id = $2 AND id = ANY($3::uuid[])
+       LIMIT 1`,
+      [tenantId, siteId, ids]
+    );
+    return rows.length > 0;
+  }
+
   async updateRules(id, tenantId, rules) {
     const pool = this._getPool();
     const rulesInstance = rules instanceof SiteRules ? rules : new SiteRules(rules);

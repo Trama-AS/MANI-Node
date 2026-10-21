@@ -2,7 +2,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const InMemorySiteRepository = require('../../../../src/infrastructure/repositories/InMemorySiteRepository');
 const InMemoryClientRepository = require('../../../../src/infrastructure/repositories/InMemoryClientRepository');
-const { ForbiddenError } = require('../../../../src/domain/errors/DomainError');
+const { ForbiddenError, DomainError } = require('../../../../src/domain/errors/DomainError');
 const ConfigureSiteRulesUseCase = require('../../../../src/application/useCases/sites/ConfigureSiteRulesUseCase');
 const GetSiteRulesForAllyUseCase = require('../../../../src/application/useCases/sites/GetSiteRulesForAllyUseCase');
 const ValidateAllyScheduleUseCase = require('../../../../src/application/useCases/sites/ValidateAllyScheduleUseCase');
@@ -60,13 +60,96 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
     );
   });
 
-  describe('GetSiteRulesForAllyUseCase: quién puede leer las reglas (SCRUM-853, criterio C2)', () => {
+  describe('GetSiteRulesForAllyUseCase: quién puede leer las reglas (SCRUM-853, criterios C1, C2, C5, T1 y T2)', () => {
     const siteId = 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a23';
-    const crear = () =>
+    const otroSitio = 'a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a99';
+
+    // Doble de Dispatch: devuelve las solicitudes asignadas al aliado cuyo token se reenvía.
+    function fakeDispatch(asignacionesPorToken = {}) {
+      const llamadas = [];
+      return {
+        llamadas,
+        async listMyAssignedRequestIds({ authorization, correlationId }) {
+          llamadas.push({ authorization, correlationId });
+          return asignacionesPorToken[authorization] || [];
+        },
+      };
+    }
+
+    const crear = ({ dispatch = fakeDispatch(), siteRepository = new InMemorySiteRepository() } = {}) =>
       new GetSiteRulesForAllyUseCase({
-        siteRepository: new InMemorySiteRepository(),
+        siteRepository,
         clientRepository: new InMemoryClientRepository(),
+        dispatchAssignmentService: dispatch,
       });
+
+    it('C1: el aliado con una solicitud asignada en el sitio recibe las reglas', async () => {
+      const sitios = new InMemorySiteRepository();
+      sitios.addRequest('sol-1', siteId, 'trama-demo');
+      const dispatch = fakeDispatch({ 'Bearer aliado-1': ['sol-1'] });
+
+      const result = await crear({ dispatch, siteRepository: sitios }).execute({
+        siteId,
+        tenantId: 'trama-demo',
+        userId: 'aliado-1',
+        role: 'ALLY',
+        authorization: 'Bearer aliado-1',
+        correlationId: 'corr-1',
+      });
+
+      assert.strictEqual(result.siteId, siteId);
+      assert.ok(result.reglasDestacadas.totalRequisitos >= 1);
+      assert.deepEqual(dispatch.llamadas, [{ authorization: 'Bearer aliado-1', correlationId: 'corr-1' }], 'reenvía el JWT del aliado');
+    });
+
+    it('C2: el aliado sin asignaciones, o asignado solo en otro sitio, recibe 403 sin datos', async () => {
+      const sitios = new InMemorySiteRepository();
+      sitios.addRequest('sol-otro-sitio', otroSitio, 'trama-demo');
+      const dispatch = fakeDispatch({ 'Bearer en-otro-sitio': ['sol-otro-sitio'] });
+
+      for (const authorization of ['Bearer sin-asignaciones', 'Bearer en-otro-sitio']) {
+        await assert.rejects(
+          () => crear({ dispatch, siteRepository: sitios }).execute({ siteId, tenantId: 'trama-demo', role: 'ALLY', authorization }),
+          (err) => err instanceof ForbiddenError && err.statusCode === 403,
+          authorization
+        );
+      }
+    });
+
+    it('C5: si la solicitud pasa a otro sitio, el aliado deja de leer las reglas del anterior y lee las del nuevo', async () => {
+      const sitios = new InMemorySiteRepository();
+      await sitios.create({ id: otroSitio, tenantId: 'trama-demo', direccion: 'Carrera 7 # 20-30', zonaId: 'zona-centro' });
+      const dispatch = fakeDispatch({ 'Bearer aliado-1': ['sol-1'] });
+      sitios.addRequest('sol-1', otroSitio, 'trama-demo');
+      const useCase = crear({ dispatch, siteRepository: sitios });
+
+      await assert.rejects(
+        () => useCase.execute({ siteId, tenantId: 'trama-demo', role: 'ALLY', authorization: 'Bearer aliado-1' }),
+        (err) => err.statusCode === 403
+      );
+      const nuevo = await useCase.execute({ siteId: otroSitio, tenantId: 'trama-demo', role: 'ALLY', authorization: 'Bearer aliado-1' });
+      assert.strictEqual(nuevo.siteId, otroSitio);
+    });
+
+    it('T2: si Dispatch no responde, el aliado recibe 503 y no se decide con datos locales', async () => {
+      const dispatch = {
+        async listMyAssignedRequestIds() {
+          throw new DomainError('El servicio de despacho no está disponible: sin respuesta', 'DISPATCH_SERVICE_UNAVAILABLE', 503);
+        },
+      };
+
+      await assert.rejects(
+        () => crear({ dispatch }).execute({ siteId, tenantId: 'trama-demo', role: 'ALLY', authorization: 'Bearer aliado-1' }),
+        (err) => err.statusCode === 503 && err.code === 'DISPATCH_SERVICE_UNAVAILABLE'
+      );
+    });
+
+    it('el dueño y el admin no dependen de Dispatch', async () => {
+      const dispatch = fakeDispatch();
+      await crear({ dispatch }).execute({ siteId, tenantId: 'trama-demo', userId: 'cliente-dueno-1', role: 'CLIENT' });
+      await crear({ dispatch }).execute({ siteId, tenantId: 'trama-demo', userId: 'admin-1', role: 'ADMIN' });
+      assert.strictEqual(dispatch.llamadas.length, 0);
+    });
 
     it('el cliente dueño de la sede recibe las reglas destacadas', async () => {
       const result = await crear().execute({ siteId, tenantId: 'trama-demo', userId: 'cliente-dueno-1', role: 'CLIENT' });
@@ -83,7 +166,6 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
 
     for (const [caso, input] of [
       ['otro cliente del tenant', { userId: 'cliente-ajeno', role: 'CLIENT' }],
-      ['un aliado (la asignación aún no está en Core)', { userId: 'aliado-1', role: 'ALLY' }],
       ['sin rol', { userId: 'cliente-dueno-1' }],
     ]) {
       it(`${caso} recibe 403 sin datos`, async () => {
@@ -101,8 +183,12 @@ describe('Site Rules Use Cases (RF-09 / QS-06)', () => {
       );
     });
 
-    it('exige clientRepository para poder verificar al dueño', () => {
+    it('exige clientRepository y dispatchAssignmentService', () => {
       assert.throws(() => new GetSiteRulesForAllyUseCase({ siteRepository: new InMemorySiteRepository() }), /clientRepository/);
+      assert.throws(
+        () => new GetSiteRulesForAllyUseCase({ siteRepository: new InMemorySiteRepository(), clientRepository: new InMemoryClientRepository() }),
+        /dispatchAssignmentService/
+      );
     });
   });
 

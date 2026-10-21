@@ -28,6 +28,7 @@ const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
 const RulesServiceHttpClient = require('./infrastructure/clients/RulesServiceHttpClient');
+const DispatchServiceHttpClient = require('./infrastructure/clients/DispatchServiceHttpClient');
 
 const ListTenantsUseCase = require('./application/useCases/tenants/ListTenantsUseCase');
 const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProfileUseCase');
@@ -103,6 +104,9 @@ class Container {
     // (solo permitido en DEV/test) crear o editar categorías responde 503: no
     // hay copia local de las reglas a la que caer.
     this.ruleEvaluationService = new RulesServiceHttpClient({ baseUrl: config.rulesServiceUrl });
+    // Asignaciones del aliado en MANI-Dispatch (SCRUM-853, criterio T1). Sin DISPATCH_SERVICE_URL, la lectura
+    // de reglas del sitio por un aliado responde 503; el dueño y el admin no dependen de Dispatch.
+    this.dispatchAssignmentService = new DispatchServiceHttpClient({ baseUrl: config.dispatchServiceUrl });
 
     // Con Supabase configurado (QA/producción) se usa la persistencia e identidad
     // reales; sin configurar (DEV/test sin credenciales) cae a implementaciones
@@ -268,6 +272,7 @@ class Container {
     this.getSiteRulesForAllyUseCase = new GetSiteRulesForAllyUseCase({
       siteRepository: this.siteRepository,
       clientRepository: this.clientRepository,
+      dispatchAssignmentService: this.dispatchAssignmentService,
     });
 
     this.validateAllyScheduleUseCase = new ValidateAllyScheduleUseCase({
