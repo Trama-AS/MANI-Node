@@ -3,10 +3,7 @@ const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const authController = require('../controllers/auth.controller');
 const { resolveJwtSecret, isDevTokenEnabled } = require('../config/jwtSecret');
-
-// Los servicios aceptan únicamente HS256 (ADR-0031 §1). Fijar el algoritmo evita
-// que un token declare otro distinto ("alg confusion").
-const ALLOWED_ALGORITHMS = ['HS256'];
+const JwtVerifier = require('../infrastructure/security/JwtVerifier');
 
 // Whitelist de documentos KYC que acepta el contrato (docs/openapi/core.yaml)
 const ALLOWED_DOCUMENT_FIELDS = ['cedula_ciudadania', 'rut_certificado'];
@@ -47,9 +44,15 @@ function reject(res, status, error, message, correlationId) {
  * Construye el router de autenticación. Resolver el secreto aquí hace que un
  * secreto ausente impida arrancar el servicio en vez de degradar la seguridad
  * en silencio (SCRUM-1333).
+ *
+ * validate-token acepta ES256 (tokens reales de Supabase Auth, verificados con
+ * el JWKS de SUPABASE_URL) y HS256 (secreto del ambiente), con la política de
+ * JwtVerifier (ADR-0031 §1, SCRUM-1362). `deps.jwtVerifier` es inyectable para
+ * pruebas.
  */
-function createAuthRouter(env = process.env) {
+function createAuthRouter(env = process.env, deps = {}) {
   const jwtSecret = resolveJwtSecret(env);
+  const jwtVerifier = deps.jwtVerifier || new JwtVerifier({ jwtSecret, supabaseUrl: env.SUPABASE_URL });
   const router = Router();
 
   /**
@@ -62,7 +65,7 @@ function createAuthRouter(env = process.env) {
    * `tenant_id` en la raíz no lo emite el Custom Access Token Hook. Cualquier
    * claim obligatorio ausente se rechaza; no hay valores por omisión.
    */
-  router.all('/auth/validate-token', (req, res) => {
+  router.all('/auth/validate-token', async (req, res) => {
     const authHeader = req.headers.authorization;
     const correlationId = req.headers['x-correlation-id'] || 'none';
 
@@ -77,15 +80,13 @@ function createAuthRouter(env = process.env) {
 
     let decoded;
     try {
-      decoded = jwt.verify(parts[1], jwtSecret, { algorithms: ALLOWED_ALGORITHMS });
+      decoded = await jwtVerifier.verify(parts[1]);
     } catch (verifyErr) {
-      if (verifyErr.name === 'TokenExpiredError') {
-        return reject(res, 401, 'TOKEN_EXPIRED', 'El token de autenticación ha expirado', correlationId);
-      }
-      if (verifyErr.name === 'JsonWebTokenError') {
-        return reject(res, 401, 'INVALID_SIGNATURE', 'Firma criptográfica inválida o token adulterado', correlationId);
-      }
-      return reject(res, 401, 'INVALID_TOKEN', 'Token de autenticación inválido', correlationId);
+      // JwtVerificationError trae TOKEN_EXPIRED | INVALID_SIGNATURE | INVALID_TOKEN;
+      // cualquier otro fallo inesperado también se rechaza (falla cerrado).
+      const code = verifyErr.name === 'JwtVerificationError' ? verifyErr.code : 'INVALID_TOKEN';
+      const message = verifyErr.name === 'JwtVerificationError' ? verifyErr.message : 'Token de autenticación inválido';
+      return reject(res, 401, code, message, correlationId);
     }
 
     const appMetadata = decoded.app_metadata && typeof decoded.app_metadata === 'object' ? decoded.app_metadata : {};
