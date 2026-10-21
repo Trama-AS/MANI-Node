@@ -43,6 +43,8 @@ test('createMany lanza DomainError INTERNAL_ERROR si Supabase reporta error', as
 // Columnas de `documento_kyc` en el esquema base (MANI-APIGateway database/init/01-schema.sql).
 // La fecha de carga se llama `fecha_carga`; no existe `created_at` (regresión R-03 del Sprint 4).
 const TIPO_CEDULA = 'CEDULA_CIUDADANIA';
+const FECHA_CARGA = '2026-10-20T15:00:00.000Z';
+const RUTA_CEDULA = 't1/a1/cedula.pdf';
 const COLUMNAS_DOCUMENTO_KYC = ['id', 'tenant_id', 'aliado_id', 'tipo_documento', 'ruta_storage', 'estado', 'fecha_carga'];
 
 // Registra la tabla, las columnas pedidas a .select() y los filtros .eq() de la cadena de supabase-js.
@@ -76,9 +78,9 @@ test('findByAliadoId solo pide columnas que existen en documento_kyc, con fecha_
     tenant_id: 't1',
     aliado_id: 'a1',
     tipo_documento: TIPO_CEDULA,
-    ruta_storage: 't1/a1/cedula.pdf',
+    ruta_storage: RUTA_CEDULA,
     estado: 'PENDIENTE',
-    fecha_carga: '2026-10-20T15:00:00.000Z',
+    fecha_carga: FECHA_CARGA,
   };
   const { calls, client } = makeRecordingClient({ data: [fila], error: null });
   const repo = new SupabaseDocumentoKycRepository({ supabaseClientFactory: makeFakeClientFactory(client) });
@@ -97,12 +99,12 @@ test('la vista de verificación muestra la fecha de carga real del documento', (
   const vista = mapDocumentoKyc({
     id: 'd1',
     tipo_documento: TIPO_CEDULA,
-    ruta_storage: 't1/a1/cedula.pdf',
+    ruta_storage: RUTA_CEDULA,
     estado: 'PENDIENTE',
-    fecha_carga: '2026-10-20T15:00:00.000Z',
+    fecha_carga: FECHA_CARGA,
   });
 
-  assert.equal(vista.fecha_carga, '2026-10-20T15:00:00.000Z');
+  assert.equal(vista.fecha_carga, FECHA_CARGA);
 });
 
 test('findByAliadoId lanza INTERNAL_ERROR si Supabase reporta error', async () => {
