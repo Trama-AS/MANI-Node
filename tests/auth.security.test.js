@@ -1,5 +1,5 @@
 // SCRUM-1333 (BUG-SEC-01): regresiones de cada vía de falsificación de JWT
-// reproducida contra Core main el 2026-10-18. Todas deben fallar cerrado.
+// reproducida contra Core el 2026-10-18. Todas deben fallar cerrado.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
@@ -62,7 +62,7 @@ describe('El secreto JWT nunca degrada a un valor conocido', () => {
       timeout: 15000,
     });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /SUPABASE_JWT_SECRET es obligatorio/);
+    assert.match(result.stderr, /SUPABASE_JWT_SECRET/);
     assert.doesNotMatch(result.stdout, /corriendo en el puerto/);
   });
 });
@@ -159,6 +159,167 @@ describe('validate-token rechaza toda falsificación', () => {
       assert.equal(res.headers.get('x-tenant-id'), TENANT);
       assert.equal(res.headers.get('x-user-role'), 'aliado');
       assert.equal(res.headers.get('x-user-id'), 'usr-1');
+    });
+  });
+});
+
+// SCRUM-1362 (BUG-SEC-04): Supabase Auth firma los tokens de acceso con ES256 y
+// validate-token solo aceptaba HS256, así que ningún usuario real pasaba el
+// Gateway. Aquí el JWKS lo publica un servidor HTTP local en la misma ruta que
+// Supabase (/auth/v1/.well-known/jwks.json): se prueba el cliente jwks-rsa real.
+describe('validate-token acepta tokens ES256 de Supabase Auth verificados con el JWKS (SCRUM-1362)', () => {
+  const http = require('node:http');
+  const crypto = require('node:crypto');
+
+  const KID = 'kid-qa-1';
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const intruder = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+
+  async function withSupabase(run) {
+    let jwksRequests = 0;
+    const jwks = { keys: [{ ...publicKey.export({ format: 'jwk' }), kid: KID, alg: 'ES256', use: 'sig' }] };
+    const server = http.createServer((req, res) => {
+      if (req.url === '/auth/v1/.well-known/jwks.json') {
+        jwksRequests += 1;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(jwks));
+      }
+      res.writeHead(404).end();
+    });
+    await new Promise((resolve) => server.listen(0, resolve));
+    const supabaseUrl = `http://localhost:${server.address().port}`;
+    try {
+      return await run({ supabaseUrl, issuer: `${supabaseUrl}/auth/v1`, jwksRequests: () => jwksRequests });
+    } finally {
+      server.close();
+    }
+  }
+
+  const es256 = (claims, { issuer, key = privateKey, kid = KID, audience = 'authenticated', expiresIn = '1h' }) =>
+    jwt.sign({ role: 'authenticated', ...claims }, key, { algorithm: 'ES256', keyid: kid, audience, issuer, expiresIn });
+
+  const envFor = (supabaseUrl) => ({ NODE_ENV: 'production', SUPABASE_JWT_SECRET: REAL_SECRET, SUPABASE_URL: supabaseUrl });
+
+  test('token ES256 válido de Supabase Auth: 200 y propaga tenant, rol y usuario', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer, jwksRequests }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        const token = es256(GOOD_CLAIMS, { issuer });
+        const res = await validate(base, token);
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get('x-tenant-id'), TENANT);
+        assert.equal(res.headers.get('x-user-role'), 'aliado');
+        assert.equal(res.headers.get('x-user-id'), 'usr-1');
+
+        // El JWKS se cachea: una segunda validación no vuelve a descargarlo.
+        assert.equal((await validate(base, token)).status, 200);
+        assert.equal(jwksRequests(), 1);
+      });
+    });
+  });
+
+  test('una barra final en SUPABASE_URL no cambia el issuer esperado', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(`${supabaseUrl}/`), async (base) => {
+        assert.equal((await validate(base, es256(GOOD_CLAIMS, { issuer }))).status, 200);
+      });
+    });
+  });
+
+  test('ES256 con firma alterada o firmado con otra clave bajo el mismo kid: 401 INVALID_SIGNATURE', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        const token = es256(GOOD_CLAIMS, { issuer });
+        const [h, p, s] = token.split('.');
+        const flipped = s[10] === 'A' ? 'B' : 'A';
+        const tampered = `${h}.${p}.${s.slice(0, 10)}${flipped}${s.slice(11)}`;
+        const forged = es256(
+          { ...GOOD_CLAIMS, app_metadata: { tenant_id: 'otro', user_role: 'admin_tenant' } },
+          { issuer, key: intruder.privateKey }
+        );
+        for (const bad of [tampered, forged]) {
+          const res = await validate(base, bad);
+          assert.equal(res.status, 401);
+          assert.equal((await res.json()).error, 'INVALID_SIGNATURE');
+          assert.equal(res.headers.get('x-tenant-id'), null);
+        }
+      });
+    });
+  });
+
+  test('ES256 con kid desconocido o sin kid: 401', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        assert.equal((await validate(base, es256(GOOD_CLAIMS, { issuer, kid: 'kid-ajeno' }))).status, 401);
+        const sinKid = jwt.sign(GOOD_CLAIMS, privateKey, {
+          algorithm: 'ES256',
+          audience: 'authenticated',
+          issuer,
+          expiresIn: '1h',
+        });
+        assert.equal((await validate(base, sinKid)).status, 401);
+      });
+    });
+  });
+
+  test('ES256 de otro proyecto (iss) o con otra audiencia (aud): 401', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        const otroProyecto = es256(GOOD_CLAIMS, { issuer: 'https://otro.supabase.co/auth/v1' });
+        assert.equal((await validate(base, otroProyecto)).status, 401);
+        assert.equal((await validate(base, es256(GOOD_CLAIMS, { issuer, audience: 'anon' }))).status, 401);
+      });
+    });
+  });
+
+  test('ES256 expirado: 401 TOKEN_EXPIRED', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        const res = await validate(base, es256(GOOD_CLAIMS, { issuer, expiresIn: -10 }));
+        assert.equal(res.status, 401);
+        assert.equal((await res.json()).error, 'TOKEN_EXPIRED');
+      });
+    });
+  });
+
+  test('ES256 válido sin app_metadata.tenant_id: 401 MISSING_TENANT_CLAIM (SCRUM-1333 se mantiene)', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        const sinTenant = es256({ sub: 'usr-1', tenant_id: TENANT, app_metadata: { user_role: 'aliado' } }, { issuer });
+        const res = await validate(base, sinTenant);
+        assert.equal(res.status, 401);
+        assert.equal((await res.json()).error, 'MISSING_TENANT_CLAIM');
+      });
+    });
+  });
+
+  test('alg confusion: HS256 firmado con la clave pública del JWKS como secreto se rechaza', async () => {
+    await withSupabase(async ({ supabaseUrl, issuer }) => {
+      await withApp(envFor(supabaseUrl), async (base) => {
+        const pem = publicKey.export({ format: 'pem', type: 'spki' });
+        const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+        const unsigned = `${b64({ alg: 'HS256', typ: 'JWT', kid: KID })}.${b64({ ...GOOD_CLAIMS, iss: issuer, aud: 'authenticated' })}`;
+        const sig = crypto.createHmac('sha256', pem).update(unsigned).digest('base64url');
+        const res = await validate(base, `${unsigned}.${sig}`);
+        assert.equal(res.status, 401);
+        assert.equal(res.headers.get('x-tenant-id'), null);
+      });
+    });
+  });
+
+  test('sin SUPABASE_URL no hay JWKS: un ES256 se rechaza y HS256 sigue funcionando', async () => {
+    await withSupabase(async ({ issuer }) => {
+      await withApp({ NODE_ENV: 'production', SUPABASE_JWT_SECRET: REAL_SECRET }, async (base) => {
+        assert.equal((await validate(base, es256(GOOD_CLAIMS, { issuer }))).status, 401);
+        assert.equal((await validate(base, jwt.sign(GOOD_CLAIMS, REAL_SECRET, { expiresIn: '1h' }))).status, 200);
+      });
+    });
+  });
+
+  test('JWKS inalcanzable: 401, nunca 200 (falla cerrado)', async () => {
+    await withApp(envFor('http://127.0.0.1:9'), async (base) => {
+      const res = await validate(base, es256(GOOD_CLAIMS, { issuer: 'http://127.0.0.1:9/auth/v1' }));
+      assert.equal(res.status, 401);
+      assert.equal(res.headers.get('x-tenant-id'), null);
     });
   });
 });

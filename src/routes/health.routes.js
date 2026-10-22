@@ -1,14 +1,8 @@
 const { Router } = require('express');
+const healthController = require('../controllers/health.controller');
 
 const router = Router();
 
-router.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'UP',
-    service: 'MANI-Core-Node',
-    timestamp: new Date().toISOString(),
-    correlationId: req.headers['x-correlation-id'] || 'none',
-  });
-});
+router.get('/health', healthController.getHealth);
 
 module.exports = router;

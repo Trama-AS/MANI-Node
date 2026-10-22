@@ -1,10 +1,36 @@
 const { Router } = require('express');
+const multer = require('multer');
 const jwt = require('jsonwebtoken');
+const authController = require('../controllers/auth.controller');
 const { resolveJwtSecret, isDevTokenEnabled } = require('../config/jwtSecret');
+const JwtVerifier = require('../infrastructure/security/JwtVerifier');
 
-// Los servicios aceptan únicamente HS256 (ADR-0031 §1). Fijar el algoritmo evita
-// que un token declare otro distinto ("alg confusion").
-const ALLOWED_ALGORITHMS = ['HS256'];
+// Whitelist de documentos KYC que acepta el contrato (docs/openapi/core.yaml)
+const ALLOWED_DOCUMENT_FIELDS = ['cedula_ciudadania', 'rut_certificado'];
+const ALLOWED_COMPANY_DOCUMENT_FIELDS = ['camara_comercio', 'rut_empresa', 'cedula_representante'];
+const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+
+function fileFilter(req, file, cb) {
+  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    const err = new Error(`Tipo de archivo no permitido: ${file.mimetype}`);
+    err.statusCode = 400;
+    err.code = 'VALIDATION_ERROR';
+    return cb(err);
+  }
+  cb(null, true);
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: ALLOWED_DOCUMENT_FIELDS.length },
+  fileFilter,
+});
+
+const uploadCompany = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: ALLOWED_COMPANY_DOCUMENT_FIELDS.length },
+  fileFilter,
+});
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
@@ -18,9 +44,15 @@ function reject(res, status, error, message, correlationId) {
  * Construye el router de autenticación. Resolver el secreto aquí hace que un
  * secreto ausente impida arrancar el servicio en vez de degradar la seguridad
  * en silencio (SCRUM-1333).
+ *
+ * validate-token acepta ES256 (tokens reales de Supabase Auth, verificados con
+ * el JWKS de SUPABASE_URL) y HS256 (secreto del ambiente), con la política de
+ * JwtVerifier (ADR-0031 §1, SCRUM-1362). `deps.jwtVerifier` es inyectable para
+ * pruebas.
  */
-function createAuthRouter(env = process.env) {
+function createAuthRouter(env = process.env, deps = {}) {
   const jwtSecret = resolveJwtSecret(env);
+  const jwtVerifier = deps.jwtVerifier || new JwtVerifier({ jwtSecret, supabaseUrl: env.SUPABASE_URL });
   const router = Router();
 
   /**
@@ -32,13 +64,8 @@ function createAuthRouter(env = process.env) {
    * en un JWT de Supabase `role` en la raíz es siempre "authenticated" y un
    * `tenant_id` en la raíz no lo emite el Custom Access Token Hook. Cualquier
    * claim obligatorio ausente se rechaza; no hay valores por omisión.
-   *
-   * Rechaza con 401:
-   * - Falta de encabezado Authorization o formato distinto a "Bearer <token>"
-   * - Token expirado, con firma inválida o con otro algoritmo
-   * - Ausencia de sub, app_metadata.tenant_id o app_metadata.user_role
    */
-  router.all('/auth/validate-token', (req, res) => {
+  router.all('/auth/validate-token', async (req, res) => {
     const authHeader = req.headers.authorization;
     const correlationId = req.headers['x-correlation-id'] || 'none';
 
@@ -53,15 +80,13 @@ function createAuthRouter(env = process.env) {
 
     let decoded;
     try {
-      decoded = jwt.verify(parts[1], jwtSecret, { algorithms: ALLOWED_ALGORITHMS });
+      decoded = await jwtVerifier.verify(parts[1]);
     } catch (verifyErr) {
-      if (verifyErr.name === 'TokenExpiredError') {
-        return reject(res, 401, 'TOKEN_EXPIRED', 'El token de autenticación ha expirado', correlationId);
-      }
-      if (verifyErr.name === 'JsonWebTokenError') {
-        return reject(res, 401, 'INVALID_SIGNATURE', 'Firma criptográfica inválida o token adulterado', correlationId);
-      }
-      return reject(res, 401, 'INVALID_TOKEN', 'Token de autenticación inválido', correlationId);
+      // JwtVerificationError trae TOKEN_EXPIRED | INVALID_SIGNATURE | INVALID_TOKEN;
+      // cualquier otro fallo inesperado también se rechaza (falla cerrado).
+      const code = verifyErr.name === 'JwtVerificationError' ? verifyErr.code : 'INVALID_TOKEN';
+      const message = verifyErr.name === 'JwtVerificationError' ? verifyErr.message : 'Token de autenticación inválido';
+      return reject(res, 401, code, message, correlationId);
     }
 
     const appMetadata = decoded.app_metadata && typeof decoded.app_metadata === 'object' ? decoded.app_metadata : {};
@@ -131,6 +156,23 @@ function createAuthRouter(env = process.env) {
       return res.status(200).json({ token, tokenType: 'Bearer', tenantId, role, userId, expiresIn });
     });
   }
+
+  // upload.fields() rechaza campos fuera de ALLOWED_DOCUMENT_FIELDS con MulterError
+  router.post(
+    '/auth/register/ally',
+    upload.fields(ALLOWED_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+    authController.registerAllyNaturalPerson
+  );
+
+  // Registro de aliado empresa (SCRUM-1063): una sola ruta, la que declara el contrato.
+  router.post(
+    '/auth/register/ally/company',
+    uploadCompany.fields(ALLOWED_COMPANY_DOCUMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+    authController.registerAllyCompany
+  );
+
+  // Sin multer: el registro de Cliente no lleva documentos KYC.
+  router.post('/auth/register/client', authController.registerClientNaturalPerson);
 
   return router;
 }
