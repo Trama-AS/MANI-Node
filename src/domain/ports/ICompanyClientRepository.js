@@ -67,6 +67,16 @@ class ICompanyClientRepository {
   }
 
   /**
+   * Busca el cliente empresa cuyo usuario dueño es `usuarioId` dentro del tenant (alias `me`, SCRUM-1387).
+   * @param {string} _usuarioId
+   * @param {string} _tenantId
+   * @returns {Promise<import('../entities/CompanyClient')|null>}
+   */
+  async findByUsuarioId(_usuarioId, _tenantId) {
+    throw new Error('Método findByUsuarioId() no implementado.');
+  }
+
+  /**
    * Busca una sede de un cliente dentro del tenant. Devuelve null si no existe o es de otro cliente o tenant.
    * @param {string} _clienteId
    * @param {string} _siteId

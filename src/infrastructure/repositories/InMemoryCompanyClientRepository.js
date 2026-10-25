@@ -60,6 +60,13 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
     return null;
   }
 
+  async findByUsuarioId(usuarioId, tenantId) {
+    for (const client of this.clients.values()) {
+      if (client.usuarioId === usuarioId && client.tenantId === tenantId) return client;
+    }
+    return null;
+  }
+
   async findByNitAndTenant(nit, tenantId) {
     for (const client of this.clients.values()) {
       if (client.nit === nit && client.tenantId === tenantId) {

@@ -407,4 +407,54 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       assert.strictEqual(res.status, 401);
     });
   });
+
+  describe('Alias /clients/me/sites (SCRUM-1387)', () => {
+    const container = require('../../../src/container');
+
+    it('el cliente empresa lista, agrega y edita sus sedes con su JWT, sin conocer su id', async () => {
+      const admin = signToken({ tenantId: 'trama-demo', userId: 'admin-alias-me' });
+      const creada = await request(app)
+        .post('/api/v1/clients/company')
+        .set('Authorization', `Bearer ${admin}`)
+        .send({
+          razonSocial: 'Empresa Alias Me S.A.S.',
+          nit: '900700010-1',
+          email: 'aliasme@empresa.com',
+          sitios: [{ nombre: 'Sede Inicial', direccion: 'Calle 72 # 10-07', zonaId: 'zona-bogota-norte' }],
+        });
+      assert.strictEqual(creada.status, 201);
+      const cliente = await container.companyClientRepository.findById(creada.body.client.id, 'trama-demo');
+      const dueno = signToken({ tenantId: 'trama-demo', userId: cliente.usuarioId, role: 'cliente' });
+
+      const alta = await request(app)
+        .post('/api/v1/clients/me/sites')
+        .set('Authorization', `Bearer ${dueno}`)
+        .send({ nombre: 'Sede Dos', direccion: 'Carrera 15 # 93-60', zonaId: 'zona-bogota-norte' });
+      assert.strictEqual(alta.status, 201);
+      assert.strictEqual(alta.body.sitio.clienteId, cliente.id);
+
+      const edicion = await request(app)
+        .patch(`/api/v1/clients/me/sites/${alta.body.sitio.id}`)
+        .set('Authorization', `Bearer ${dueno}`)
+        .send({ nombre: 'Sede Dos Renombrada' });
+      assert.strictEqual(edicion.status, 200);
+
+      const lista = await request(app).get('/api/v1/clients/me/sites').set('Authorization', `Bearer ${dueno}`);
+      assert.strictEqual(lista.status, 200);
+      assert.strictEqual(lista.body.clienteId, cliente.id);
+      assert.deepStrictEqual(
+        lista.body.sitios.map((s) => s.nombre),
+        ['Sede Inicial', 'Sede Dos Renombrada']
+      );
+    });
+
+    it('un cliente sin empresa registrada recibe 404 con /clients/me/sites', async () => {
+      const otro = signToken({ tenantId: 'trama-demo', userId: 'cliente-sin-empresa', role: 'cliente' });
+
+      const res = await request(app).get('/api/v1/clients/me/sites').set('Authorization', `Bearer ${otro}`);
+
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.code, 'CLIENT_NOT_FOUND');
+    });
+  });
 });

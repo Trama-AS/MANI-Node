@@ -154,6 +154,20 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     return rows.length > 0 ? this._rowToClient(rows[0]) : null;
   }
 
+  async findByUsuarioId(usuarioId, tenantId) {
+    const pool = this._getPool();
+    const { rows } = await pool.query(
+      `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
+       FROM cliente c
+       JOIN usuario u ON u.id = c.usuario_id
+       WHERE c.usuario_id = $1 AND c.tenant_id = $2 AND c.tipo IN ('PERSONA_JURIDICA', 'EMPRESA')
+       LIMIT 1`,
+      [usuarioId, tenantId]
+    );
+
+    return rows.length > 0 ? this._rowToClient(rows[0]) : null;
+  }
+
   async findByNitAndTenant(nit, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(

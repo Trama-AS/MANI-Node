@@ -1,5 +1,5 @@
-const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
-const { assertClientOwnerOrAdmin } = require('./clientAccess');
+const { ValidationError } = require('../../../domain/errors/DomainError');
+const { assertClientOwnerOrAdmin, cargarCliente } = require('./clientAccess');
 
 /**
  * Caso de Uso: Consultar Sitios de un Cliente Empresa (RF-08 / RF-09)
@@ -16,7 +16,7 @@ class GetCompanyClientSitesUseCase {
 
   /**
    * @param {object} input
-   * @param {string} input.clienteId
+   * @param {string} input.clienteId - Id del cliente o `me` para el cliente de la sesión
    * @param {string} input.tenantId
    * @param {string} [input.userId]
    * @param {string} [input.userRole]
@@ -26,10 +26,7 @@ class GetCompanyClientSitesUseCase {
     if (!clienteId) throw new ValidationError('clienteId es requerido', 'VALIDATION_ERROR');
     if (!tenantId) throw new ValidationError('tenantId es requerido', 'VALIDATION_ERROR');
 
-    const client = await this.repository.findById(clienteId, tenantId);
-    if (!client) {
-      throw new NotFoundError(`Cliente con ID "${clienteId}" no encontrado en tenant "${tenantId}".`, 'CLIENT_NOT_FOUND');
-    }
+    const client = await cargarCliente(this.repository, { clienteId, tenantId, userId });
 
     // Autorización y verificación de propiedad dentro del tenant (DoD §9.3), con falla cerrada (T9)
     assertClientOwnerOrAdmin({
@@ -39,7 +36,7 @@ class GetCompanyClientSitesUseCase {
       mensaje: 'No tiene permisos para consultar sedes de este cliente empresa',
     });
 
-    const sites = await this.repository.findSitesByClientId(clienteId, tenantId);
+    const sites = await this.repository.findSitesByClientId(client.id, tenantId);
     return { client, sites };
   }
 }

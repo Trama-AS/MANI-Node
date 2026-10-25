@@ -239,6 +239,35 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     created_at: new Date('2026-10-01T00:00:00Z'),
   };
 
+  it('findByUsuarioId busca el cliente empresa por el usuario dueño y el tenant (alias me)', async () => {
+    const fila = {
+      id: 'cliente-1',
+      tenant_id: 'tenant-uuid-1',
+      usuario_id: 'usuario-1',
+      razon_social: 'Empresa SQL',
+      nit: '900123456-1',
+      tipo: 'PERSONA_JURIDICA',
+      email: 'sql@empresa.com',
+      estado: 'ACTIVO',
+    };
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [fila] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    const client = await repo.findByUsuarioId('usuario-1', 'tenant-uuid-1');
+
+    assert.match(queries[0].sql, /WHERE c\.usuario_id = \$1 AND c\.tenant_id = \$2/);
+    assert.deepStrictEqual(queries[0].params, ['usuario-1', 'tenant-uuid-1']);
+    assert.strictEqual(client.id, 'cliente-1');
+    assert.strictEqual(client.usuarioId, 'usuario-1');
+  });
+
+  it('findByUsuarioId devuelve null si el usuario no tiene cliente empresa en el tenant', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    assert.strictEqual(await repo.findByUsuarioId('usuario-x', 'tenant-uuid-1'), null);
+  });
+
   it('findSiteById filtra por sitio, cliente y tenant (SCRUM-1387)', async () => {
     const { mockPool, queries } = createMockPgPool(() => ({ rows: [filaSitio] }));
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });

@@ -1,6 +1,6 @@
 const Site = require('../../../domain/entities/Site');
 const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
-const { assertClientOwnerOrAdmin } = require('./clientAccess');
+const { assertClientOwnerOrAdmin, cargarCliente } = require('./clientAccess');
 
 /** Campos de la sede que se editan aquí. Las reglas tienen su propia operación (PATCH /sites/:id/rules, SCRUM-853). */
 const CAMPOS_EDITABLES = ['nombre', 'direccion', 'zonaId', 'contactoNombre', 'contactoTelefono'];
@@ -24,7 +24,7 @@ class UpdateCompanyClientSiteUseCase {
 
   /**
    * @param {object} input
-   * @param {string} input.clienteId
+   * @param {string} input.clienteId - Id del cliente o `me` para el cliente de la sesión
    * @param {string} input.siteId
    * @param {string} input.tenantId
    * @param {object} [input.cambios] - Subconjunto de nombre, direccion, zonaId, contactoNombre, contactoTelefono
@@ -40,10 +40,7 @@ class UpdateCompanyClientSiteUseCase {
 
     const datos = validarCambios(cambios);
 
-    const client = await this.repository.findById(clienteId, tenantId);
-    if (!client) {
-      throw new NotFoundError(`Cliente con ID "${clienteId}" no encontrado en tenant "${tenantId}".`, 'CLIENT_NOT_FOUND');
-    }
+    const client = await cargarCliente(this.repository, { clienteId, tenantId, userId });
 
     assertClientOwnerOrAdmin({
       client,
@@ -52,7 +49,7 @@ class UpdateCompanyClientSiteUseCase {
       mensaje: 'No tiene permisos para modificar sedes de este cliente empresa',
     });
 
-    const actual = await this.repository.findSiteById(clienteId, siteId, tenantId);
+    const actual = await this.repository.findSiteById(client.id, siteId, tenantId);
     if (!actual) {
       throw new NotFoundError(`Sitio con ID "${siteId}" no encontrado para este cliente.`, 'SITE_NOT_FOUND');
     }
@@ -60,12 +57,12 @@ class UpdateCompanyClientSiteUseCase {
     const editada = new Site({ ...actual.toJSON(), ...datos });
     editada.validate();
 
-    const guardada = await this.repository.updateSite(clienteId, tenantId, editada);
+    const guardada = await this.repository.updateSite(client.id, tenantId, editada);
     if (!guardada) {
       throw new NotFoundError(`Sitio con ID "${siteId}" no encontrado para este cliente.`, 'SITE_NOT_FOUND');
     }
     console.log(
-      `[UpdateCompanyClientSiteUseCase] Sitio "${guardada.id}" del cliente "${clienteId}" editado (${Object.keys(datos).join(', ')}). Corr: ${correlationId}`
+      `[UpdateCompanyClientSiteUseCase] Sitio "${guardada.id}" del cliente "${client.id}" editado (${Object.keys(datos).join(', ')}). Corr: ${correlationId}`
     );
     return guardada;
   }

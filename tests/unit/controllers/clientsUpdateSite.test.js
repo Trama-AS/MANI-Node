@@ -64,5 +64,6 @@ describe('ICompanyClientRepository (puerto) — operaciones de edición de sede'
     const puerto = new ICompanyClientRepository();
     await assert.rejects(puerto.findSiteById('c', 's', 't'), /findSiteById\(\) no implementado/);
     await assert.rejects(puerto.updateSite('c', 't', {}), /updateSite\(\) no implementado/);
+    await assert.rejects(puerto.findByUsuarioId('u', 't'), /findByUsuarioId\(\) no implementado/);
   });
 });
