@@ -117,6 +117,16 @@ for (const [name, quitar, codigo, status] of [
   });
 }
 
+test('la categoría solo se acepta si está ACTIVO y es del tenant: una desactivada rechaza la solicitud nueva (SCRUM-858 C2 / SCRUM-1391)', async () => {
+  const { factory, sentencias } = fakeFactory(exito());
+
+  await new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, datosBase);
+
+  const consulta = sentencias.find((s) => s.sql.includes('FROM categoria_servicio WHERE id'));
+  assert.match(consulta.sql, /tenant_id = \$2 AND estado = 'ACTIVO'/);
+  assert.deepEqual(consulta.params, ['cat', TENANT]);
+});
+
 test('un sitio que no es del cliente responde 422 MANI-SOL-422S', async () => {
   const { factory } = fakeFactory(exito());
 
