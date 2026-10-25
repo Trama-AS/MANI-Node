@@ -65,6 +65,28 @@ class ICompanyClientRepository {
   async findSitesByClientId(_clienteId, _tenantId) {
     throw new Error('Método findSitesByClientId() no implementado.');
   }
+
+  /**
+   * Busca una sede de un cliente dentro del tenant. Devuelve null si no existe o es de otro cliente o tenant.
+   * @param {string} _clienteId
+   * @param {string} _siteId
+   * @param {string} _tenantId
+   * @returns {Promise<import('../entities/Site')|null>}
+   */
+  async findSiteById(_clienteId, _siteId, _tenantId) {
+    throw new Error('Método findSiteById() no implementado.');
+  }
+
+  /**
+   * Guarda los datos editables de una sede (nombre, dirección, zona y contacto). No toca las reglas.
+   * @param {string} _clienteId
+   * @param {string} _tenantId
+   * @param {import('../entities/Site')} _site
+   * @returns {Promise<import('../entities/Site')|null>} null si la sede ya no existe en ese cliente y tenant.
+   */
+  async updateSite(_clienteId, _tenantId, _site) {
+    throw new Error('Método updateSite() no implementado.');
+  }
 }
 
 ICompanyClientRepository.ICompanyClientRepository = ICompanyClientRepository;

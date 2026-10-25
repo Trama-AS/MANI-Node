@@ -294,4 +294,117 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
 
     assert.strictEqual(postRes.status, 403);
   });
+
+  describe('PATCH /api/v1/clients/:id/sites/:siteId (SCRUM-1387 / CONS-16)', () => {
+    const adminA = signToken({ tenantId: 'trama-demo', userId: 'admin-edicion-a' });
+    const adminB = signToken({ tenantId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', userId: 'admin-edicion-b' });
+
+    async function crearEmpresa(nit, email) {
+      const res = await request(app)
+        .post('/api/v1/clients/company')
+        .set('Authorization', `Bearer ${adminA}`)
+        .send({
+          razonSocial: `Empresa ${nit} S.A.S.`,
+          nit,
+          email,
+          sitios: [
+            { nombre: 'Sede Norte', direccion: 'Calle 140 # 10-20', zonaId: 'zona-bogota-norte' },
+            { nombre: 'Sede Sur', direccion: 'Avenida 1 de Mayo # 40-10', zonaId: 'zona-bogota-sur' },
+          ],
+        });
+      assert.strictEqual(res.status, 201);
+      return { clienteId: res.body.client.id, sitios: res.body.sitios };
+    }
+
+    it('C1: edita una de las sedes y el cambio se ve al volver a consultar; la otra queda igual', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700001-1', 'edicion1@empresa.com');
+
+      const res = await request(app)
+        .patch(`/api/v1/clients/${clienteId}/sites/${sitios[0].id}`)
+        .set('Authorization', `Bearer ${adminA}`)
+        .send({ nombre: 'Sede Norte Renovada', zonaId: 'zona-bogota-usaquen', contactoNombre: 'Laura Gómez' });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.sitio.id, sitios[0].id);
+      assert.strictEqual(res.body.sitio.nombre, 'Sede Norte Renovada');
+      assert.strictEqual(res.body.sitio.direccion, 'Calle 140 # 10-20');
+      assert.ok(res.body.correlationId);
+
+      const lista = await request(app)
+        .get(`/api/v1/clients/${clienteId}/sites`)
+        .set('Authorization', `Bearer ${adminA}`);
+      assert.strictEqual(lista.status, 200);
+      assert.strictEqual(lista.body.totalSitios, 2);
+      const [norte, sur] = lista.body.sitios;
+      assert.strictEqual(norte.nombre, 'Sede Norte Renovada');
+      assert.strictEqual(norte.zonaId, 'zona-bogota-usaquen');
+      assert.strictEqual(norte.contactoNombre, 'Laura Gómez');
+      assert.strictEqual(sur.nombre, 'Sede Sur');
+    });
+
+    it('C2: sin zona o con un campo inválido responde 400 y la sede no cambia', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700002-2', 'edicion2@empresa.com');
+      const ruta = `/api/v1/clients/${clienteId}/sites/${sitios[0].id}`;
+
+      for (const cuerpo of [{ zonaId: '' }, { direccion: 'x' }, { reglas: {} }, { tenantId: 'otro' }, {}]) {
+        const res = await request(app).patch(ruta).set('Authorization', `Bearer ${adminA}`).send(cuerpo);
+        assert.strictEqual(res.status, 400, JSON.stringify(cuerpo));
+        assert.strictEqual(res.body.code, 'VALIDATION_ERROR');
+      }
+
+      const lista = await request(app)
+        .get(`/api/v1/clients/${clienteId}/sites`)
+        .set('Authorization', `Bearer ${adminA}`);
+      assert.strictEqual(lista.body.sitios[0].zonaId, 'zona-bogota-norte');
+      assert.strictEqual(lista.body.sitios[0].direccion, 'Calle 140 # 10-20');
+    });
+
+    it('C3: el admin de otro tenant recibe 404 y la sede no cambia', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700003-3', 'edicion3@empresa.com');
+
+      const res = await request(app)
+        .patch(`/api/v1/clients/${clienteId}/sites/${sitios[0].id}`)
+        .set('Authorization', `Bearer ${adminB}`)
+        .send({ nombre: 'Infiltrada' });
+
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.sitio, undefined);
+      const lista = await request(app)
+        .get(`/api/v1/clients/${clienteId}/sites`)
+        .set('Authorization', `Bearer ${adminA}`);
+      assert.strictEqual(lista.body.sitios[0].nombre, 'Sede Norte');
+    });
+
+    it('C3: la sede de otra empresa del mismo tenant no se edita por la ruta de esta empresa (404)', async () => {
+      const empresa1 = await crearEmpresa('900700004-4', 'edicion4@empresa.com');
+      const empresa2 = await crearEmpresa('900700005-5', 'edicion5@empresa.com');
+
+      const res = await request(app)
+        .patch(`/api/v1/clients/${empresa1.clienteId}/sites/${empresa2.sitios[0].id}`)
+        .set('Authorization', `Bearer ${adminA}`)
+        .send({ nombre: 'Cruzada' });
+
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.code, 'SITE_NOT_FOUND');
+    });
+
+    it('C4: otro cliente del mismo tenant recibe 403 y un aliado también', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700006-6', 'edicion6@empresa.com');
+      const ruta = `/api/v1/clients/${clienteId}/sites/${sitios[0].id}`;
+
+      const otroCliente = signToken({ tenantId: 'trama-demo', userId: 'cliente-ajeno-edicion', role: 'cliente' });
+      const aliado = signToken({ tenantId: 'trama-demo', userId: 'aliado-edicion', role: 'aliado' });
+
+      const resCliente = await request(app).patch(ruta).set('Authorization', `Bearer ${otroCliente}`).send({ nombre: 'X' });
+      assert.strictEqual(resCliente.status, 403);
+      const resAliado = await request(app).patch(ruta).set('Authorization', `Bearer ${aliado}`).send({ nombre: 'X' });
+      assert.strictEqual(resAliado.status, 403);
+      assert.strictEqual(resAliado.body.code, 'FORBIDDEN');
+    });
+
+    it('sin token responde 401', async () => {
+      const res = await request(app).patch('/api/v1/clients/c/sites/s').send({ nombre: 'X' });
+      assert.strictEqual(res.status, 401);
+    });
+  });
 });

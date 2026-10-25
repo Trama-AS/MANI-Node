@@ -2,7 +2,10 @@ const crypto = require('crypto');
 const CompanyClient = require('../../domain/entities/CompanyClient');
 const Site = require('../../domain/entities/Site');
 const ICompanyClientRepository = require('../../domain/ports/ICompanyClientRepository');
-const { DomainError } = require('../../domain/errors/DomainError');
+const { DomainError, ValidationError } = require('../../domain/errors/DomainError');
+
+// Códigos de PostgreSQL de una zona inexistente (FK) o con formato inválido: son datos del cliente, no fallos del servicio.
+const PG_ZONA_INVALIDA = new Set(['23503', '22P02']);
 
 /**
  * Adaptador de Infraestructura: Repositorio PostgreSQL / Supabase para Cliente Empresa y Sitios (RF-08 / RF-09).
@@ -217,6 +220,45 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     );
 
     return rows.map((r) => this._rowToSite(r));
+  }
+
+  async findSiteById(clienteId, siteId, tenantId) {
+    const pool = this._getPool();
+    const { rows } = await pool.query(
+      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at
+       FROM sitio
+       WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3`,
+      [siteId, clienteId, tenantId]
+    );
+    return rows.length > 0 ? this._rowToSite(rows[0]) : null;
+  }
+
+  async updateSite(clienteId, tenantId, site) {
+    const pool = this._getPool();
+    try {
+      const { rows } = await pool.query(
+        `UPDATE sitio
+         SET nombre = $4, direccion = $5, zona_id = $6, contacto_nombre = $7, contacto_telefono = $8
+         WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3
+         RETURNING id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at`,
+        [
+          site.id,
+          clienteId,
+          tenantId,
+          site.nombre,
+          site.direccion,
+          site.zonaId,
+          site.contactoNombre ?? null,
+          site.contactoTelefono ?? null,
+        ]
+      );
+      return rows.length > 0 ? this._rowToSite(rows[0]) : null;
+    } catch (err) {
+      if (PG_ZONA_INVALIDA.has(err.code)) {
+        throw new ValidationError('zonaId no corresponde a una zona del catálogo (RF-09)', 'VALIDATION_ERROR');
+      }
+      throw err;
+    }
   }
 
   _rowToClient(row) {

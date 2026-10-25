@@ -226,6 +226,103 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     assert.strictEqual(sites[0].reglas.horario, '07:00-18:00');
   });
 
+  const filaSitio = {
+    id: 'sitio-1',
+    tenant_id: 'tenant-uuid-1',
+    cliente_id: 'cliente-1',
+    zona_id: 'zona-2',
+    direccion: 'Carrera 7 # 64-20',
+    nombre: 'Sede Editada',
+    reglas: '{"requiereEpi":true}',
+    contacto_nombre: 'Laura',
+    contacto_telefono: null,
+    created_at: new Date('2026-10-01T00:00:00Z'),
+  };
+
+  it('findSiteById filtra por sitio, cliente y tenant (SCRUM-1387)', async () => {
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [filaSitio] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    const sitio = await repo.findSiteById('cliente-1', 'sitio-1', 'tenant-uuid-1');
+
+    assert.match(queries[0].sql, /WHERE id = \$1 AND cliente_id = \$2 AND tenant_id = \$3/);
+    assert.deepStrictEqual(queries[0].params, ['sitio-1', 'cliente-1', 'tenant-uuid-1']);
+    assert.ok(sitio instanceof Site);
+    assert.deepStrictEqual(sitio.reglas, { requiereEpi: true });
+  });
+
+  it('findSiteById devuelve null si la sede no es de ese cliente o tenant', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    assert.strictEqual(await repo.findSiteById('cliente-1', 'sitio-x', 'tenant-uuid-1'), null);
+  });
+
+  it('updateSite actualiza solo los campos editables, filtrando por sitio, cliente y tenant, sin tocar reglas', async () => {
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [filaSitio] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({
+      id: 'sitio-1',
+      tenantId: 'tenant-uuid-1',
+      clienteId: 'cliente-1',
+      nombre: 'Sede Editada',
+      direccion: 'Carrera 7 # 64-20',
+      zonaId: 'zona-2',
+      contactoNombre: 'Laura',
+    });
+
+    const guardado = await repo.updateSite('cliente-1', 'tenant-uuid-1', sitio);
+
+    assert.match(queries[0].sql, /^UPDATE sitio/);
+    assert.match(queries[0].sql, /WHERE id = \$1 AND cliente_id = \$2 AND tenant_id = \$3/);
+    assert.doesNotMatch(queries[0].sql, /reglas =/);
+    assert.deepStrictEqual(queries[0].params, [
+      'sitio-1',
+      'cliente-1',
+      'tenant-uuid-1',
+      'Sede Editada',
+      'Carrera 7 # 64-20',
+      'zona-2',
+      'Laura',
+      null,
+    ]);
+    assert.strictEqual(guardado.nombre, 'Sede Editada');
+  });
+
+  it('updateSite devuelve null si no actualizó ninguna fila', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ id: 'sitio-x', tenantId: 't', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'z' });
+
+    assert.strictEqual(await repo.updateSite('c', 't', sitio), null);
+  });
+
+  for (const code of ['23503', '22P02']) {
+    it(`updateSite traduce el error ${code} de zona inexistente o inválida a error de validación`, async () => {
+      const { mockPool } = createMockPgPool(() => {
+        throw Object.assign(new Error('pg'), { code });
+      });
+      const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+      const sitio = new Site({ id: 's', tenantId: 't', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'no-existe' });
+
+      await assert.rejects(repo.updateSite('c', 't', sitio), (err) => {
+        assert.strictEqual(err.statusCode, 400);
+        assert.strictEqual(err.code, 'VALIDATION_ERROR');
+        return true;
+      });
+    });
+  }
+
+  it('updateSite propaga cualquier otro error de la base', async () => {
+    const { mockPool } = createMockPgPool(() => {
+      throw Object.assign(new Error('conexión caída'), { code: '08006' });
+    });
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ id: 's', tenantId: 't', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'z' });
+
+    await assert.rejects(repo.updateSite('c', 't', sitio), /conexión caída/);
+  });
+
   it('lanza DomainError si se invoca sin conexión ni factory', () => {
     const repo = new PostgresCompanyClientRepository({});
     assert.throws(() => repo._getPool(), /DATABASE_URL no configurada/);

@@ -1,5 +1,6 @@
 const Site = require('../../../domain/entities/Site');
-const { ValidationError, NotFoundError, ForbiddenError } = require('../../../domain/errors/DomainError');
+const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
+const { assertClientOwnerOrAdmin } = require('./clientAccess');
 
 /**
  * Caso de Uso: Agregar Sitio a Cliente Empresa Existente (RF-08 / RF-09)
@@ -39,12 +40,13 @@ class AddSiteToCompanyClientUseCase {
       throw new NotFoundError(`Cliente con ID "${clienteId}" no encontrado en tenant "${tenantId}".`, 'CLIENT_NOT_FOUND');
     }
 
-    // Autorización y verificación de propiedad dentro del tenant (DoD §9.3)
-    const normalizedRole = (userRole || '').toUpperCase();
-    const isAdmin = ['ADMIN', 'ADMIN_TENANT'].includes(normalizedRole);
-    if (!isAdmin && userId && client.usuarioId && client.usuarioId !== userId) {
-      throw new ForbiddenError('No tiene permisos para modificar sedes de este cliente empresa', 'FORBIDDEN');
-    }
+    // Autorización y verificación de propiedad dentro del tenant (DoD §9.3), con falla cerrada (T9)
+    assertClientOwnerOrAdmin({
+      client,
+      userId,
+      userRole,
+      mensaje: 'No tiene permisos para modificar sedes de este cliente empresa',
+    });
 
     // Construir y validar la entidad Site
     const site = new Site({

@@ -1,4 +1,5 @@
-const { ValidationError, NotFoundError, ForbiddenError } = require('../../../domain/errors/DomainError');
+const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
+const { assertClientOwnerOrAdmin } = require('./clientAccess');
 
 /**
  * Caso de Uso: Consultar Sitios de un Cliente Empresa (RF-08 / RF-09)
@@ -30,12 +31,13 @@ class GetCompanyClientSitesUseCase {
       throw new NotFoundError(`Cliente con ID "${clienteId}" no encontrado en tenant "${tenantId}".`, 'CLIENT_NOT_FOUND');
     }
 
-    // Autorización y verificación de propiedad dentro del tenant (DoD §9.3)
-    const normalizedRole = (userRole || '').toUpperCase();
-    const isAdmin = ['ADMIN', 'ADMIN_TENANT'].includes(normalizedRole);
-    if (!isAdmin && userId && client.usuarioId && client.usuarioId !== userId) {
-      throw new ForbiddenError('No tiene permisos para consultar sedes de este cliente empresa', 'FORBIDDEN');
-    }
+    // Autorización y verificación de propiedad dentro del tenant (DoD §9.3), con falla cerrada (T9)
+    assertClientOwnerOrAdmin({
+      client,
+      userId,
+      userRole,
+      mensaje: 'No tiene permisos para consultar sedes de este cliente empresa',
+    });
 
     const sites = await this.repository.findSitesByClientId(clienteId, tenantId);
     return { client, sites };
