@@ -24,6 +24,7 @@ const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseA
 const InMemoryFileStorageService = require('./infrastructure/security/InMemoryFileStorageService');
 const SupabaseFileStorageService = require('./infrastructure/security/SupabaseFileStorageService');
 const TransactionalAliadoCategoriaRepository = require('./infrastructure/repositories/TransactionalAliadoCategoriaRepository');
+const TransactionalAliadoRepository = require('./infrastructure/repositories/TransactionalAliadoRepository');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
@@ -116,7 +117,12 @@ class Container {
       this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.catalogRepository = new SupabaseCatalogRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.aliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      const supabaseAliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      // Con DATABASE_URL la resolución de la verificación se escribe por pg, donde una prueba
+      // contra PostgreSQL acredita que verificado_por queda en la base (CA-5, TEC-20).
+      this.aliadoRepository = this.pgPoolFactory.isConfigured()
+        ? new TransactionalAliadoRepository({ pgPoolFactory: this.pgPoolFactory, delegate: supabaseAliadoRepository })
+        : supabaseAliadoRepository;
       const supabaseAliadoCategoriaRepository = new SupabaseAliadoCategoriaRepository({
         supabaseClientFactory: this.supabaseClientFactory,
       });
