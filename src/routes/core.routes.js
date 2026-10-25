@@ -7,6 +7,7 @@ const verificationController = require('../controllers/verification.controller')
 const availabilityController = require('../controllers/availability.controller');
 const dispatchIntegrationController = require('../controllers/dispatchIntegration.controller');
 const requestsController = require('../controllers/requests.controller');
+const notificationsController = require('../controllers/notifications.controller');
 const { authenticate, requireRole } = require('../middlewares/auth.middleware');
 
 const router = Router();
@@ -51,6 +52,9 @@ router.get('/allies/me', authenticate, dispatchIntegrationController.getOwnAllyP
 router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
 router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
 router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
+// HU-M09-06 (SCRUM-1428): bandeja propia de notificaciones. Va bajo /profiles/me porque el Gateway cierra al
+// tráfico externo cualquier ruta /notifications, que es superficie interna de Dispatch.
+router.get('/profiles/me/inbox', authenticate, notificationsController.listMyInbox);
 // US-04.1.1-M2 (SCRUM-1072): el cliente crea la solicitud en Core; el despacho es un paso posterior en Dispatch.
 router.post('/solicitudes', authenticate, uploadFotosSolicitud.array('fotos', 5), requestsController.createRequest);
 

@@ -95,13 +95,13 @@ test('contexto: sin filas devuelve null', async () => {
 });
 
 test('notificaciones: inserta para el usuario del aliado del mismo tenant y devuelve el id', async () => {
-  const { factory, queries } = fakeFactory(() => ({ rows: [{ id: 'n-1' }] }));
+  const { factory, queries } = fakeFactory(() => ({ rows: [{ id: 'n-1', usuario_id: 'u-1' }] }));
   const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
   const payload = { requestId: SOLICITUD, estado: 'ENVIADA' };
 
   const created = await repo.createForAlly({ tenantId: TENANT, allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload });
 
-  assert.deepEqual(created, { id: 'n-1' });
+  assert.deepEqual(created, { id: 'n-1', usuarioId: 'u-1' });
   assert.deepEqual(queries[0].params, [TENANT, ALLY, 'OFERTA_DESPACHO', 'PUSH', JSON.stringify(payload)]);
   assert.match(queries[0].sql, /a\.tenant_id = \$1/);
 });
@@ -126,4 +126,21 @@ test('notificaciones: lista por tenant, tipo y solicitud y mapea payload y fecha
   assert.deepEqual(rows, [{ payload: { requestId: SOLICITUD }, enviadoAt: sent }]);
   assert.deepEqual(queries[0].params, [TENANT, 'OFERTA_DESPACHO', SOLICITUD]);
   assert.match(queries[0].sql, /tenant_id = \$1/);
+});
+
+test('notificaciones: la bandeja lista solo las del usuario en su tenant, más recientes primero', async () => {
+  const sent = new Date('2026-10-25T10:00:00Z');
+  const { factory, queries } = fakeFactory(() => ({
+    rows: [{ id: 'n-2', tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: SOLICITUD }, enviado_at: sent, leido_at: null }],
+  }));
+  const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
+
+  const rows = await repo.listForUser(TENANT, 'u-1', { limit: 20 });
+
+  assert.deepEqual(rows, [
+    { id: 'n-2', tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: SOLICITUD }, enviadoAt: sent, leidoAt: null },
+  ]);
+  assert.deepEqual(queries[0].params, [TENANT, 'u-1', 20]);
+  assert.match(queries[0].sql, /tenant_id = \$1 AND usuario_id = \$2/);
+  assert.match(queries[0].sql, /ORDER BY enviado_at DESC/);
 });
