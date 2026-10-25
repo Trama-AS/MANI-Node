@@ -81,6 +81,8 @@ async function activateCategory(req, res, next) {
       tenantId: req.tenantId,
       categoryId: req.params.id,
       active: true,
+      userId: req.user?.userId,
+      correlationId: req.correlationId,
     });
     res.status(200).json({ category });
   } catch (err) {
@@ -94,6 +96,8 @@ async function deactivateCategory(req, res, next) {
       tenantId: req.tenantId,
       categoryId: req.params.id,
       active: false,
+      userId: req.user?.userId,
+      correlationId: req.correlationId,
     });
     res.status(200).json({ category });
   } catch (err) {
