@@ -173,6 +173,8 @@ function createAuthRouter(env = process.env, deps = {}) {
 
   // Sin multer: el registro de Cliente no lleva documentos KYC.
   router.post('/auth/register/client', authController.registerClientNaturalPerson);
+  // Cliente empresa (HU-M02-07): NIT y representante, sin documentos ni sitios.
+  router.post('/auth/register/client/company', authController.registerClientCompany);
 
   return router;
 }

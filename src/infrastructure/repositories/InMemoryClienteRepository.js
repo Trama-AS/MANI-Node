@@ -15,6 +15,13 @@ class InMemoryClienteRepository extends IClienteRepository {
     return record;
   }
 
+  async findByNit(tenantId, nit) {
+    for (const cliente of this.clientes.values()) {
+      if (cliente.tenantId === tenantId && cliente.nit === nit) return cliente;
+    }
+    return null;
+  }
+
   async deleteByUsuarioId(tenantId, usuarioId) {
     const cliente = this.clientes.get(usuarioId);
     if (cliente && cliente.tenantId === tenantId) {

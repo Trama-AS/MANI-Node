@@ -13,15 +13,33 @@ class SupabaseClienteRepository extends IClienteRepository {
     this.supabaseClientFactory = supabaseClientFactory;
   }
 
-  async create({ tenantId, usuarioId, tipo }) {
+  async create({ tenantId, usuarioId, tipo, razonSocial, nit, telefono, nombreRepresentante }) {
     const client = this.supabaseClientFactory.getClient();
+    const row = { tenant_id: tenantId, usuario_id: usuarioId, tipo };
+    // Columnas de organización (migración 0002), solo para el cliente empresa (HU-M02-07).
+    if (razonSocial !== undefined) row.razon_social = razonSocial;
+    if (nit !== undefined) row.nit = nit;
+    if (telefono !== undefined) row.telefono = telefono;
+    if (nombreRepresentante !== undefined) row.nombre_representante = nombreRepresentante;
     const { data, error } = await client
       .from('cliente')
-      .upsert({ tenant_id: tenantId, usuario_id: usuarioId, tipo }, { onConflict: 'usuario_id' })
+      .upsert(row, { onConflict: 'usuario_id' })
       .select()
       .single();
 
     if (error) throw new DomainError(`Error creando cliente: ${error.message}`, 'INTERNAL_ERROR', 500);
+    return data;
+  }
+
+  async findByNit(tenantId, nit) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('cliente')
+      .select('id, usuario_id, nit')
+      .eq('tenant_id', tenantId)
+      .eq('nit', nit)
+      .maybeSingle();
+    if (error) throw new DomainError(`Error consultando cliente por NIT: ${error.message}`, 'INTERNAL_ERROR', 500);
     return data;
   }
 

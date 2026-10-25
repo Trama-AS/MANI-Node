@@ -331,3 +331,54 @@ test('POST /api/v1/auth/register/client no acepta archivos (no hay multer montad
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'VALIDATION_ERROR');
 });
+
+// ---- HU-M02-07 (SCRUM-1375): registro de cliente empresa ----
+
+function registerClientCompanyRequest(overrides = {}) {
+  const unique = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  return request(app)
+    .post('/api/v1/auth/register/client/company')
+    .set('X-Tenant-Slug', overrides.tenantSlug ?? 'trama-demo')
+    .send({
+      razonSocial: overrides.razonSocial ?? 'Constructora Andina SAS',
+      nit: overrides.nit ?? `9${unique.slice(-8)}-1`,
+      nombreRepresentante: overrides.nombreRepresentante ?? 'Laura Gomez',
+      email: overrides.email ?? `empresa.${unique}@mani.test`,
+      password: overrides.password ?? 'Cambiar123!',
+      acceptsTerms: overrides.acceptsTerms ?? true,
+    });
+}
+
+test('POST /api/v1/auth/register/client/company responde 201 con cliente CLIENT, la empresa y tokens válidos', async () => {
+  const res = await registerClientCompanyRequest();
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.profile.role, 'CLIENT');
+  assert.equal(res.body.profile.fullName, 'Constructora Andina SAS');
+  assert.equal(res.body.company.tipo, 'PERSONA_JURIDICA');
+  assert.equal(res.body.company.nombreRepresentante, 'Laura Gomez');
+  const claims = jwt.verify(res.body.tokens.accessToken, config.supabaseJwtSecret, { algorithms: ['HS256'] });
+  assert.equal(claims.app_metadata.user_role, 'cliente');
+});
+
+test('POST /api/v1/auth/register/client/company con el mismo NIT responde 409 COMPANY_ALREADY_REGISTERED', async () => {
+  const nit = `8${String(Date.now()).slice(-8)}-3`;
+  assert.equal((await registerClientCompanyRequest({ nit })).status, 201);
+
+  const second = await registerClientCompanyRequest({ nit });
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, 'COMPANY_ALREADY_REGISTERED');
+});
+
+test('POST /api/v1/auth/register/client/company sin aceptar términos responde 400 TERMS_NOT_ACCEPTED', async () => {
+  const res = await registerClientCompanyRequest({ acceptsTerms: false });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'TERMS_NOT_ACCEPTED');
+});
+
+test('POST /api/v1/auth/register/client/company con NIT inválido responde 400 VALIDATION_ERROR', async () => {
+  const res = await registerClientCompanyRequest({ nit: 'ABC' });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.code, 'VALIDATION_ERROR');
+});
+

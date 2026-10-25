@@ -86,4 +86,26 @@ async function registerClientNaturalPerson(req, res, next) {
   }
 }
 
-module.exports = { registerAllyNaturalPerson, registerAllyCompany, registerClientNaturalPerson };
+// HU-M02-07 (SCRUM-1375): alta de cliente empresa, pre-auth y sin sitios.
+async function registerClientCompany(req, res, next) {
+  try {
+    const result = await container.registerClientCompanyUseCase.execute({
+      tenantSlug: req.header('X-Tenant-Slug'),
+      razonSocial: req.body.razonSocial,
+      nit: req.body.nit,
+      nombreRepresentante: req.body.nombreRepresentante,
+      email: req.body.email,
+      password: req.body.password,
+      phone: req.body.phone,
+      acceptsTerms: req.body.acceptsTerms,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+      userAgent: req.headers['user-agent'] || 'unknown',
+    });
+
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { registerAllyNaturalPerson, registerAllyCompany, registerClientNaturalPerson, registerClientCompany };
