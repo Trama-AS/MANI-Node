@@ -66,6 +66,7 @@ const RegisterAllyCompanyUseCase = require('./application/useCases/auth/Register
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
 const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
+const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/UpdateCompanyClientSiteUseCase');
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
@@ -309,6 +310,8 @@ class Container {
     this.addSiteToCompanyClientUseCase = new AddSiteToCompanyClientUseCase(this.companyClientRepository);
 
     this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
+
+    this.updateCompanyClientSiteUseCase = new UpdateCompanyClientSiteUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
       tenantRepository: this.tenantRepository,
