@@ -74,6 +74,8 @@ const config = {
   gatewayUrl: process.env.GATEWAY_URL,
   rulesServiceUrl: process.env.RULES_SERVICE_URL,
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
+  // Proveedor de notificaciones push (HU-M09-06). Hoy solo existe `mock`; otro valor detiene el arranque.
+  pushProvider: process.env.PUSH_PROVIDER || 'mock',
 };
 
 // Valida que las variables requeridas por el ambiente actual estén presentes.

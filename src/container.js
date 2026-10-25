@@ -82,6 +82,8 @@ const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListE
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
+const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
+const { createPushProvider } = require('./infrastructure/push/createPushProvider');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
@@ -236,8 +238,12 @@ class Container {
       solicitudContextRepository: this.solicitudContextRepository,
     });
     this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
-    this.publishNotificationUseCase = new PublishNotificationUseCase({ notificacionRepository: this.notificacionRepository });
+    // Proveedor push por ambiente (PUSH_PROVIDER, por omisión el mock de HU-M09-06): sin FCM ni APNs reales.
+    this.pushProvider = createPushProvider(config.pushProvider);
+    const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
+    this.publishNotificationUseCase = new PublishNotificationUseCase(notificationDeps);
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
+    this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,

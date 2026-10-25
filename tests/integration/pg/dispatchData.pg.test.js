@@ -144,6 +144,7 @@ test('PG notificaciones: crea para el usuario del aliado, lista por solicitud y 
 
   const created = await repo.createForAlly({ tenantId: s.tenant, allyId: ana.aliado, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload });
   assert.ok(created.id);
+  assert.equal(created.usuarioId, ana.usuario, 'devuelve el usuario destinatario para la entrega push');
   const row = (await pool.query('SELECT usuario_id, tenant_id FROM notificacion WHERE id = $1', [created.id])).rows[0];
   assert.equal(row.usuario_id, ana.usuario);
   assert.equal(row.tenant_id, s.tenant);
@@ -161,6 +162,36 @@ test('PG notificaciones: crea para el usuario del aliado, lista por solicitud y 
   assert.deepEqual(await repo.listByRequest(otro.tenant, solicitud, 'OFERTA_DESPACHO'), []);
 });
 
+test('PG bandeja (HU-M09-06): el usuario ve solo sus notificaciones, más recientes primero y sin cruzar tenants', opts, async (t) => {
+  const factory = new PgPoolFactory({ databaseUrl: url });
+  t.after(() => factory.close());
+  const pool = factory.getPool();
+  const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
+  const s = await seedTenant(pool);
+  const otro = await seedTenant(pool);
+  const solicitud = await addSolicitud(pool, s);
+  const ana = await addAliado(pool, s, { nombre: 'Ana' });
+  const beto = await addAliado(pool, s, { nombre: 'Beto' });
+  const ajeno = await addAliado(pool, otro, { nombre: 'Ajeno' });
+  const send = (tenantId, allyId, n) =>
+    repo.createForAlly({ tenantId, allyId, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: solicitud, n } });
+
+  const primera = await send(s.tenant, ana.aliado, 1);
+  await pool.query("UPDATE notificacion SET enviado_at = now() - interval '1 hour' WHERE id = $1", [primera.id]);
+  const segunda = await send(s.tenant, ana.aliado, 2);
+  await send(s.tenant, beto.aliado, 3);
+  await send(otro.tenant, ajeno.aliado, 4);
+
+  const inbox = await repo.listForUser(s.tenant, ana.usuario, { limit: 10 });
+  assert.deepEqual(inbox.map((n) => n.id), [segunda.id, primera.id]);
+  assert.equal(inbox[0].payload.n, 2);
+  assert.equal(inbox[0].leidoAt, null);
+  assert.ok(inbox[0].enviadoAt instanceof Date);
+
+  assert.equal((await repo.listForUser(s.tenant, ana.usuario, { limit: 1 })).length, 1);
+  assert.deepEqual(await repo.listForUser(otro.tenant, ana.usuario, { limit: 10 }), [], 'el usuario de otro tenant no ve nada');
+});
+
 test('PG repositorios: sin DATABASE_URL fallan cerrado con 503', async () => {
   const factory = new PgPoolFactory({ databaseUrl: undefined });
   await assert.rejects(
@@ -169,4 +200,5 @@ test('PG repositorios: sin DATABASE_URL fallan cerrado con 503', async () => {
   );
   await assert.rejects(() => new PgSolicitudContextRepository({ pgPoolFactory: factory }).findContext(uuid(), uuid()), (err) => err.statusCode === 503);
   await assert.rejects(() => new PgNotificacionRepository({ pgPoolFactory: factory }).listByRequest(uuid(), uuid(), 'X'), (err) => err.statusCode === 503);
+  await assert.rejects(() => new PgNotificacionRepository({ pgPoolFactory: factory }).listForUser(uuid(), uuid(), { limit: 1 }), (err) => err.statusCode === 503);
 });
