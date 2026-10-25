@@ -313,6 +313,26 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     });
   }
 
+  it('addSite también traduce una zona inexistente a error de validación (400, no 500)', async () => {
+    const { mockPool } = createMockPgPool(() => {
+      throw Object.assign(new Error('fk'), { code: '23503' });
+    });
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ tenantId: 't', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'no-existe' });
+
+    await assert.rejects(repo.addSite('c', 't', sitio), (err) => err.statusCode === 400 && err.code === 'VALIDATION_ERROR');
+  });
+
+  it('addSite propaga cualquier otro error de la base', async () => {
+    const { mockPool } = createMockPgPool(() => {
+      throw Object.assign(new Error('timeout'), { code: '57014' });
+    });
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ tenantId: 't', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'z' });
+
+    await assert.rejects(repo.addSite('c', 't', sitio), /timeout/);
+  });
+
   it('updateSite propaga cualquier otro error de la base', async () => {
     const { mockPool } = createMockPgPool(() => {
       throw Object.assign(new Error('conexión caída'), { code: '08006' });

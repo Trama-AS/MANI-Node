@@ -7,6 +7,13 @@ const { DomainError, ValidationError } = require('../../domain/errors/DomainErro
 // Códigos de PostgreSQL de una zona inexistente (FK) o con formato inválido: son datos del cliente, no fallos del servicio.
 const PG_ZONA_INVALIDA = new Set(['23503', '22P02']);
 
+function traducirZonaInvalida(err) {
+  if (PG_ZONA_INVALIDA.has(err.code)) {
+    return new ValidationError('zonaId no corresponde a una zona del catálogo (RF-09)', 'VALIDATION_ERROR');
+  }
+  return err;
+}
+
 /**
  * Adaptador de Infraestructura: Repositorio PostgreSQL / Supabase para Cliente Empresa y Sitios (RF-08 / RF-09).
  * Implementa ICompanyClientRepository con transacciones reales y aislamiento multitenant estricto.
@@ -180,21 +187,25 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     const siteId = site.id || crypto.randomUUID();
     const reglasJson = site.reglas ? JSON.stringify(site.reglas) : null;
 
-    await pool.query(
-      `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-      [
-        siteId,
-        tenantId,
-        clienteId,
-        site.zonaId,
-        site.direccion,
-        site.nombre,
-        reglasJson,
-        site.contactoNombre ?? null,
-        site.contactoTelefono ?? null,
-      ]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [
+          siteId,
+          tenantId,
+          clienteId,
+          site.zonaId,
+          site.direccion,
+          site.nombre,
+          reglasJson,
+          site.contactoNombre ?? null,
+          site.contactoTelefono ?? null,
+        ]
+      );
+    } catch (err) {
+      throw traducirZonaInvalida(err);
+    }
 
     return new Site({
       id: siteId,
@@ -254,10 +265,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
       );
       return rows.length > 0 ? this._rowToSite(rows[0]) : null;
     } catch (err) {
-      if (PG_ZONA_INVALIDA.has(err.code)) {
-        throw new ValidationError('zonaId no corresponde a una zona del catálogo (RF-09)', 'VALIDATION_ERROR');
-      }
-      throw err;
+      throw traducirZonaInvalida(err);
     }
   }
 
