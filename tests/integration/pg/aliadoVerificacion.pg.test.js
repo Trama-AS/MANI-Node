@@ -1,6 +1,6 @@
 // CA-5 de US-02.1.3 (TEC-20): quién resolvió la verificación queda en aliado.verificado_por, leído desde PostgreSQL.
-// Se omite sin TEST_DATABASE_URL. Preparación local: PostgreSQL 15 con las migraciones 001-008 aplicadas
-// (MANI-.NET/tests/Mani.Dispatch.Tests/Database/migrations, copia de MANI-APIGateway/database/migrations).
+// Se omite sin TEST_DATABASE_URL; en CI corre siempre. Preparación local: PostgreSQL 15 vacío y
+// scripts/preparar-base-pruebas.sh <MANI-APIGateway/database/migrations> (migraciones 001-008 y db/migrations).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

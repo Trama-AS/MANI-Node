@@ -1,5 +1,6 @@
-// Verifica las consultas SQL contra PostgreSQL real con el esquema oficial. Se omite sin TEST_DATABASE_URL.
-// Preparación local: una base PostgreSQL 15 con las migraciones 001-008 aplicadas (MANI-.NET/tests/.../Database/migrations).
+// Verifica las consultas SQL contra PostgreSQL real con el esquema oficial.
+// Se omite sin TEST_DATABASE_URL; en CI corre siempre. Preparación local: PostgreSQL 15 vacío y
+// scripts/preparar-base-pruebas.sh <MANI-APIGateway/database/migrations> (migraciones 001-008 y db/migrations).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
