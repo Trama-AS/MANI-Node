@@ -89,6 +89,9 @@ const { createPushProvider } = require('./infrastructure/push/createPushProvider
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
+const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
+const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
 
 const config = require('./config');
 
@@ -272,6 +275,12 @@ class Container {
       serviceRequestRepository: this.serviceRequestRepository,
       fileStorageService: this.fileStorageService,
     });
+
+    // Cotización (SCRUM-865): Core es dueño del estado tras la asignación (decisión 6A, SAD §7.4).
+    // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
+    this.quoteRepository = new PgQuoteRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createQuoteUseCase = new CreateQuoteUseCase({ quoteRepository: this.quoteRepository });
+    this.listQuotesUseCase = new ListQuotesUseCase({ quoteRepository: this.quoteRepository });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
