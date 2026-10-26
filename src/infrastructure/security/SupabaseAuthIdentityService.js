@@ -1,6 +1,10 @@
 const { createClient } = require('@supabase/supabase-js');
 const IAuthIdentityService = require('../../domain/ports/IAuthIdentityService');
-const { ConflictError, DomainError } = require('../../domain/errors/DomainError');
+const jwt = require('jsonwebtoken');
+const { ConflictError, DomainError, UnauthorizedError, ValidationError } = require('../../domain/errors/DomainError');
+
+const INVALID_RECOVERY_TOKEN = () =>
+  new UnauthorizedError('El enlace de recuperación no es válido o ya venció', 'INVALID_RECOVERY_TOKEN');
 
 /**
  * Identidad real contra Supabase Auth (QA/producción). createUser() solo crea
@@ -80,6 +84,48 @@ class SupabaseAuthIdentityService extends IAuthIdentityService {
     const client = this.supabaseClientFactory.getClient();
     const { error } = await client.auth.admin.deleteUser(userId);
     if (error) throw new DomainError(`Error eliminando identidad de autenticación: ${error.message}`, 'INTERNAL_ERROR', 500);
+  }
+
+  async requestPasswordRecovery({ email, redirectTo }) {
+    if (!this.supabaseAnonKey) {
+      throw new DomainError('SUPABASE_ANON_KEY no está configurada', 'INTERNAL_ERROR', 500);
+    }
+    // Cliente descartable, como en authenticate(): resetPasswordForEmail no debe tocar el de service-role.
+    const disposableClient = this.createDisposableClient(this.supabaseUrl, this.supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { error } = await disposableClient.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+    if (error) {
+      if (error.status === 429 || /rate.?limit/i.test(`${error.code || ''} ${error.message || ''}`)) {
+        throw new DomainError('Se enviaron demasiados correos de recuperación; intenta más tarde', 'RATE_LIMITED', 429);
+      }
+      throw new DomainError('No se pudo enviar el correo de recuperación', 'INTERNAL_ERROR', 500);
+    }
+  }
+
+  async resolveRecoveryUser(accessToken) {
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client.auth.getUser(accessToken);
+    if (error || !data?.user?.id) throw INVALID_RECOVERY_TOKEN();
+
+    // Un token de sesión normal (inicio de sesión con contraseña) no sirve para restablecerla sin conocerla:
+    // solo el que nace del enlace del correo. El proveedor ya verificó la firma y la vigencia con getUser().
+    const amr = jwt.decode(accessToken)?.amr;
+    if (Array.isArray(amr) && amr.some((entry) => entry?.method === 'password')) throw INVALID_RECOVERY_TOKEN();
+
+    return { userId: data.user.id };
+  }
+
+  async updatePassword(userId, newPassword) {
+    const client = this.supabaseClientFactory.getClient();
+    const { error } = await client.auth.admin.updateUserById(userId, { password: newPassword });
+    if (error) {
+      if (/password|weak|short/i.test(`${error.code || ''} ${error.message || ''}`)) {
+        throw new ValidationError('La contraseña nueva no cumple la política del proveedor', 'WEAK_PASSWORD');
+      }
+      throw new DomainError('No se pudo actualizar la contraseña', 'INTERNAL_ERROR', 500);
+    }
   }
 }
 

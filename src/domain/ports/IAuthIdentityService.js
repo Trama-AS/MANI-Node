@@ -23,6 +23,28 @@ class IAuthIdentityService {
   async deleteUser(_userId) {
     throw new Error('Método deleteUser() no implementado en IAuthIdentityService');
   }
+
+  /**
+   * Pide al proveedor de identidad que envíe el enlace de recuperación al correo (HU-M02-10). El proveedor
+   * responde igual exista o no la cuenta.
+   */
+  async requestPasswordRecovery(_params) {
+    throw new Error('Método requestPasswordRecovery() no implementado en IAuthIdentityService');
+  }
+
+  /**
+   * Valida el token que trae el enlace de recuperación y devuelve a quién pertenece.
+   * Lanza UnauthorizedError (INVALID_RECOVERY_TOKEN) si no es un token de recuperación vigente.
+   * @returns {Promise<{ userId: string }>}
+   */
+  async resolveRecoveryUser(_accessToken) {
+    throw new Error('Método resolveRecoveryUser() no implementado en IAuthIdentityService');
+  }
+
+  /** Fija la contraseña nueva de la cuenta y deja sin efecto el token de recuperación. */
+  async updatePassword(_userId, _newPassword) {
+    throw new Error('Método updatePassword() no implementado en IAuthIdentityService');
+  }
 }
 
 module.exports = IAuthIdentityService;
