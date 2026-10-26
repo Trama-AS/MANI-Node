@@ -19,9 +19,42 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | Versión | Archivo | Ticket | Descripción |
 | :--- | :--- | :--- | :--- |
 | **`0001`** | [`0001_add_identidad_aliado_core_node.sql`](migrations/0001_add_identidad_aliado_core_node.sql) | `SCRUM-1065` | Columnas de identidad (`tipo_documento`, `numero_documento`, `telefono`) e índice único por tenant en `aliado`. |
+| **`0002`** | [`0002_cliente_empresa_multiples_sitios.sql`](migrations/0002_cliente_empresa_multiples_sitios.sql) | `SCRUM-852` | Columnas `razon_social`, `nit`, `telefono` y `nombre_representante` en `cliente`, y `nombre` en `sitio` (RF-08). |
+| **`0003`** | [`0003_reglas_contextuales_sitio.sql`](migrations/0003_reglas_contextuales_sitio.sql) | `SCRUM-853` | `sitio.nombre` e índice `(tenant_id, id)` para las reglas del sitio (RF-09). |
+| **`0004`** | [`0004_documentos_legales_habeas_data.sql`](migrations/0004_documentos_legales_habeas_data.sql) | `SCRUM-856` | Tablas `documento_legal` y `consentimiento_usuario` con RLS (Ley 1581). |
 | **`0005`** | [`0005_cerrar_exposiciones_rls.sql`](migrations/0005_cerrar_exposiciones_rls.sql) | `SCRUM-1334` | Cierra las 3 exposiciones inmediatas a `anon`: revoca `registrar_aliado_persona_natural`/`registrar_aliado_empresa`, retira políticas `USING (true)` de `documento_kyc` y habilita RLS en las 11 tablas de negocio pendientes. |
 | **`0006`** | [`0006_contexto_identidad.sql`](migrations/0006_contexto_identidad.sql) | `SCRUM-1104` | Crea los roles de servicio `mani_core_svc` y `mani_dispatch_svc` (`NOLOGIN NOBYPASSRLS`), concede `USAGE` sobre `auth` y define el esquema `app` (`app.tenant_id()`, `app.user_id()`, `app.user_role()`, `app.set_context(uuid, uuid, text)`). |
 | **`0007`** | [`0007_politicas_por_tenant.sql`](migrations/0007_politicas_por_tenant.sql) | `SCRUM-1104` | Aplica `ENABLE + FORCE ROW LEVEL SECURITY` en todas las tablas con `tenant_id`, impone la frontera de datos por `GRANT` (ADR-0030) y reemplaza las políticas legadas por políticas canónicas basadas en `app.*` con `TO` explícito. |
+| **`0008`** | [`0008_aliado_representante_legal.sql`](migrations/0008_aliado_representante_legal.sql) | `SCRUM-1063` | `nombre_representante_legal` y `documento_representante_legal` en `aliado` (aliado empresa). |
+| **`0009`** | [`0009_usuario_direccion_foto.sql`](migrations/0009_usuario_direccion_foto.sql) | `SCRUM-854` | `direccion` y `foto_url` (ruta en Storage) en `usuario` para editar el perfil propio. |
+| **`0010`** | [`0010_consentimiento_tenant_obligatorio.sql`](migrations/0010_consentimiento_tenant_obligatorio.sql) | `SCRUM-856` | `consentimiento_usuario.tenant_id` pasa a `NOT NULL`, rellenando antes las filas antiguas desde `usuario.tenant_id`. |
+| ~~`0011`~~ | — | `SCRUM-865` | **Retirado.** Ver §2.1. |
+| ~~`0012`~~ | — | `SCRUM-869` | **Retirado.** Ver §2.1. |
+| **`0013`** | [`0013_sitio_contacto.sql`](migrations/0013_sitio_contacto.sql) | `SCRUM-852` | `contacto_nombre` y `contacto_telefono` en `sitio` (contacto de la sede). |
+
+La siguiente migración libre es la **`0014`**.
+
+### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
+
+La serie salta de `0010` a `0013` en `develop` y `release`. **No faltan archivos:** los dos números los consumieron ramas cuyos PR se cerraron sin fusionar el 19 de octubre de 2026, cuando sus historias salieron del Sprint 4.
+
+| Número | Contenido | Rama y commit | PR | Motivo del cierre |
+| :--- | :--- | :--- | :--- | :--- |
+| `0011` | `0011_cotizacion_observacion.sql`: `ALTER TABLE cotizacion ADD COLUMN observacion TEXT` | `feature/SCRUM-865-cotizacion-mano-obra-materiales` (`58159cc`) | MANI-Node#32 | SCRUM-865 (US-04.2.1) salió del Sprint 4 sin refinar. |
+| `0012` | `0012_evento_servicio_evidencia.sql`: `ALTER TABLE evento_servicio ADD COLUMN evidencia_ruta TEXT` (ruta en Storage, ADR-0032 §6) | `feature/SCRUM-869-registrar-eventos-ejecucion` (`cd32501`) | MANI-Node#35 | SCRUM-869 (US-04.3.2) salió del Sprint 4 sin refinar. |
+
+Mientras la `0013` entraba por SCRUM-852, esas ramas ya existían. Por eso la `0013` tomó el número siguiente a las dos.
+
+**Regla para los despliegues:**
+1. Ningún ambiente debe buscar ni aplicar `0011` ni `0012`. El salto es intencional; no es un archivo perdido.
+2. Esos dos números **no se reutilizan**. Si alguna base aplicó esas ramas para probarlas, ya tiene registradas las versiones `'0011'` o `'0012'` en `schema_migrations`. Como el `INSERT ... ON CONFLICT DO NOTHING` no la rechaza, otra migración con el mismo número se daría por aplicada sin crear sus objetos.
+3. Para comprobarlo en cada ambiente: `SELECT version, description FROM schema_migrations WHERE version IN ('0011', '0012');` debe devolver 0 filas. Si devuelve alguna, quien la aplicó registra en esta sección el ambiente y la fecha, y la columna se conserva: las dos son aditivas y nullable.
+
+**Decisión sobre recuperar `0012_evento_servicio_evidencia.sql`:** no se recupera en este cambio. La columna solo sirve a SCRUM-869 (CONS-25), que en el Sprint 5 depende de CONS-24 y de esta tarea. Cuando SCRUM-869 se retome, su PR trae el mismo contenido con el **siguiente número libre** (hoy `0014`) y la descripción `'SCRUM-869 columna evidencia_ruta ...'`. El archivo se recupera con `git show cd32501:db/migrations/0012_evento_servicio_evidencia.sql`. Lo mismo vale para la `0011` de SCRUM-865 (`git show 58159cc:db/migrations/0011_cotizacion_observacion.sql`).
+
+La prueba `tests/unit/db/migrationsNumbering.test.js` vigila la regla: falla si aparece un número repetido, un hueco distinto de los retirados, un archivo `0011`/`0012`, o una migración `0005+` que registre en `schema_migrations` una versión distinta de la de su nombre.
+
+**Nota sobre `0001`–`0004`:** estas cuatro registran versiones con prefijo (`'mani-node-0001'`, `'mani-node-0002-empresa'`, `'mani-node-0003-reglas-sitio'`, `'mani-node-0004'`) y no el número solo. Ya se aplicaron y son inmutables (ADR-0030 §1), así que no se editan. Desde la `0005` la versión es el número de cuatro dígitos.
 
 ---
 

@@ -24,6 +24,7 @@ const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseA
 const InMemoryFileStorageService = require('./infrastructure/security/InMemoryFileStorageService');
 const SupabaseFileStorageService = require('./infrastructure/security/SupabaseFileStorageService');
 const TransactionalAliadoCategoriaRepository = require('./infrastructure/repositories/TransactionalAliadoCategoriaRepository');
+const TransactionalAliadoRepository = require('./infrastructure/repositories/TransactionalAliadoRepository');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
@@ -65,6 +66,7 @@ const RegisterAllyCompanyUseCase = require('./application/useCases/auth/Register
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
 const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
+const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/UpdateCompanyClientSiteUseCase');
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
@@ -82,6 +84,8 @@ const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListE
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
+const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
+const { createPushProvider } = require('./infrastructure/push/createPushProvider');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
@@ -117,7 +121,12 @@ class Container {
       this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.catalogRepository = new SupabaseCatalogRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.aliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      const supabaseAliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      // Con DATABASE_URL la resolución de la verificación se escribe por pg, donde una prueba
+      // contra PostgreSQL acredita que verificado_por queda en la base (CA-5, TEC-20).
+      this.aliadoRepository = this.pgPoolFactory.isConfigured()
+        ? new TransactionalAliadoRepository({ pgPoolFactory: this.pgPoolFactory, delegate: supabaseAliadoRepository })
+        : supabaseAliadoRepository;
       const supabaseAliadoCategoriaRepository = new SupabaseAliadoCategoriaRepository({
         supabaseClientFactory: this.supabaseClientFactory,
       });
@@ -231,8 +240,12 @@ class Container {
       solicitudContextRepository: this.solicitudContextRepository,
     });
     this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
-    this.publishNotificationUseCase = new PublishNotificationUseCase({ notificacionRepository: this.notificacionRepository });
+    // Proveedor push por ambiente (PUSH_PROVIDER, por omisión el mock de HU-M09-06): sin FCM ni APNs reales.
+    this.pushProvider = createPushProvider(config.pushProvider);
+    const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
+    this.publishNotificationUseCase = new PublishNotificationUseCase(notificationDeps);
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
+    this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
@@ -298,6 +311,8 @@ class Container {
     this.addSiteToCompanyClientUseCase = new AddSiteToCompanyClientUseCase(this.companyClientRepository);
 
     this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
+
+    this.updateCompanyClientSiteUseCase = new UpdateCompanyClientSiteUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
       tenantRepository: this.tenantRepository,

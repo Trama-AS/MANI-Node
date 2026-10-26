@@ -5,9 +5,11 @@ const TIPOS = ['OFERTA_DESPACHO'];
 const CANALES = ['PUSH'];
 
 class PublishNotificationUseCase {
-  constructor({ notificacionRepository }) {
+  constructor({ notificacionRepository, pushProvider }) {
     if (!notificacionRepository) throw new Error('notificacionRepository es requerido para PublishNotificationUseCase');
+    if (!pushProvider) throw new Error('pushProvider es requerido para PublishNotificationUseCase');
     this.notificacionRepository = notificacionRepository;
+    this.pushProvider = pushProvider;
   }
 
   async execute({ session, body = {} }) {
@@ -40,7 +42,22 @@ class PublishNotificationUseCase {
     if (!created) {
       throw new NotFoundError('MANI-DSP-404: aliado no encontrado para el tenant', 'MANI-DSP-404');
     }
-    return created;
+
+    // La notificación ya quedó en la bandeja del aliado. Si la entrega push falla, no se pierde ni se
+    // repite: se informa como FALLIDA y el usuario la ve igual al abrir su bandeja (HU-M09-06).
+    let entrega;
+    try {
+      entrega = await this.pushProvider.send({
+        notificacionId: created.id,
+        tenantId,
+        usuarioId: created.usuarioId,
+        tipo: body.tipo,
+        payload: body.payload,
+      });
+    } catch {
+      entrega = { proveedor: this.pushProvider.name, estado: 'FALLIDA', simulada: this.pushProvider.name === 'mock' };
+    }
+    return { id: created.id, entrega };
   }
 }
 

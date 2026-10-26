@@ -5,6 +5,7 @@ const ListEligibleAlliesUseCase = require('../../../../src/application/useCases/
 const GetSolicitudContextUseCase = require('../../../../src/application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('../../../../src/application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('../../../../src/application/useCases/dispatch/ListNotificationsUseCase');
+const MockPushProvider = require('../../../../src/infrastructure/push/MockPushProvider');
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER_TENANT = '22222222-2222-4222-8222-222222222222';
@@ -138,12 +139,13 @@ test('contexto: id inválido responde 400 y un aliado 403', async () => {
 
 // ---- publicar notificación ----
 
-function publishUseCase(result = { id: 'n1' }) {
+function publishUseCase(result = { id: 'n1', usuarioId: 'u-ally' }, pushProvider = new MockPushProvider({ idFactory: () => 'x' })) {
   const calls = [];
   const useCase = new PublishNotificationUseCase({
     notificacionRepository: { createForAlly: async (n) => { calls.push(n); return result; } },
+    pushProvider,
   });
-  return { useCase, calls };
+  return { useCase, calls, pushProvider };
 }
 
 const validBody = () => ({
@@ -155,9 +157,40 @@ test('publicar: crea la notificación con el tenant de la sesión', async () => 
 
   const created = await useCase.execute({ session: client, body: validBody() });
 
-  assert.deepEqual(created, { id: 'n1' });
+  assert.deepEqual(created, {
+    id: 'n1',
+    entrega: { proveedor: 'mock', estado: 'SIMULADA', simulada: true, mensajeId: 'mock-x' },
+  });
   assert.equal(calls[0].tenantId, TENANT);
   assert.equal(calls[0].allyId, ALLY);
+});
+
+test('publicar: entrega por el proveedor push al usuario del aliado después de persistir (HU-M09-06)', async () => {
+  const { useCase, pushProvider } = publishUseCase();
+
+  await useCase.execute({ session: client, body: validBody() });
+
+  const [sent] = pushProvider.sentTo(TENANT, 'u-ally');
+  assert.equal(sent.notificacionId, 'n1');
+  assert.equal(sent.tipo, 'OFERTA_DESPACHO');
+  assert.deepEqual(sent.payload, validBody().payload);
+});
+
+test('publicar: si el proveedor push falla, la notificación queda persistida y la entrega se informa FALLIDA', async () => {
+  const failing = { name: 'mock', send: async () => { throw new Error('proveedor caído'); } };
+  const { useCase, calls } = publishUseCase(undefined, failing);
+
+  const created = await useCase.execute({ session: client, body: validBody() });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(created, { id: 'n1', entrega: { proveedor: 'mock', estado: 'FALLIDA', simulada: true } });
+});
+
+test('publicar: un aliado inexistente no llega al proveedor push', async () => {
+  const { useCase, pushProvider } = publishUseCase(null);
+
+  await assert.rejects(() => useCase.execute({ session: client, body: validBody() }), (err) => err.statusCode === 404);
+  assert.equal(pushProvider.sent.length, 0);
 });
 
 test('publicar: un tenant distinto en el cuerpo es cross-tenant (403) y no escribe', async () => {
@@ -175,7 +208,7 @@ test('publicar: el mismo tenant en el cuerpo se acepta', async () => {
 
   const created = await useCase.execute({ session: client, body: { ...validBody(), tenantId: TENANT } });
 
-  assert.deepEqual(created, { id: 'n1' });
+  assert.equal(created.id, 'n1');
   assert.equal(calls.length, 1);
 });
 
@@ -212,6 +245,7 @@ for (const [name, mutate] of [
 
 test('publicar: exige el repositorio', () => {
   assert.throws(() => new PublishNotificationUseCase({}), /notificacionRepository/);
+  assert.throws(() => new PublishNotificationUseCase({ notificacionRepository: {} }), /pushProvider/);
 });
 
 // ---- listar notificaciones ----

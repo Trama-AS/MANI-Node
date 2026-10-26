@@ -512,6 +512,53 @@ test('PATCH /api/v1/catalog/categories/:id/deactivate y /activate alternan el fl
   assert.equal(activateRes.body.category.active, true);
 });
 
+test('PATCH /deactivate y /activate auditan con el usuario del token y el X-Correlation-ID de la petición (T10 / SCRUM-1391)', async () => {
+  const tenantId = 'tenant-categorias-auditoria';
+  const createRes = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ name: 'Cerrajería', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const id = createRes.body.category.id;
+
+  const auditoria = [];
+  const original = container.setCategoryStatusUseCase.auditLogger;
+  container.setCategoryStatusUseCase.auditLogger = (entry) => auditoria.push(entry);
+  try {
+    const desactivar = await request(app)
+      .patch(`/api/v1/catalog/categories/${id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+      .set('X-Correlation-ID', 'corr-auditoria-1');
+    assert.equal(desactivar.status, 200);
+
+    const activar = await request(app)
+      .patch(`/api/v1/catalog/categories/${id}/activate`)
+      .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+      .set('X-Correlation-ID', 'corr-auditoria-2');
+    assert.equal(activar.status, 200);
+
+    const otroTenant = await request(app)
+      .patch(`/api/v1/catalog/categories/${id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken('tenant-ajeno-auditoria')}`);
+    assert.equal(otroTenant.status, 404);
+  } finally {
+    container.setCategoryStatusUseCase.auditLogger = original;
+  }
+
+  assert.deepEqual(
+    auditoria.map(({ decision, realizado_por, tenant_id, categoria_id, correlation_id }) => ({
+      decision,
+      realizado_por,
+      tenant_id,
+      categoria_id,
+      correlation_id,
+    })),
+    [
+      { decision: 'DESACTIVAR', realizado_por: 'admin-1', tenant_id: tenantId, categoria_id: id, correlation_id: 'corr-auditoria-1' },
+      { decision: 'ACTIVAR', realizado_por: 'admin-1', tenant_id: tenantId, categoria_id: id, correlation_id: 'corr-auditoria-2' },
+    ]
+  );
+});
+
 // --- Reglas de categoría delegadas al Rules Service (US-03.1.1-M6) ---
 
 test('POST /api/v1/catalog/categories delega en Rules con el tenant y el rol del token, y persiste lo normalizado', async () => {

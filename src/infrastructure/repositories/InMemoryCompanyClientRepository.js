@@ -60,6 +60,13 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
     return null;
   }
 
+  async findByUsuarioId(usuarioId, tenantId) {
+    for (const client of this.clients.values()) {
+      if (client.usuarioId === usuarioId && client.tenantId === tenantId) return client;
+    }
+    return null;
+  }
+
   async findByNitAndTenant(nit, tenantId) {
     for (const client of this.clients.values()) {
       if (client.nit === nit && client.tenantId === tenantId) {
@@ -88,6 +95,8 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
       nombre: site.nombre,
       direccion: site.direccion,
       zonaId: site.zonaId,
+      contactoNombre: site.contactoNombre,
+      contactoTelefono: site.contactoTelefono,
       reglas: site.reglas,
       creadoEn: new Date(),
     });
@@ -103,6 +112,20 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
       }
     }
     return results;
+  }
+
+  async findSiteById(clienteId, siteId, tenantId) {
+    const site = this.sites.get(siteId);
+    if (!site || site.clienteId !== clienteId || site.tenantId !== tenantId) return null;
+    return site;
+  }
+
+  async updateSite(clienteId, tenantId, site) {
+    const actual = await this.findSiteById(clienteId, site.id, tenantId);
+    if (!actual) return null;
+    const guardada = new Site({ ...site.toJSON(), reglas: actual.reglas, creadoEn: actual.creadoEn });
+    this.sites.set(site.id, guardada);
+    return guardada;
   }
 }
 

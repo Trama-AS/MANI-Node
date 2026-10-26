@@ -10,6 +10,7 @@ const ListEligibleAlliesUseCase = require('../../../src/application/useCases/dis
 const GetSolicitudContextUseCase = require('../../../src/application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('../../../src/application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('../../../src/application/useCases/dispatch/ListNotificationsUseCase');
+const MockPushProvider = require('../../../src/infrastructure/push/MockPushProvider');
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CATEGORIA = '33333333-3333-4333-8333-333333333333';
@@ -136,7 +137,8 @@ test('POST /notifications publica la oferta con el tenant del token', async () =
   const created = [];
   const fake = {
     publishNotificationUseCase: new PublishNotificationUseCase({
-      notificacionRepository: { createForAlly: async (n) => { created.push(n); return { id: 'n1' }; } },
+      notificacionRepository: { createForAlly: async (n) => { created.push(n); return { id: 'n1', usuarioId: 'u-ally' }; } },
+      pushProvider: new MockPushProvider(),
     }),
   };
   await withFakes(fake, async () => {
@@ -145,6 +147,7 @@ test('POST /notifications publica la oferta con el tenant del token', async () =
       .set('Authorization', bearer())
       .send({ allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: SOLICITUD } });
 
+    assert.equal(res.body.entrega.simulada, true);
     assert.equal(res.status, 201);
     assert.equal(created[0].tenantId, TENANT);
 
