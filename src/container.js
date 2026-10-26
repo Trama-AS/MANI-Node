@@ -70,6 +70,7 @@ const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/U
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
+const RegisterClientCompanyUseCase = require('./application/useCases/auth/RegisterClientCompanyUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
 const CreateAllyAbsenceUseCase = require('./application/useCases/availability/CreateAllyAbsenceUseCase');
@@ -384,6 +385,15 @@ class Container {
       clienteRepository: this.clienteRepository,
       sitioRepository: this.sitioRepository,
       authIdentityService: this.authIdentityService,
+    });
+
+    this.registerClientCompanyUseCase = new RegisterClientCompanyUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      clienteRepository: this.clienteRepository,
+      authIdentityService: this.authIdentityService,
+      registerUserConsentUseCase: this.registerUserConsentUseCase,
+      userConsentRepository: this.userConsentRepository,
     });
   }
 }
