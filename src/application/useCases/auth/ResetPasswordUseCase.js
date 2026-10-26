@@ -46,7 +46,7 @@ class ResetPasswordUseCase {
     const usuario = await this.usuarioRepository.findById(tenant.id, userId);
     if (!usuario || !ACTIVE_STATES.has(String(usuario.estado).toUpperCase())) throw invalidToken();
 
-    await this.authIdentityService.updatePassword(userId, newPassword);
+    await this.authIdentityService.updatePassword(userId, newPassword, accessToken);
 
     this.auditLogger({
       event: 'US-02.recuperacion_contrasena.restablecida',

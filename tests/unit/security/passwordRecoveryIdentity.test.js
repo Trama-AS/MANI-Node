@@ -9,9 +9,13 @@ const TENANT = 'tenant-1';
 
 // ---- Supabase ----
 
-function supabaseService({ resetResult = { error: null }, getUserResult, updateResult = { error: null } } = {}) {
+function supabaseService({ resetResult = { error: null }, getUserResult, updateResult = { error: null }, signOutResult = { error: null } } = {}) {
   const calls = { reset: [], getUser: [], update: [], disposable: [] };
-  const admin = { updateUserById: async (...a) => (calls.update.push(a), updateResult) };
+  calls.signOut = [];
+  const admin = {
+    updateUserById: async (...a) => (calls.update.push(a), updateResult),
+    signOut: async (...a) => (calls.signOut.push(a), signOutResult),
+  };
   const client = { auth: { admin, getUser: async (t) => (calls.getUser.push(t), getUserResult) } };
   const service = new SupabaseAuthIdentityService({
     supabaseClientFactory: makeFakeClientFactory(client),
@@ -94,6 +98,28 @@ test('supabase: updatePassword usa la API de administración con el id', async (
   const { service, calls } = supabaseService();
   await service.updatePassword('u-1', 'NuevaClave123');
   assert.deepEqual(calls.update[0], ['u-1', { password: 'NuevaClave123' }]);
+});
+
+test('supabase: updatePassword revoca solo la sesión del enlace para que no sirva una segunda vez', async () => {
+  const { service, calls } = supabaseService();
+  await service.updatePassword('u-1', 'NuevaClave123', 'tok-enlace');
+  assert.deepEqual(calls.signOut, [['tok-enlace', 'local']]);
+});
+
+test('supabase: si no se puede revocar la sesión del enlace la contraseña ya cambió y solo se deja en el log', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const { service } = supabaseService({ signOutResult: { error: { message: 'session not found' } } });
+
+  await service.updatePassword('u-1', 'NuevaClave123', 'tok-enlace');
+
+  assert.equal(warn.mock.callCount(), 1);
+  assert.equal(warn.mock.calls[0].arguments[0].includes('tok-enlace'), false, 'el log no lleva el token');
+});
+
+test('supabase: una contraseña rechazada por el proveedor no revoca el enlace (sigue pudiendo reintentar)', async () => {
+  const { service, calls } = supabaseService({ updateResult: { error: { code: 'weak_password', message: 'too short' } } });
+  await assert.rejects(() => service.updatePassword('u-1', 'x', 'tok-enlace'));
+  assert.deepEqual(calls.signOut, []);
 });
 
 test('supabase: updatePassword distingue contraseña débil de falla interna', async () => {

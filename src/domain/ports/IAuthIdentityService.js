@@ -41,8 +41,11 @@ class IAuthIdentityService {
     throw new Error('Método resolveRecoveryUser() no implementado en IAuthIdentityService');
   }
 
-  /** Fija la contraseña nueva de la cuenta y deja sin efecto el token de recuperación. */
-  async updatePassword(_userId, _newPassword) {
+  /**
+   * Fija la contraseña nueva de la cuenta y deja sin efecto el token del enlace, de modo que no sirva una
+   * segunda vez. Revocar el token no cierra las demás sesiones del usuario.
+   */
+  async updatePassword(_userId, _newPassword, _accessToken) {
     throw new Error('Método updatePassword() no implementado en IAuthIdentityService');
   }
 }

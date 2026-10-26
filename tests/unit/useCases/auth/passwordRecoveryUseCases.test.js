@@ -84,12 +84,25 @@ test('solicitud: validaciones y tenant inexistente o inactivo', async () => {
   assert.equal(calls.recovery.length, 0);
 });
 
-test('solicitud: si el proveedor falla el error se propaga (no se oculta como éxito)', async () => {
-  const { deps } = setup();
+test('solicitud: el límite de envíos del proveedor no delata la cuenta: se responde igual y se audita', async () => {
+  const { deps, calls } = setup();
   deps.authIdentityService.requestPasswordRecovery = async () => {
     throw Object.assign(new Error('x'), { statusCode: 429, code: 'RATE_LIMITED' });
   };
-  await assert.rejects(() => new RequestPasswordRecoveryUseCase(deps).execute({ tenantSlug: 'acme', email: 'a@mani.test' }), (e) => e.code === 'RATE_LIMITED');
+
+  const result = await new RequestPasswordRecoveryUseCase(deps).execute({ tenantSlug: 'acme', email: 'a@mani.test' });
+
+  assert.deepEqual(result, { accepted: true });
+  assert.equal(calls.audit[0].correo_enviado, false);
+  assert.equal(calls.audit[0].limitado_por_proveedor, true);
+});
+
+test('solicitud: cualquier otro fallo del proveedor se propaga (no se oculta como éxito)', async () => {
+  const { deps } = setup();
+  deps.authIdentityService.requestPasswordRecovery = async () => {
+    throw Object.assign(new Error('x'), { statusCode: 500, code: 'INTERNAL_ERROR' });
+  };
+  await assert.rejects(() => new RequestPasswordRecoveryUseCase(deps).execute({ tenantSlug: 'acme', email: 'a@mani.test' }), (e) => e.code === 'INTERNAL_ERROR');
 });
 
 // ---- restablecimiento ----
@@ -100,7 +113,7 @@ test('restablecer: con token válido de una cuenta activa del tenant cambia la c
   const { deps, calls } = setup();
   assert.deepEqual(await reset(new ResetPasswordUseCase(deps)), { reset: true });
 
-  assert.deepEqual(calls.update, [['u-1', 'ClaveNueva123']]);
+  assert.deepEqual(calls.update, [['u-1', 'ClaveNueva123', 'tok']], 'pasa el token del enlace para que se revoque');
   assert.deepEqual(calls.lookups[0], ['id', 'tenant-1', 'u-1']);
   assert.equal(calls.audit[0].usuario_id, 'u-1');
   assert.equal(JSON.stringify(calls.audit).includes('ClaveNueva123'), false);

@@ -117,7 +117,7 @@ class SupabaseAuthIdentityService extends IAuthIdentityService {
     return { userId: data.user.id };
   }
 
-  async updatePassword(userId, newPassword) {
+  async updatePassword(userId, newPassword, accessToken) {
     const client = this.supabaseClientFactory.getClient();
     const { error } = await client.auth.admin.updateUserById(userId, { password: newPassword });
     if (error) {
@@ -125,6 +125,16 @@ class SupabaseAuthIdentityService extends IAuthIdentityService {
         throw new ValidationError('La contraseña nueva no cumple la política del proveedor', 'WEAK_PASSWORD');
       }
       throw new DomainError('No se pudo actualizar la contraseña', 'INTERNAL_ERROR', 500);
+    }
+
+    // El enlace sirve una sola vez: el access_token del correo sigue siendo válido hasta vencer, así que se
+    // revoca su sesión ('local' no toca las demás sesiones del usuario). La contraseña ya cambió; si la
+    // revocación falla no se le reporta error a la persona, pero queda en el log para operaciones.
+    if (accessToken) {
+      const { error: revokeError } = await client.auth.admin.signOut(accessToken, 'local');
+      if (revokeError) {
+        console.warn(`⚠️  No se pudo revocar la sesión del enlace de recuperación del usuario ${userId}: ${revokeError.message}`);
+      }
     }
   }
 }
