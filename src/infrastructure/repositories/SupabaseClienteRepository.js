@@ -38,6 +38,9 @@ class SupabaseClienteRepository extends IClienteRepository {
       .select('id, usuario_id, nit')
       .eq('tenant_id', tenantId)
       .eq('nit', nit)
+      // Sin índice único (tenant_id, nit) puede haber duplicados previos: limit(1) evita que maybeSingle()
+      // falle y convierta el 409 esperado en un 500.
+      .limit(1)
       .maybeSingle();
     if (error) throw new DomainError(`Error consultando cliente por NIT: ${error.message}`, 'INTERNAL_ERROR', 500);
     return data;

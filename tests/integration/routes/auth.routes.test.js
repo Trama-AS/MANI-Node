@@ -370,6 +370,21 @@ test('POST /api/v1/auth/register/client/company con el mismo NIT responde 409 CO
   assert.equal(second.body.code, 'COMPANY_ALREADY_REGISTERED');
 });
 
+test('POST /api/v1/auth/register/client/company: el mismo NIT en otro tenant se registra (201) y en el mismo tenant da 409', async () => {
+  const nit = `7${String(Date.now()).slice(-8)}-5`;
+
+  const enA = await registerClientCompanyRequest({ nit, tenantSlug: 'trama-demo' });
+  assert.equal(enA.status, 201);
+
+  const enB = await registerClientCompanyRequest({ nit, tenantSlug: 'plomeria-express' });
+  assert.equal(enB.status, 201, 'el NIT de otro tenant no cuenta como duplicado');
+  assert.notEqual(enA.body.profile.tenantId, enB.body.profile.tenantId);
+
+  const repetidoEnA = await registerClientCompanyRequest({ nit, tenantSlug: 'trama-demo' });
+  assert.equal(repetidoEnA.status, 409);
+  assert.equal(repetidoEnA.body.code, 'COMPANY_ALREADY_REGISTERED');
+});
+
 test('POST /api/v1/auth/register/client/company sin aceptar términos responde 400 TERMS_NOT_ACCEPTED', async () => {
   const res = await registerClientCompanyRequest({ acceptsTerms: false });
   assert.equal(res.status, 400);

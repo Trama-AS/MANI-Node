@@ -51,7 +51,7 @@ test('deleteByUsuarioId lanza DomainError INTERNAL_ERROR si Supabase reporta err
 function recordingClient(result) {
   const calls = [];
   const builder = {};
-  for (const m of ['select', 'eq', 'upsert', 'delete']) {
+  for (const m of ['select', 'eq', 'upsert', 'delete', 'limit']) {
     builder[m] = (...args) => {
       calls.push([m, ...args]);
       return builder;
@@ -93,6 +93,7 @@ test('findByNit filtra por tenant y NIT y devuelve la fila o null', async () => 
 
   assert.equal(found.id, 'c1');
   assert.deepEqual(calls.filter(([m]) => m === 'eq'), [['eq', 'tenant_id', 't1'], ['eq', 'nit', '900123456-7']]);
+  assert.deepEqual(calls.find(([m]) => m === 'limit'), ['limit', 1], 'limit(1) evita el error de maybeSingle() con NIT duplicado');
 
   const empty = new SupabaseClienteRepository({ supabaseClientFactory: makeFakeClientFactory(recordingClient({ data: null, error: null }).client) });
   assert.equal(await empty.findByNit('t1', 'x'), null);
