@@ -89,6 +89,7 @@ const { createPushProvider } = require('./infrastructure/push/createPushProvider
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
 
 const config = require('./config');
 
@@ -271,6 +272,9 @@ class Container {
     this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
       fileStorageService: this.fileStorageService,
+    });
+    this.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
     });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
