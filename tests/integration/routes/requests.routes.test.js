@@ -89,6 +89,57 @@ test('POST /solicitudes con la misma clave de idempotencia responde 200 con la s
   }
 ));
 
+test('POST /solicitudes toma la clave de la cabecera Idempotency-Key y pasa la huella al repositorio', (() => {
+  const llamadas = [];
+  return conRepositorio(
+    async (ctx, datos) => { llamadas.push(datos); return { solicitud: { id: 'sol-1' }, creada: true }; },
+    async () => {
+      const res = await request(app)
+        .post('/api/v1/solicitudes')
+        .set('Authorization', `Bearer ${token()}`)
+        .set('Idempotency-Key', '66666666-6666-4666-8666-666666666666')
+        .send({ categoriaId: CAT, descripcion, sitioId: SITIO });
+
+      assert.equal(res.status, 201);
+      assert.equal(llamadas[0].claveIdempotencia, '66666666-6666-4666-8666-666666666666');
+      assert.match(llamadas[0].huellaIdempotencia, /^[0-9a-f]{64}$/);
+    }
+  );
+})());
+
+test('POST /solicitudes con cabecera y cuerpo de claves distintas responde 422 MANI-SOL-422K', conRepositorio(
+  async () => assert.fail('no debe llegar al repositorio'),
+  async () => {
+    const res = await request(app)
+      .post('/api/v1/solicitudes')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('Idempotency-Key', '77777777-7777-4777-8777-777777777777')
+      .send({ categoriaId: CAT, descripcion, sitioId: SITIO, claveIdempotencia: '66666666-6666-4666-8666-666666666666' });
+
+    assert.equal(res.status, 422);
+    assert.equal(res.body.code, 'MANI-SOL-422K');
+  }
+));
+
+test('POST /solicitudes con una clave ya usada para otros datos responde 409 MANI-SOL-409K con el formato único', conRepositorio(
+  async () => {
+    const { ConflictError } = require('../../../src/domain/errors/DomainError');
+    throw new ConflictError('MANI-SOL-409K: la clave de idempotencia ya se usó con otros datos', 'MANI-SOL-409K');
+  },
+  async () => {
+    const res = await request(app)
+      .post('/api/v1/solicitudes')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Correlation-ID', 'corr-409k')
+      .send({ categoriaId: CAT, descripcion, sitioId: SITIO, claveIdempotencia: '66666666-6666-4666-8666-666666666666' });
+
+    assert.equal(res.status, 409);
+    assert.equal(res.body.code, 'MANI-SOL-409K');
+    assert.equal(res.body.correlationId, 'corr-409k');
+    assert.equal(res.body.solicitud, undefined, 'no revela la solicitud que tiene esa clave');
+  }
+));
+
 test('sin DATABASE_URL la creación falla cerrado con 503', async (t) => {
   if (container.pgPoolFactory.isConfigured()) {
     t.skip('DATABASE_URL está configurada');
