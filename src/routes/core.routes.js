@@ -108,5 +108,7 @@ router.put('/catalog/categories/:id', authenticate, requireAdmin, catalogControl
 router.patch('/catalog/categories/:id/activate', authenticate, requireAdmin, catalogController.activateCategory);
 router.patch('/catalog/categories/:id/deactivate', authenticate, requireAdmin, catalogController.deactivateCategory);
 
-module.exports = router;
+// Mensajería cliente-aliado (HU-M09-02 / SCRUM-881), en su propio módulo de rutas.
+router.use(require('./core/messages.routes'));
 
+module.exports = router;

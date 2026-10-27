@@ -93,6 +93,8 @@ const { createPaymentProvider } = require('./infrastructure/payments/createPayme
 const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
 const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
 const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgMessageRepository = require('./infrastructure/repositories/PgMessageRepository');
+const MessagesUseCase = require('./application/useCases/messages/MessagesUseCase');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
@@ -273,6 +275,10 @@ class Container {
       paymentProvider: this.paymentProvider,
     });
     this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
+
+    // Mensajería cliente-aliado por servicio (HU-M09-02 / SCRUM-881).
+    this.messageRepository = new PgMessageRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.messagesUseCase = new MessagesUseCase({ messageRepository: this.messageRepository });
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
