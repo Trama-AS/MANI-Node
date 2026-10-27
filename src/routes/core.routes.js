@@ -9,6 +9,7 @@ const dispatchIntegrationController = require('../controllers/dispatchIntegratio
 const requestsController = require('../controllers/requests.controller');
 const notificationsController = require('../controllers/notifications.controller');
 const quotesController = require('../controllers/quotes.controller');
+const executionController = require('../controllers/execution.controller');
 const { authenticate, requireRole } = require('../middlewares/auth.middleware');
 
 const router = Router();
@@ -71,6 +72,10 @@ router.get('/solicitudes/:id/cotizaciones', authenticate, quotesController.listQ
 router.post('/cotizaciones/:id/aceptar', authenticate, quotesController.acceptQuote);
 router.post('/cotizaciones/:id/rechazar', authenticate, quotesController.rejectQuote);
 router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQuote);
+// US-04.3.1 (SCRUM-868): el aliado asignado marca inicio y fin; el cliente dueño y el aliado consultan las marcas.
+router.post('/solicitudes/:id/iniciar', authenticate, executionController.startExecution);
+router.post('/solicitudes/:id/finalizar', authenticate, executionController.finishExecution);
+router.get('/solicitudes/:id/ejecucion', authenticate, executionController.getExecution);
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
 // aliado, pre-auth): devuelve las categorías globales de fixtures más las

@@ -97,6 +97,8 @@ const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteReposito
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
 const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
+const PgServiceExecutionRepository = require('./infrastructure/repositories/PgServiceExecutionRepository');
+const ServiceExecutionUseCase = require('./application/useCases/services/ServiceExecutionUseCase');
 
 const config = require('./config');
 
@@ -291,6 +293,11 @@ class Container {
     this.createQuoteUseCase = new CreateQuoteUseCase({ quoteRepository: this.quoteRepository });
     this.listQuotesUseCase = new ListQuotesUseCase({ quoteRepository: this.quoteRepository });
     this.respondQuoteUseCase = new RespondQuoteUseCase({ quoteRepository: this.quoteRepository });
+    // Ejecución del servicio (SCRUM-868), con el mismo criterio: sin DATABASE_URL responde 503.
+    this.serviceExecutionRepository = new PgServiceExecutionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.serviceExecutionUseCase = new ServiceExecutionUseCase({
+      serviceExecutionRepository: this.serviceExecutionRepository,
+    });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
