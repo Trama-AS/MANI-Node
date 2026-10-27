@@ -7,6 +7,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 const container = require('../../../src/container');
+const Profile = require('../../../src/domain/entities/Profile');
 const { startFakeRulesService } = require('../../helpers/fakeRulesService');
 
 let rules;
@@ -29,12 +30,59 @@ function signTestToken({ sub, tenantId, role }) {
   });
 }
 
-test('GET /api/v1/tenants responde 200 con el listado de tenants', async () => {
+// ---- SCRUM-1364 (HU-M01-01): el listado global de tenants no se enumera ----
+
+const TENANT_A = 'trama-demo';
+const TENANT_B = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+const bearerOf = (opts) => `Bearer ${signTestToken(opts)}`;
+
+test('C2: GET /api/v1/tenants sin sesión responde 401 y no devuelve datos', async () => {
   const res = await request(app).get('/api/v1/tenants');
 
+  assert.equal(res.status, 401);
+  assert.equal(res.body.data, undefined);
+});
+
+test('C2: ningún rol de tenant puede listar todos los tenants (403 sin datos), ni siquiera el admin del tenant', async () => {
+  for (const role of ['cliente', 'aliado', 'admin_tenant']) {
+    const res = await request(app).get('/api/v1/tenants').set('Authorization', bearerOf({ sub: 'u-1', tenantId: TENANT_A, role }));
+
+    assert.equal(res.status, 403, `rol ${role}`);
+    assert.equal(res.body.code, 'FORBIDDEN');
+    assert.equal(res.body.data, undefined, `rol ${role} no debe recibir tenants`);
+    assert.equal(JSON.stringify(res.body).includes('Plomería'), false, 'la respuesta no nombra a otros tenants');
+  }
+});
+
+test('C3: solo el permiso explícito de plataforma lista todos los tenants', async () => {
+  const res = await request(app).get('/api/v1/tenants').set('Authorization', bearerOf({ sub: 'root-1', tenantId: TENANT_A, role: 'admin_plataforma' }));
+
   assert.equal(res.status, 200);
-  assert.ok(Array.isArray(res.body.data));
-  assert.equal(res.body.data[0].id, 'trama-demo');
+  assert.ok(res.body.data.length >= 2);
+  assert.ok(res.body.data.some((t) => t.id === TENANT_B));
+});
+
+test('C1: el perfil trae el nombre del propio tenant y no el de otros', async () => {
+  container.profileRepository.profiles.push(
+    new Profile({ id: 'user-b', userId: 'user-b', role: 'CLIENT', fullName: 'Cliente B', status: 'VERIFIED', tenantId: TENANT_B })
+  );
+
+  const a = await request(app).get('/api/v1/profiles/me').set('Authorization', bearerOf({ sub: 'demo-user-1', tenantId: TENANT_A, role: 'cliente' }));
+  const b = await request(app).get('/api/v1/profiles/me').set('Authorization', bearerOf({ sub: 'user-b', tenantId: TENANT_B, role: 'cliente' }));
+
+  assert.equal(a.status, 200);
+  assert.equal(a.body.profile.tenantName, 'TRAMA Servicios Demo');
+  assert.equal(b.status, 200);
+  assert.equal(b.body.profile.tenantName, 'Plomería Express CDMX SA');
+  assert.equal(JSON.stringify(a.body).includes('Plomería'), false, 'el tenant A no ve el nombre del B');
+  assert.equal(JSON.stringify(b.body).includes('TRAMA'), false, 'el tenant B no ve el nombre del A');
+});
+
+test('C1: un usuario del tenant B no obtiene el perfil de un usuario del tenant A (404)', async () => {
+  const res = await request(app).get('/api/v1/profiles/me').set('Authorization', bearerOf({ sub: 'demo-user-1', tenantId: TENANT_B, role: 'cliente' }));
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.profile, undefined);
 });
 
 test('GET /api/v1/profiles/me sin Authorization responde 401', async () => {
