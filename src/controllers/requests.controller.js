@@ -7,6 +7,7 @@ async function createRequest(req, res, next) {
       user: req.user,
       body: req.body || {},
       files: req.files || [],
+      idempotencyKey: req.get('Idempotency-Key') || null,
     });
     // 201 si se creó; 200 si era un reintento con la misma clave de idempotencia.
     res.status(creada ? 201 : 200).json({ solicitud, correlationId: req.correlationId || 'none' });

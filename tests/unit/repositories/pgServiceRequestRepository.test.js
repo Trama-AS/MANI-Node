@@ -55,7 +55,7 @@ test('crea sitio, solicitud PENDIENTE, fotos y evento en una transacción con el
   assert.deepEqual(sentencias[1].params, [TENANT, USER, 'cliente']);
   const insercion = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud ('));
   assert.match(insercion.sql, /'PENDIENTE'/);
-  assert.deepEqual(insercion.params, [TENANT, 'cliente-1', 'sitio-1', 'cat', 'zona', datosBase.descripcion, null]);
+  assert.deepEqual(insercion.params, [TENANT, 'cliente-1', 'sitio-1', 'cat', 'zona', datosBase.descripcion, null, null]);
   const foto = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud_foto'));
   assert.deepEqual(foto.params, [TENANT, 'sol-1', 't/u/a.png', 1]);
   const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
@@ -99,6 +99,50 @@ test('carrera de idempotencia: un unique_violation vuelve al savepoint y devuelv
   assert.equal(r.creada, false);
   assert.ok(sentencias.some((s) => s.sql === 'ROLLBACK TO SAVEPOINT crear_solicitud'));
   assert.equal(sentencias.at(-1).sql, 'COMMIT');
+});
+
+test('la misma clave con otra huella responde 409 MANI-SOL-409K y no inserta (HU-M05-09 C2)', async () => {
+  const resp = { ...exito(), 'clave_idempotencia = $2': { rows: [{ id: 'sol-previa', huella_idempotencia: 'h-1' }] } };
+  const { factory, sentencias } = fakeFactory(resp);
+
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory })
+      .crear(ctx, { ...datosBase, claveIdempotencia: 'k', huellaIdempotencia: 'h-2' }),
+    (err) => err.statusCode === 409 && err.code === 'MANI-SOL-409K'
+  );
+  assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT')));
+  assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
+});
+
+test('la misma clave con la misma huella, o una fila previa sin huella, es un reintento', async () => {
+  for (const huellaPrevia of ['h-1', null]) {
+    const resp = { ...exito(), 'clave_idempotencia = $2': { rows: [{ id: 'sol-previa', huella_idempotencia: huellaPrevia }] } };
+    const { factory } = fakeFactory(resp);
+
+    const r = await new PgServiceRequestRepository({ pgPoolFactory: factory })
+      .crear(ctx, { ...datosBase, claveIdempotencia: 'k', huellaIdempotencia: 'h-1' });
+
+    assert.equal(r.creada, false);
+  }
+});
+
+test('carrera de idempotencia con otra huella: la ganadora no se devuelve y responde 409K', async () => {
+  let consultasClave = 0;
+  const resp = {
+    ...exito(),
+    'clave_idempotencia = $2': () => {
+      consultasClave += 1;
+      return { rows: consultasClave === 1 ? [] : [{ id: 'sol-ganadora', huella_idempotencia: 'h-otra' }] };
+    },
+    'INSERT INTO solicitud (': () => { const e = new Error('duplicate key'); e.code = '23505'; throw e; },
+  };
+  const { factory } = fakeFactory(resp);
+
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory })
+      .crear(ctx, { ...datosBase, claveIdempotencia: 'k', huellaIdempotencia: 'h-mia' }),
+    (err) => err.code === 'MANI-SOL-409K'
+  );
 });
 
 for (const [name, quitar, codigo, status] of [

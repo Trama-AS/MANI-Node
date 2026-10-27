@@ -70,10 +70,21 @@ async function proyeccion(client, tenantId, id) {
 async function existentePorClave(client, ctx, clienteId, clave) {
   if (!clave) return null;
   const { rows } = await client.query(
-    'SELECT id FROM solicitud WHERE cliente_id = $1 AND clave_idempotencia = $2 AND tenant_id = $3',
+    'SELECT id, huella_idempotencia FROM solicitud WHERE cliente_id = $1 AND clave_idempotencia = $2 AND tenant_id = $3',
     [clienteId, clave, ctx.tenantId]
   );
-  return rows.length ? rows[0].id : null;
+  return rows.length ? { id: rows[0].id, huella: rows[0].huella_idempotencia } : null;
+}
+
+// HU-M05-09 C2: la misma clave con otro contenido no es un reintento. Una fila sin huella (anterior a 0018) o una
+// petición sin huella se tratan como coincidencia.
+function exigirMismaHuella(previa, huella) {
+  if (previa.huella && huella && previa.huella !== huella) {
+    throw new ConflictError(
+      'MANI-SOL-409K: la clave de idempotencia ya se usó con otros datos',
+      'MANI-SOL-409K'
+    );
+  }
 }
 
 /**
@@ -102,7 +113,8 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
 
       const previa = await existentePorClave(client, ctx, clienteId, datos.claveIdempotencia);
       if (previa) {
-        return { solicitud: await proyeccion(client, ctx.tenantId, previa), creada: false };
+        exigirMismaHuella(previa, datos.huellaIdempotencia);
+        return { solicitud: await proyeccion(client, ctx.tenantId, previa.id), creada: false };
       }
 
       const categoria = await client.query(
@@ -143,16 +155,21 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
           sitioId = nuevo.rows[0].id;
         }
         const creada = await client.query(
-          `INSERT INTO solicitud (tenant_id, cliente_id, sitio_id, categoria_id, zona_id, estado, descripcion, clave_idempotencia)
-           VALUES ($1, $2, $3, $4, $5, 'PENDIENTE', $6, $7) RETURNING id`,
-          [ctx.tenantId, clienteId, sitioId, datos.categoriaId, zonaId, datos.descripcion, datos.claveIdempotencia || null]
+          `INSERT INTO solicitud (tenant_id, cliente_id, sitio_id, categoria_id, zona_id, estado, descripcion,
+                                  clave_idempotencia, huella_idempotencia)
+           VALUES ($1, $2, $3, $4, $5, 'PENDIENTE', $6, $7, $8) RETURNING id`,
+          [
+            ctx.tenantId, clienteId, sitioId, datos.categoriaId, zonaId, datos.descripcion,
+            datos.claveIdempotencia || null, datos.huellaIdempotencia || null,
+          ]
         );
         solicitudId = creada.rows[0].id;
       } catch (err) {
         if (err.code === UNIQUE_VIOLATION && datos.claveIdempotencia) {
           await client.query('ROLLBACK TO SAVEPOINT crear_solicitud');
           const ganadora = await existentePorClave(client, ctx, clienteId, datos.claveIdempotencia);
-          return { solicitud: await proyeccion(client, ctx.tenantId, ganadora), creada: false };
+          exigirMismaHuella(ganadora, datos.huellaIdempotencia);
+          return { solicitud: await proyeccion(client, ctx.tenantId, ganadora.id), creada: false };
         }
         throw err;
       }

@@ -30,7 +30,8 @@ class ListMyInboxUseCase {
       }
     }
 
-    const rows = await this.notificacionRepository.listForUser(session.tenantId, session.userId, { limit });
+    const ctx = { tenantId: session.tenantId, userId: session.userId, role: session.role };
+    const rows = await this.notificacionRepository.listForUser(ctx, { limit });
     return {
       proveedor: this.pushProvider.name,
       simulada: this.pushProvider.name === 'mock',

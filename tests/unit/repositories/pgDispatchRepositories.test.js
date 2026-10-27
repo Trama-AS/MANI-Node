@@ -6,25 +6,40 @@ const PgSolicitudContextRepository = require('../../../src/infrastructure/reposi
 const PgNotificacionRepository = require('../../../src/infrastructure/repositories/PgNotificacionRepository');
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
+const USER = '22222222-2222-4222-8222-222222222222';
 const CATEGORIA = '33333333-3333-4333-8333-333333333333';
 const ZONA = '44444444-4444-4444-8444-444444444444';
 const SOLICITUD = '55555555-5555-4555-8555-555555555555';
 const ALLY = '66666666-6666-4666-8666-666666666666';
+const ALLY_2 = '77777777-7777-4777-8777-777777777777';
 
-// Pool simulado: registra cada consulta y responde con las filas que entrega `answer`.
+const ctxCliente = { tenantId: TENANT, userId: USER, role: 'CLIENT' };
+const ctxAliado = { tenantId: TENANT, userId: USER, role: 'ALLY' };
+
+// Pool transaccional simulado: registra cada sentencia del cliente (BEGIN, app.set_context, la consulta y COMMIT)
+// y responde la consulta de negocio con lo que entrega `answer`.
 function fakeFactory(answer) {
-  const queries = [];
-  const pool = {
+  const sentencias = [];
+  const client = {
     query: async (sql, params) => {
-      queries.push({ sql, params });
-      return answer(sql, params, queries.length);
+      sentencias.push({ sql: sql.trim(), params });
+      if (/^(BEGIN|COMMIT|ROLLBACK)/.test(sql.trim()) || sql.includes('app.set_context')) return { rows: [] };
+      return answer(sql, params);
     },
+    release: () => {},
   };
-  return { factory: { getPool: () => pool }, queries };
+  const negocio = () => sentencias.filter((s) => !/^(BEGIN|COMMIT|ROLLBACK)/.test(s.sql) && !s.sql.includes('app.set_context'));
+  return { factory: { getPool: () => ({ connect: async () => client }) }, sentencias, negocio };
 }
 
-test('elegibilidad: una sola consulta con el tenant como primer parámetro y mapea las filas', async () => {
-  const { factory, queries } = fakeFactory(() => ({
+function contextoFijado(sentencias) {
+  assert.equal(sentencias[0].sql, 'BEGIN');
+  assert.match(sentencias[1].sql, /^SELECT app\.set_context/);
+  return sentencias[1].params;
+}
+
+test('elegibilidad: corre con el contexto del tenant, una sola consulta, y mapea las filas', async () => {
+  const { factory, sentencias, negocio } = fakeFactory(() => ({
     rows: [{
       total: 3,
       allies: [{ id: ALLY, nombre_razon_social: 'Ana', tipo: 'PERSONA_NATURAL', estado_verificacion: 'VERIFICADO' }],
@@ -32,41 +47,48 @@ test('elegibilidad: una sola consulta con el tenant como primer parámetro y map
   }));
   const repo = new PgElegibilidadRepository({ pgPoolFactory: factory });
 
-  const result = await repo.findEligible({
-    tenantId: TENANT, categoriaId: CATEGORIA, zonaId: ZONA, requestId: SOLICITUD, tipo: 'PERSONA_NATURAL', page: 3, pageSize: 10,
+  const result = await repo.findEligible(ctxCliente, {
+    categoriaId: CATEGORIA, zonaId: ZONA, excludeAllyIds: [ALLY_2], tipo: 'PERSONA_NATURAL', page: 3, pageSize: 10,
   });
 
   assert.deepEqual(result, {
     allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO' }],
     totalCount: 3,
   });
-  assert.equal(queries.length, 1);
-  assert.deepEqual(queries[0].params, [TENANT, CATEGORIA, ZONA, 'PERSONA_NATURAL', SOLICITUD, 20, 10]);
-  assert.match(queries[0].sql, /a\.tenant_id = \$1/);
-  assert.match(queries[0].sql, /estado_verificacion = 'VERIFICADO'/);
-  assert.match(queries[0].sql, /aa\.inicio <= now\(\) AND aa\.fin > now\(\)/);
+  assert.deepEqual(contextoFijado(sentencias), [TENANT, USER, 'cliente']);
+  assert.equal(negocio().length, 1);
+  const { sql, params } = negocio()[0];
+  assert.deepEqual(params, [TENANT, CATEGORIA, ZONA, 'PERSONA_NATURAL', [ALLY_2], 20, 10]);
+  assert.match(sql, /a\.tenant_id = \$1/);
+  assert.match(sql, /estado_verificacion = 'VERIFICADO'/);
+  assert.match(sql, /u\.estado = 'ACTIVO'/, 'excluye aliados con la cuenta inactiva');
+  assert.match(sql, /cs\.estado = 'ACTIVO'/, 'excluye categorías inactivas');
+  assert.match(sql, /NOT \(a\.id = ANY\(\$5::uuid\[\]\)\)/);
+  assert.match(sql, /aa\.inicio <= now\(\) AND aa\.fin > now\(\)/);
+  assert.doesNotMatch(sql, /solicitud_rechazo/, 'Core no lee tablas del dominio de Dispatch (T1)');
 });
 
-test('elegibilidad: sin tipo ni requestId envía null y devuelve lista vacía', async () => {
-  const { factory, queries } = fakeFactory(() => ({ rows: [{ total: 0, allies: [] }] }));
+test('elegibilidad: sin tipo ni exclusiones envía null y una lista vacía', async () => {
+  const { factory, negocio } = fakeFactory(() => ({ rows: [{ total: 0, allies: [] }] }));
   const repo = new PgElegibilidadRepository({ pgPoolFactory: factory });
 
-  const result = await repo.findEligible({ tenantId: TENANT, categoriaId: CATEGORIA, zonaId: ZONA, page: 1, pageSize: 20 });
+  const result = await repo.findEligible(ctxCliente, { categoriaId: CATEGORIA, zonaId: ZONA, page: 1, pageSize: 20 });
 
   assert.deepEqual(result, { allies: [], totalCount: 0 });
-  assert.deepEqual(queries[0].params, [TENANT, CATEGORIA, ZONA, null, null, 0, 20]);
+  assert.deepEqual(negocio()[0].params, [TENANT, CATEGORIA, ZONA, null, [], 0, 20]);
 });
 
-test('elegibilidad: un error de la base se propaga', async () => {
-  const { factory } = fakeFactory(() => {
+test('elegibilidad: un error de la base revierte la transacción y se propaga', async () => {
+  const { factory, sentencias } = fakeFactory(() => {
     throw new Error('conexión perdida');
   });
   const repo = new PgElegibilidadRepository({ pgPoolFactory: factory });
 
   await assert.rejects(
-    () => repo.findEligible({ tenantId: TENANT, categoriaId: CATEGORIA, zonaId: ZONA, page: 1, pageSize: 20 }),
+    () => repo.findEligible(ctxCliente, { categoriaId: CATEGORIA, zonaId: ZONA, page: 1, pageSize: 20 }),
     /conexión perdida/
   );
+  assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
 });
 
 test('repositorios: exigen pgPoolFactory', () => {
@@ -75,35 +97,42 @@ test('repositorios: exigen pgPoolFactory', () => {
   assert.throws(() => new PgNotificacionRepository({}), /pgPoolFactory/);
 });
 
-test('contexto: filtra por id y tenant y mapea la fila', async () => {
-  const { factory, queries } = fakeFactory(() => ({
-    rows: [{ id: SOLICITUD, tenant_id: TENANT, zona_id: ZONA, categoria_id: CATEGORIA, estado: 'PENDIENTE' }],
+test('contexto: filtra por id, tenant, rol y usuario de la sesión y mapea la fila', async () => {
+  const { factory, sentencias, negocio } = fakeFactory(() => ({
+    rows: [{ id: SOLICITUD, tenant_id: TENANT, zona_id: ZONA, categoria_id: CATEGORIA, estado: 'PENDIENTE', es_mia: false }],
   }));
   const repo = new PgSolicitudContextRepository({ pgPoolFactory: factory });
 
-  const context = await repo.findContext(TENANT, SOLICITUD);
+  const context = await repo.findContext(ctxAliado, SOLICITUD);
 
-  assert.deepEqual(context, { id: SOLICITUD, tenantId: TENANT, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PENDIENTE' });
-  assert.deepEqual(queries[0].params, [SOLICITUD, TENANT]);
-  assert.match(queries[0].sql, /tenant_id = \$2/);
+  assert.deepEqual(context, {
+    id: SOLICITUD, tenantId: TENANT, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PENDIENTE', esMia: false,
+  });
+  assert.deepEqual(contextoFijado(sentencias), [TENANT, USER, 'aliado']);
+  const { sql, params } = negocio()[0];
+  assert.deepEqual(params, [SOLICITUD, TENANT, 'ALLY', USER]);
+  assert.match(sql, /s\.tenant_id = \$2/);
+  assert.match(sql, /\$3 = 'CLIENT' AND c\.usuario_id = \$4/, 'el cliente solo ve las suyas');
+  assert.match(sql, /tipo = 'OFERTA_DESPACHO'/, 'el aliado ve las que le ofrecieron');
 });
 
 test('contexto: sin filas devuelve null', async () => {
   const { factory } = fakeFactory(() => ({ rows: [] }));
 
-  assert.equal(await new PgSolicitudContextRepository({ pgPoolFactory: factory }).findContext(TENANT, SOLICITUD), null);
+  assert.equal(await new PgSolicitudContextRepository({ pgPoolFactory: factory }).findContext(ctxCliente, SOLICITUD), null);
 });
 
 test('notificaciones: inserta para el usuario del aliado del mismo tenant y devuelve el id', async () => {
-  const { factory, queries } = fakeFactory(() => ({ rows: [{ id: 'n-1', usuario_id: 'u-1' }] }));
+  const { factory, sentencias, negocio } = fakeFactory(() => ({ rows: [{ id: 'n-1', usuario_id: 'u-1' }] }));
   const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
   const payload = { requestId: SOLICITUD, estado: 'ENVIADA' };
 
-  const created = await repo.createForAlly({ tenantId: TENANT, allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload });
+  const created = await repo.createForAlly(ctxCliente, { allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload });
 
   assert.deepEqual(created, { id: 'n-1', usuarioId: 'u-1' });
-  assert.deepEqual(queries[0].params, [TENANT, ALLY, 'OFERTA_DESPACHO', 'PUSH', JSON.stringify(payload)]);
-  assert.match(queries[0].sql, /a\.tenant_id = \$1/);
+  assert.deepEqual(contextoFijado(sentencias), [TENANT, USER, 'cliente']);
+  assert.deepEqual(negocio()[0].params, [TENANT, ALLY, 'OFERTA_DESPACHO', 'PUSH', JSON.stringify(payload)]);
+  assert.match(negocio()[0].sql, /a\.tenant_id = \$1/);
 });
 
 test('notificaciones: un aliado que no es del tenant no inserta nada y devuelve null', async () => {
@@ -111,36 +140,36 @@ test('notificaciones: un aliado que no es del tenant no inserta nada y devuelve 
   const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
 
   assert.equal(
-    await repo.createForAlly({ tenantId: TENANT, allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: {} }),
+    await repo.createForAlly(ctxCliente, { allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: {} }),
     null
   );
 });
 
 test('notificaciones: lista por tenant, tipo y solicitud y mapea payload y fecha', async () => {
   const sent = new Date('2026-10-18T10:00:00Z');
-  const { factory, queries } = fakeFactory(() => ({ rows: [{ payload: { requestId: SOLICITUD }, enviado_at: sent }] }));
+  const { factory, negocio } = fakeFactory(() => ({ rows: [{ payload: { requestId: SOLICITUD }, enviado_at: sent }] }));
   const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
 
-  const rows = await repo.listByRequest(TENANT, SOLICITUD, 'OFERTA_DESPACHO');
+  const rows = await repo.listByRequest(ctxCliente, SOLICITUD, 'OFERTA_DESPACHO');
 
   assert.deepEqual(rows, [{ payload: { requestId: SOLICITUD }, enviadoAt: sent }]);
-  assert.deepEqual(queries[0].params, [TENANT, 'OFERTA_DESPACHO', SOLICITUD]);
-  assert.match(queries[0].sql, /tenant_id = \$1/);
+  assert.deepEqual(negocio()[0].params, [TENANT, 'OFERTA_DESPACHO', SOLICITUD]);
+  assert.match(negocio()[0].sql, /tenant_id = \$1/);
 });
 
-test('notificaciones: la bandeja lista solo las del usuario en su tenant, más recientes primero', async () => {
+test('notificaciones: la bandeja lista solo las del usuario de la sesión, más recientes primero', async () => {
   const sent = new Date('2026-10-25T10:00:00Z');
-  const { factory, queries } = fakeFactory(() => ({
+  const { factory, negocio } = fakeFactory(() => ({
     rows: [{ id: 'n-2', tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: SOLICITUD }, enviado_at: sent, leido_at: null }],
   }));
   const repo = new PgNotificacionRepository({ pgPoolFactory: factory });
 
-  const rows = await repo.listForUser(TENANT, 'u-1', { limit: 20 });
+  const rows = await repo.listForUser(ctxAliado, { limit: 20 });
 
   assert.deepEqual(rows, [
     { id: 'n-2', tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: SOLICITUD }, enviadoAt: sent, leidoAt: null },
   ]);
-  assert.deepEqual(queries[0].params, [TENANT, 'u-1', 20]);
-  assert.match(queries[0].sql, /tenant_id = \$1 AND usuario_id = \$2/);
-  assert.match(queries[0].sql, /ORDER BY enviado_at DESC/);
+  assert.deepEqual(negocio()[0].params, [TENANT, USER, 20]);
+  assert.match(negocio()[0].sql, /tenant_id = \$1 AND usuario_id = \$2/);
+  assert.match(negocio()[0].sql, /ORDER BY enviado_at DESC/);
 });
