@@ -34,7 +34,7 @@ class ListMyInboxUseCase {
     const rows = await this.notificacionRepository.listForUser(ctx, { limit });
     return {
       proveedor: this.pushProvider.name,
-      simulada: this.pushProvider.name === 'mock',
+      simulada: this.pushProvider.simulated === true,
       items: rows.map((row) => ({
         id: row.id,
         tipo: row.tipo,

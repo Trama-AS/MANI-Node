@@ -37,6 +37,12 @@ class ConfigurationError extends Error {
   }
 }
 
+// Entero positivo desde una variable; un valor ausente, vacío o inválido usa el de por omisión.
+function positiveIntFromEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name], 10);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
 function normalizeEnvironment(rawEnv) {
   const value = (rawEnv || 'development').trim().toLowerCase();
   if (!ENVIRONMENTS[value]) {
@@ -84,6 +90,10 @@ const config = {
   pushProvider: process.env.PUSH_PROVIDER || 'mock',
   // Proveedor de pagos (HU-M11-01). Hoy solo existe `mock` (sandbox sin dinero real); otro valor detiene el arranque.
   paymentProvider: process.env.PAYMENT_PROVIDER || 'mock',
+  // Tiempo máximo de espera de cada proveedor externo (SCRUM-1240). Las credenciales de un proveedor real también
+  // se leen aquí, desde process.env, y nunca se registran ni se devuelven.
+  pushProviderTimeoutMs: positiveIntFromEnv('PUSH_PROVIDER_TIMEOUT_MS', 5000),
+  paymentProviderTimeoutMs: positiveIntFromEnv('PAYMENT_PROVIDER_TIMEOUT_MS', 10000),
   // Página de Flutter que recibe al usuario desde el correo de recuperación (HU-M02-10). Debe estar en la lista de
   // redirecciones permitidas del proyecto de Supabase; sin ella el proveedor usa su Site URL.
   passwordRecoveryRedirectUrl: process.env.PASSWORD_RECOVERY_REDIRECT_URL,

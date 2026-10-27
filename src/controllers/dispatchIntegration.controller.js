@@ -23,7 +23,11 @@ async function getSolicitudContext(req, res, next) {
 
 async function publishNotification(req, res, next) {
   try {
-    const created = await container.publishNotificationUseCase.execute({ session: req.user, body: req.body });
+    const created = await container.publishNotificationUseCase.execute({
+      session: req.user,
+      body: req.body,
+      correlationId: req.correlationId,
+    });
     // 200 si la oferta ya existía para ese aliado y solicitud (reintento de la orquestación).
     res.status(created.nueva === false ? 200 : 201).json(created);
   } catch (err) {

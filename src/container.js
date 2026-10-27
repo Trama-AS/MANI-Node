@@ -274,7 +274,10 @@ class Container {
     // Proveedor push por ambiente (PUSH_PROVIDER, por omisión el mock de HU-M09-06): sin FCM ni APNs reales.
     this.pushProvider = createPushProvider(config.pushProvider);
     const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
-    this.publishNotificationUseCase = new PublishNotificationUseCase(notificationDeps);
+    this.publishNotificationUseCase = new PublishNotificationUseCase({
+      ...notificationDeps,
+      politica: { timeoutMs: config.pushProviderTimeoutMs },
+    });
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
     this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
 
@@ -284,6 +287,7 @@ class Container {
     this.createPaymentUseCase = new CreatePaymentUseCase({
       paymentRepository: this.paymentRepository,
       paymentProvider: this.paymentProvider,
+      politica: { timeoutMs: config.paymentProviderTimeoutMs },
     });
     this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
 

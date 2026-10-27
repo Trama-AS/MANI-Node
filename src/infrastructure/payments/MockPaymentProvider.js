@@ -6,6 +6,7 @@ const PaymentProviderError = require('../../domain/errors/PaymentProviderError')
 const ESCENARIOS = ['APROBADO', 'RECHAZADO', 'PENDIENTE', 'TIMEOUT', 'RESPUESTA_INVALIDA'];
 
 const MOTIVO_RECHAZO = 'Fondos insuficientes (rechazo simulado del sandbox)';
+const MAX_DESENLACES = 1000;
 
 /**
  * Proveedor de pagos simulado (SCRUM-1432, CONS-38): no llama a ninguna red ni mueve dinero. El escenario lo elige
@@ -15,6 +16,8 @@ class MockPaymentProvider extends IPaymentProvider {
   constructor({ idFactory = () => crypto.randomUUID() } = {}) {
     super();
     this.idFactory = idFactory;
+    // Contrato común (SCRUM-1240): desenlaces ya dados por clave de idempotencia, para no cobrar dos veces.
+    this.desenlaces = new Map();
   }
 
   get name() {
@@ -25,7 +28,8 @@ class MockPaymentProvider extends IPaymentProvider {
     return true;
   }
 
-  async charge({ escenario = 'APROBADO' } = {}) {
+  async charge({ escenario = 'APROBADO', idempotencyKey } = {}) {
+    if (idempotencyKey && this.desenlaces.has(idempotencyKey)) return { ...this.desenlaces.get(idempotencyKey) };
     if (!ESCENARIOS.includes(escenario)) {
       throw new PaymentProviderError('INVALID_RESPONSE', `Escenario desconocido: ${escenario}`);
     }
@@ -36,8 +40,14 @@ class MockPaymentProvider extends IPaymentProvider {
     if (escenario === 'RESPUESTA_INVALIDA') return { estado: 'DESCONOCIDO' };
 
     const referencia = `mock-pay-${this.idFactory()}`;
-    if (escenario === 'RECHAZADO') return { estado: 'RECHAZADO', referencia, motivo: MOTIVO_RECHAZO };
-    return { estado: escenario, referencia };
+    const desenlace =
+      escenario === 'RECHAZADO' ? { estado: 'RECHAZADO', referencia, motivo: MOTIVO_RECHAZO } : { estado: escenario, referencia };
+    if (idempotencyKey) {
+      this.desenlaces.set(idempotencyKey, desenlace);
+      // Map conserva el orden de inserción: se descarta la clave más antigua.
+      if (this.desenlaces.size > MAX_DESENLACES) this.desenlaces.delete(this.desenlaces.keys().next().value);
+    }
+    return { ...desenlace };
   }
 }
 

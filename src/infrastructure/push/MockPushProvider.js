@@ -21,10 +21,32 @@ class MockPushProvider extends IPushProvider {
     return 'mock';
   }
 
-  async send({ notificacionId, tenantId, usuarioId, tipo, payload }) {
+  get simulated() {
+    return true;
+  }
+
+  async send({ notificacionId, tenantId, usuarioId, tipo, payload, idempotencyKey, correlationId }) {
+    // Contrato común (SCRUM-1240): la misma clave no entrega dos veces; devuelve la entrega original.
+    const previo = idempotencyKey ? this.sent.find((m) => m.idempotencyKey === idempotencyKey) : null;
+    if (previo) return this.#resultado(previo.mensajeId);
+
     const mensajeId = `mock-${this.idFactory()}`;
-    this.sent.push({ mensajeId, notificacionId, tenantId, usuarioId, tipo, payload, enviadoAt: new Date().toISOString() });
+    this.sent.push({
+      mensajeId,
+      notificacionId,
+      tenantId,
+      usuarioId,
+      tipo,
+      payload,
+      idempotencyKey,
+      correlationId,
+      enviadoAt: new Date().toISOString(),
+    });
     if (this.sent.length > this.maxSent) this.sent.shift();
+    return this.#resultado(mensajeId);
+  }
+
+  #resultado(mensajeId) {
     return { proveedor: this.name, estado: 'SIMULADA', simulada: true, mensajeId };
   }
 
