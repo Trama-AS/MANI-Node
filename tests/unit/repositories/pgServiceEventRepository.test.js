@@ -101,11 +101,11 @@ test('C3: sin perfil de aliado u otro aliado → 403 MANI-EVT-403A; inexistente 
 });
 
 test('listar: secuencia ordenada por hora para el dueño o el aliado; para otro 404', async () => {
-  const { factory, sentencias } = fakeFactory({ 'SELECT 1': { rows: [{}] }, 'ORDER BY e.timestamp, e.id': { rows: [filaEvento] } });
+  const { factory, sentencias } = fakeFactory({ 'SELECT s.estado': { rows: [{ estado: 'EN_EJECUCION' }] }, 'ORDER BY e.timestamp, e.id': { rows: [filaEvento] } });
   const cliente = { ...ctx, role: 'CLIENT' };
   const lista = await new PgServiceEventRepository({ pgPoolFactory: factory }).listar(cliente, SOLICITUD);
   assert.equal(lista[0].autor.rol, 'ALIADO');
-  assert.deepEqual(sentencias.find((s) => s.sql.startsWith('SELECT 1')).params, [SOLICITUD, TENANT, 'CLIENT', USER]);
+  assert.deepEqual(sentencias.find((s) => s.sql.startsWith('SELECT s.estado')).params, [SOLICITUD, TENANT, 'CLIENT', USER]);
 
   const otro = fakeFactory();
   await assert.rejects(new PgServiceEventRepository({ pgPoolFactory: otro.factory }).listar(cliente, SOLICITUD), {

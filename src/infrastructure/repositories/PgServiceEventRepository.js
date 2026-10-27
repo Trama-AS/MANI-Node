@@ -1,6 +1,7 @@
 const IServiceEventRepository = require('../../domain/ports/IServiceEventRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
+const { aliadoDeSesion, solicitudVisible } = require('./sesionActores');
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -42,11 +43,7 @@ class PgServiceEventRepository extends IServiceEventRepository {
 
   async registrar(ctx, datos) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      const aliado = await client.query('SELECT id FROM aliado WHERE usuario_id = $1 AND tenant_id = $2', [
-        ctx.userId,
-        ctx.tenantId,
-      ]);
-      if (aliado.rows.length === 0) throw noAsignado();
+      const aliadoId = await aliadoDeSesion(client, ctx, noAsignado);
 
       // Se bloquea la solicitud para que un evento no entre a la vez que el aliado finaliza el servicio.
       const fila = await client.query(
@@ -54,7 +51,7 @@ class PgServiceEventRepository extends IServiceEventRepository {
         [datos.solicitudId, ctx.tenantId]
       );
       if (fila.rows.length === 0) throw noEncontrada();
-      if (fila.rows[0].aliado_id !== aliado.rows[0].id) throw noAsignado();
+      if (fila.rows[0].aliado_id !== aliadoId) throw noAsignado();
 
       // Un reintento con la misma clave devuelve lo ya registrado, aunque el servicio haya terminado después.
       if (datos.claveIdempotencia) {
@@ -100,17 +97,7 @@ class PgServiceEventRepository extends IServiceEventRepository {
 
   async listar(ctx, solicitudId) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      // Solo el cliente dueño o el aliado asignado; para cualquier otro la solicitud no existe.
-      const acceso = await client.query(
-        `SELECT 1
-         FROM solicitud s
-         LEFT JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
-         LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
-         WHERE s.id = $1 AND s.tenant_id = $2
-           AND (($3 = 'CLIENT' AND c.usuario_id = $4) OR ($3 = 'ALLY' AND a.usuario_id = $4))`,
-        [solicitudId, ctx.tenantId, ctx.role, ctx.userId]
-      );
-      if (acceso.rows.length === 0) throw noEncontrada();
+      await solicitudVisible(client, ctx, solicitudId, noEncontrada);
 
       const { rows } = await client.query(
         `SELECT ${COLUMNAS} FROM evento_servicio e JOIN usuario u ON u.id = e.actor_id
