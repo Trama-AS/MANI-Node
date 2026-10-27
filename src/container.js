@@ -89,6 +89,10 @@ const PublishNotificationUseCase = require('./application/useCases/dispatch/Publ
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
 const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
 const { createPushProvider } = require('./infrastructure/push/createPushProvider');
+const { createPaymentProvider } = require('./infrastructure/payments/createPaymentProvider');
+const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
+const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
+const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
@@ -260,6 +264,15 @@ class Container {
     this.publishNotificationUseCase = new PublishNotificationUseCase(notificationDeps);
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
     this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
+
+    // Pagos del sandbox (HU-M11-01): proveedor simulado por ambiente (PAYMENT_PROVIDER, por omisión el mock).
+    this.paymentProvider = createPaymentProvider(config.paymentProvider);
+    this.paymentRepository = new PgPaymentRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createPaymentUseCase = new CreatePaymentUseCase({
+      paymentRepository: this.paymentRepository,
+      paymentProvider: this.paymentProvider,
+    });
+    this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,

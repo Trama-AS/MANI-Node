@@ -9,6 +9,7 @@ const dispatchIntegrationController = require('../controllers/dispatchIntegratio
 const requestsController = require('../controllers/requests.controller');
 const notificationsController = require('../controllers/notifications.controller');
 const quotesController = require('../controllers/quotes.controller');
+const paymentsController = require('../controllers/payments.controller');
 const executionController = require('../controllers/execution.controller');
 const serviceEventsController = require('../controllers/serviceEvents.controller');
 const { authenticate, requireRole } = require('../middlewares/auth.middleware');
@@ -77,6 +78,10 @@ router.get('/solicitudes/:id/cotizaciones', authenticate, quotesController.listQ
 router.post('/cotizaciones/:id/aceptar', authenticate, quotesController.acceptQuote);
 router.post('/cotizaciones/:id/rechazar', authenticate, quotesController.rejectQuote);
 router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQuote);
+// HU-M11-01 (SCRUM-1432): pago en el sandbox simulado. Solo el cliente que paga ve sus pagos y comprobantes.
+router.post('/pagos', authenticate, paymentsController.createPayment);
+router.get('/pagos/:id', authenticate, paymentsController.getPayment);
+router.get('/pagos/:id/comprobante', authenticate, paymentsController.getReceipt);
 // US-04.3.1 (SCRUM-868): el aliado asignado marca inicio y fin; el cliente dueño y el aliado consultan las marcas.
 router.post('/solicitudes/:id/iniciar', authenticate, executionController.startExecution);
 router.post('/solicitudes/:id/finalizar', authenticate, executionController.finishExecution);
