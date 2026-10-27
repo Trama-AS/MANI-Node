@@ -174,3 +174,93 @@ test('GET /solicitudes/me no tapa la ruta de contexto de Dispatch', async () => 
 
   assert.equal(res.status, 401);
 });
+
+// US-04.5.1 (SCRUM-877): el cliente cancela su solicitud antes de la ejecución.
+const CancelServiceRequestUseCase = require('../../../src/application/useCases/requests/CancelServiceRequestUseCase');
+const rutaCancelar = (id = SOL) => `/api/v1/solicitudes/me/${id}/cancelar`;
+
+function conCancelacion(cancelar, fn) {
+  return async () => {
+    const original = container.cancelServiceRequestUseCase;
+    container.cancelServiceRequestUseCase = new CancelServiceRequestUseCase({ serviceRequestRepository: { cancelar } });
+    try {
+      await fn();
+    } finally {
+      container.cancelServiceRequestUseCase = original;
+    }
+  };
+}
+
+test('PATCH /solicitudes/me/:id/cancelar sin token, expirado o firmado con otro secreto responde 401', async () => {
+  for (const auth of [null, token({ expiresIn: -60 }), token({ secret: 'otro-secreto' })]) {
+    const req = request(app).patch(rutaCancelar());
+    if (auth) req.set('Authorization', `Bearer ${auth}`);
+    assert.equal((await req.send({})).status, 401);
+  }
+});
+
+test('PATCH /solicitudes/me/:id/cancelar con rol aliado o admin responde 403 MANI-SOL-403C', async () => {
+  for (const role of ['aliado', 'admin_tenant']) {
+    const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token({ role })}`).send({});
+    assert.equal(res.status, 403);
+    assert.equal(res.body.code, 'MANI-SOL-403C');
+  }
+});
+
+test('PATCH /solicitudes/me/:id/cancelar con id inválido responde 400 y con motivo largo 422', async () => {
+  const invalida = await request(app).patch(rutaCancelar('no-es-uuid')).set('Authorization', `Bearer ${token()}`).send({});
+  assert.equal(invalida.status, 400);
+  assert.equal(invalida.body.code, 'MANI-SOL-400');
+
+  const larga = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({ motivo: 'x'.repeat(201) });
+  assert.equal(larga.status, 422);
+  assert.equal(larga.body.code, 'MANI-SOL-422M');
+});
+
+test('PATCH /solicitudes/me/:id/cancelar responde 200 con la solicitud cancelada y usa el tenant del token, no el del cliente', conCancelacion(
+  async (ctx, datos) => ({ solicitud: { id: datos.solicitudId, estado: 'CANCELADA', tenant: ctx.tenantId, usuario: ctx.userId }, cancelada: true }),
+  async () => {
+    const res = await request(app)
+      .patch(rutaCancelar())
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Tenant-Id', '99999999-9999-4999-8999-999999999999')
+      .send({ motivo: 'Ya no lo necesito', tenantId: '99999999-9999-4999-8999-999999999999' });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.cancelada, true);
+    assert.deepEqual(res.body.solicitud, { id: SOL, estado: 'CANCELADA', tenant: TENANT, usuario: USER });
+  }
+));
+
+test('PATCH /solicitudes/me/:id/cancelar repetido responde 200 con cancelada=false', conCancelacion(
+  async () => ({ solicitud: { id: SOL, estado: 'CANCELADA' }, cancelada: false }),
+  async () => {
+    const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({});
+    assert.equal(res.status, 200);
+    assert.equal(res.body.cancelada, false);
+  }
+));
+
+test('PATCH /solicitudes/me/:id/cancelar propaga 404 de una ajena y 409 de una en ejecución con el formato de error único', async () => {
+  const { NotFoundError, ConflictError } = require('../../../src/domain/errors/DomainError');
+  for (const [error, status, code] of [
+    [new NotFoundError('MANI-SOL-404: solicitud no encontrada', 'MANI-SOL-404'), 404, 'MANI-SOL-404'],
+    [new ConflictError('MANI-SOL-409C: una solicitud EN_EJECUCION ya no se puede cancelar', 'MANI-SOL-409C'), 409, 'MANI-SOL-409C'],
+  ]) {
+    await conCancelacion(async () => { throw error; }, async () => {
+      const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({});
+      assert.equal(res.status, status);
+      assert.equal(res.body.code, code);
+      assert.ok(res.body.error && res.body.correlationId);
+    })();
+  }
+});
+
+test('sin DATABASE_URL la cancelación falla cerrado con 503', async (t) => {
+  if (container.pgPoolFactory.isConfigured()) {
+    t.skip('DATABASE_URL está configurada');
+    return;
+  }
+  const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({});
+  assert.equal(res.status, 503);
+});

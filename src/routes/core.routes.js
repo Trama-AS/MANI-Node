@@ -60,6 +60,8 @@ router.get('/allies/me', authenticate, dispatchIntegrationController.getOwnAllyP
 // HU-M07-04 (SCRUM-871): el cliente consulta sus solicitudes. Van antes de las rutas `/solicitudes/:id/...`.
 router.get('/solicitudes/me', authenticate, requestsController.listOwnRequests);
 router.get('/solicitudes/me/:id', authenticate, requestsController.getOwnRequest);
+// US-04.5.1 (SCRUM-877): el cliente cancela su solicitud antes de la ejecución.
+router.patch('/solicitudes/me/:id/cancelar', authenticate, requestsController.cancelOwnRequest);
 router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
 router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
 router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
