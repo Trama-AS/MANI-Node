@@ -4,6 +4,8 @@ const InMemoryProfileRepository = require('./infrastructure/repositories/InMemor
 const SupabaseProfileRepository = require('./infrastructure/repositories/SupabaseProfileRepository');
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
 const SupabaseCatalogRepository = require('./infrastructure/repositories/SupabaseCatalogRepository');
+const InMemoryZoneRepository = require('./infrastructure/repositories/InMemoryZoneRepository');
+const SupabaseZoneRepository = require('./infrastructure/repositories/SupabaseZoneRepository');
 const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemoryUsuarioRepository');
 const InMemoryAliadoRepository = require('./infrastructure/repositories/InMemoryAliadoRepository');
 const InMemoryAliadoCategoriaRepository = require('./infrastructure/repositories/InMemoryAliadoCategoriaRepository');
@@ -43,6 +45,8 @@ const GetCategoryUseCase = require('./application/useCases/catalog/GetCategoryUs
 const CreateCategoryUseCase = require('./application/useCases/catalog/CreateCategoryUseCase');
 const UpdateCategoryUseCase = require('./application/useCases/catalog/UpdateCategoryUseCase');
 const SetCategoryStatusUseCase = require('./application/useCases/catalog/SetCategoryStatusUseCase');
+const ListZoneCatalogUseCase = require('./application/useCases/catalog/ListZoneCatalogUseCase');
+const GetZoneUseCase = require('./application/useCases/catalog/GetZoneUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const ListAlliesVerificationUseCase = require('./application/useCases/verification/ListAlliesVerificationUseCase');
@@ -142,6 +146,7 @@ class Container {
       this.profileRepository = new SupabaseProfileRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.catalogRepository = new SupabaseCatalogRepository({ supabaseClientFactory: this.supabaseClientFactory });
+      this.zoneRepository = new SupabaseZoneRepository({ supabaseClientFactory: this.supabaseClientFactory });
       this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
       const supabaseAliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
       // Con DATABASE_URL la resolución de la verificación se escribe por pg, donde una prueba
@@ -191,12 +196,13 @@ class Container {
       } else {
         this.siteRepository = new InMemorySiteRepository();
         this.clientRepository = new InMemoryClientRepository();
-        this.companyClientRepository = new InMemoryCompanyClientRepository();
+        this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
       }
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
       this.catalogRepository = new InMemoryCatalogRepository();
+      this.zoneRepository = new InMemoryZoneRepository();
       this.usuarioRepository = new InMemoryUsuarioRepository();
       this.aliadoRepository = new InMemoryAliadoRepository();
       this.aliadoCategoriaRepository = new InMemoryAliadoCategoriaRepository();
@@ -210,7 +216,7 @@ class Container {
       this.clientRepository = new InMemoryClientRepository();
       this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
       this.userConsentRepository = new InMemoryUserConsentRepository();
-      this.companyClientRepository = new InMemoryCompanyClientRepository();
+      this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -300,6 +306,11 @@ class Container {
       ruleEvaluationService: this.ruleEvaluationService,
     });
     this.setCategoryStatusUseCase = new SetCategoryStatusUseCase({ catalogRepository: this.catalogRepository });
+
+    // Catálogo geográfico (HU-M04-04): solo lectura, sin tenantId porque
+    // `zona` es un catálogo global sin esa columna.
+    this.listZoneCatalogUseCase = new ListZoneCatalogUseCase({ zoneRepository: this.zoneRepository });
+    this.getZoneUseCase = new GetZoneUseCase({ zoneRepository: this.zoneRepository });
 
     // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).
     // Sin DATABASE_URL no hay respaldo en memoria: responde 503.

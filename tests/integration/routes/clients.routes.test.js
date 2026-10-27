@@ -46,13 +46,13 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
         {
           nombre: 'Sede Administrativa Salitre',
           direccion: 'Avenida El Dorado # 69-76, Torre 3',
-          zonaId: 'zona-bogota-salitre',
+          zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
           reglas: { tipoAcceso: 'peatonal_oficinas', requiereCarnet: true },
         },
         {
           nombre: 'Centro Logístico Fontibón',
           direccion: 'Carrera 100 # 24-55',
-          zonaId: 'zona-bogota-occidente',
+          zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14',
           reglas: { tipoAcceso: 'muelle_pesado', requiereEpi: true },
         },
       ],
@@ -120,7 +120,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       razonSocial: 'Empresa Para Dup NIT S.A.S.',
       nit: '900888111-9',
       email: 'original@dup-nit.com',
-      sitios: [{ direccion: 'Calle 1 # 2-3', zonaId: 'zona-1' }],
+      sitios: [{ direccion: 'Calle 1 # 2-3', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' }],
     };
 
     const res1 = await request(app)
@@ -164,7 +164,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
     const addSiteRes = await request(app)
       .post('/api/v1/clients/any-id/sites')
       .set('Authorization', `Bearer ${allyToken}`)
-      .send({ direccion: 'Calle 10 # 20-30', zonaId: 'zona-1' });
+      .send({ direccion: 'Calle 10 # 20-30', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' });
     assert.strictEqual(addSiteRes.status, 403);
 
     // 3. Intentar consultar sedes como aliado
@@ -190,7 +190,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
           {
             nombre: 'Hotel Parque 93',
             direccion: 'Calle 93 # 12-40',
-            zonaId: 'zona-bogota-norte',
+            zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
           },
         ],
       });
@@ -212,7 +212,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       .send({
         nombre: 'Sitio Infiltrado',
         direccion: 'Calle Falsa 123',
-        zonaId: 'zona-1',
+        zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
       });
 
     assert.strictEqual(crossTenantPost.status, 404);
@@ -224,7 +224,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       .send({
         nombre: 'Hotel Calle 100',
         direccion: 'Calle 100 # 8A-49',
-        zonaId: 'zona-bogota-norte',
+        zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
         reglas: { recepcion24h: true },
       });
 
@@ -267,7 +267,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
           {
             nombre: 'Sede Principal',
             direccion: 'Carrera 7 # 72-10',
-            zonaId: 'zona-bogota-centro',
+            zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12',
           },
         ],
       });
@@ -289,7 +289,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       .send({
         nombre: 'Sede Infiltrada',
         direccion: 'Calle Intruso 456',
-        zonaId: 'zona-bogota-centro',
+        zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12',
       });
 
     assert.strictEqual(postRes.status, 403);
@@ -308,8 +308,8 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
           nit,
           email,
           sitios: [
-            { nombre: 'Sede Norte', direccion: 'Calle 140 # 10-20', zonaId: 'zona-bogota-norte' },
-            { nombre: 'Sede Sur', direccion: 'Avenida 1 de Mayo # 40-10', zonaId: 'zona-bogota-sur' },
+            { nombre: 'Sede Norte', direccion: 'Calle 140 # 10-20', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' },
+            { nombre: 'Sede Sur', direccion: 'Avenida 1 de Mayo # 40-10', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14' },
           ],
         });
       assert.strictEqual(res.status, 201);
@@ -322,7 +322,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       const res = await request(app)
         .patch(`/api/v1/clients/${clienteId}/sites/${sitios[0].id}`)
         .set('Authorization', `Bearer ${adminA}`)
-        .send({ nombre: 'Sede Norte Renovada', zonaId: 'zona-bogota-usaquen', contactoNombre: 'Laura Gómez' });
+        .send({ nombre: 'Sede Norte Renovada', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15', contactoNombre: 'Laura Gómez' });
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.sitio.id, sitios[0].id);
@@ -337,7 +337,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       assert.strictEqual(lista.body.totalSitios, 2);
       const [norte, sur] = lista.body.sitios;
       assert.strictEqual(norte.nombre, 'Sede Norte Renovada');
-      assert.strictEqual(norte.zonaId, 'zona-bogota-usaquen');
+      assert.strictEqual(norte.zonaId, 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15');
       assert.strictEqual(norte.contactoNombre, 'Laura Gómez');
       assert.strictEqual(sur.nombre, 'Sede Sur');
     });
@@ -355,7 +355,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       const lista = await request(app)
         .get(`/api/v1/clients/${clienteId}/sites`)
         .set('Authorization', `Bearer ${adminA}`);
-      assert.strictEqual(lista.body.sitios[0].zonaId, 'zona-bogota-norte');
+      assert.strictEqual(lista.body.sitios[0].zonaId, 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13');
       assert.strictEqual(lista.body.sitios[0].direccion, 'Calle 140 # 10-20');
     });
 
@@ -420,7 +420,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
           razonSocial: 'Empresa Alias Me S.A.S.',
           nit: '900700010-1',
           email: 'aliasme@empresa.com',
-          sitios: [{ nombre: 'Sede Inicial', direccion: 'Calle 72 # 10-07', zonaId: 'zona-bogota-norte' }],
+          sitios: [{ nombre: 'Sede Inicial', direccion: 'Calle 72 # 10-07', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' }],
         });
       assert.strictEqual(creada.status, 201);
       const cliente = await container.companyClientRepository.findById(creada.body.client.id, 'trama-demo');
@@ -429,7 +429,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       const alta = await request(app)
         .post('/api/v1/clients/me/sites')
         .set('Authorization', `Bearer ${dueno}`)
-        .send({ nombre: 'Sede Dos', direccion: 'Carrera 15 # 93-60', zonaId: 'zona-bogota-norte' });
+        .send({ nombre: 'Sede Dos', direccion: 'Carrera 15 # 93-60', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' });
       assert.strictEqual(alta.status, 201);
       assert.strictEqual(alta.body.sitio.clienteId, cliente.id);
 

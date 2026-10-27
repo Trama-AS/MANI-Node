@@ -1,3 +1,5 @@
+const { INSECURE_DEV_SECRET } = require('./jwtSecret');
+
 const ENVIRONMENTS = {
   development: 'DEV',
   qa: 'QA',
@@ -69,8 +71,12 @@ const config = {
   // Conexión directa a PostgreSQL (pg). Solo para operaciones que necesitan una
   // transacción real, como el reemplazo atómico de categorías del aliado (SCRUM-1071).
   databaseUrl: process.env.DATABASE_URL,
-  supabaseJwtSecret:
-    process.env.SUPABASE_JWT_SECRET || (allowInsecureDevSecret ? 'dev-jwt-secret-insecure-32chars!!' : ''),
+  // El respaldo de desarrollo es el MISMO que usa config/jwtSecret.js, que es
+  // con el que /auth/validate-token verifica para el Gateway. Cuando eran dos
+  // valores distintos, el Gateway aceptaba el token y el middleware
+  // `authenticate` de Core lo rechazaba después: toda ruta autenticada quedaba
+  // rota en local si no se fijaba SUPABASE_JWT_SECRET.
+  supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET || (allowInsecureDevSecret ? INSECURE_DEV_SECRET : ''),
   gatewayUrl: process.env.GATEWAY_URL,
   rulesServiceUrl: process.env.RULES_SERVICE_URL,
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
