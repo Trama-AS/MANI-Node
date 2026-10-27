@@ -500,3 +500,38 @@ test('POST /auth/password-reset rechaza token inventado, contraseña corta y fal
   const sinCuerpo = await request(app).post('/api/v1/auth/password-reset').set('X-Tenant-Slug', 'trama-demo').send({});
   assert.equal(sinCuerpo.status, 400);
 });
+
+// ---- HU-M02-03 (SCRUM-1371): constancia del cierre de sesión ----
+
+test('POST /auth/logout con sesión responde 204 y audita con el tenant y el usuario del token, no del cuerpo', async () => {
+  const email = `logout.${Date.now()}@mani.test`;
+  const registro = await request(app)
+    .post('/api/v1/auth/register/client')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .send({ fullName: 'Ana Logout', email, password: 'ClaveVieja123' });
+  assert.equal(registro.status, 201);
+
+  const audit = [];
+  const original = container.logoutUseCase.auditLogger;
+  container.logoutUseCase.auditLogger = (e) => audit.push(e);
+  try {
+    const res = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', `Bearer ${registro.body.tokens.accessToken}`)
+      .send({ tenantId: 'otro-tenant', userId: 'otro-usuario' });
+
+    assert.equal(res.status, 204);
+    assert.equal(audit.length, 1);
+    assert.equal(audit[0].event, 'US-02.sesion.cierre');
+    assert.equal(audit[0].tenant_id, 'trama-demo');
+    assert.equal(audit[0].usuario_id, registro.body.profile.id);
+    assert.equal(JSON.stringify(audit).includes('otro-tenant'), false);
+  } finally {
+    container.logoutUseCase.auditLogger = original;
+  }
+});
+
+test('POST /auth/logout sin Authorization o con token inválido responde 401', async () => {
+  assert.equal((await request(app).post('/api/v1/auth/logout')).status, 401);
+  assert.equal((await request(app).post('/api/v1/auth/logout').set('Authorization', 'Bearer token-invalido')).status, 401);
+});
