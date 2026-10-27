@@ -33,8 +33,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0013`** | [`0013_sitio_contacto.sql`](migrations/0013_sitio_contacto.sql) | `SCRUM-852` | `contacto_nombre` y `contacto_telefono` en `sitio` (contacto de la sede). |
 | **`0014`** | [`0014_evento_servicio_evidencia_idempotencia.sql`](migrations/0014_evento_servicio_evidencia_idempotencia.sql) | `SCRUM-869` | `evidencia_ruta` (contenido de la `0012` retirada) y `clave_idempotencia` en `evento_servicio`, con índice único parcial por tenant y solicitud. |
 | **`0015`** | [`0015_pago_simulado.sql`](migrations/0015_pago_simulado.sql) | `SCRUM-1432` | Tabla `pago` del sandbox simulado: RLS por tenant, solo `SELECT` e `INSERT` para `mani_core_svc`, idempotencia por clave y un solo pago aprobado por cotización. |
+| **`0016`** | [`0016_politica_solicitud_rechazo.sql`](migrations/0016_politica_solicitud_rechazo.sql) | `SCRUM-1450` | La política `solicitud_rechazo_aliado` deja de leer `aliado` (D-3): usa la función `SECURITY DEFINER` `app.es_aliado_del_usuario`, que solo responde por el aliado y el tenant de la sesión. Dispatch no gana lectura sobre `aliado`. |
 
-La siguiente migración libre es la **`0016`**.
+La siguiente migración libre es la **`0017`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
