@@ -29,7 +29,7 @@ test('bandeja: lee solo la del usuario y tenant de la sesión y marca que la ent
 
   const inbox = await useCase.execute({ session: { userId: USER, tenantId: TENANT, role: 'ALLY' }, query: { userId: 'otro' } });
 
-  assert.deepEqual(calls[0], [TENANT, USER, { limit: 50 }]);
+  assert.deepEqual(calls[0], [{ tenantId: TENANT, userId: USER, role: 'ALLY' }, { limit: 50 }]);
   assert.deepEqual(inbox, {
     proveedor: 'mock',
     simulada: true,
@@ -50,7 +50,7 @@ test('bandeja: cualquier rol con sesión puede leer la suya', async () => {
 test('bandeja: acepta limit entre 1 y 100', async () => {
   const { useCase, calls } = makeUseCase();
   await useCase.execute({ session: { userId: USER, tenantId: TENANT }, query: { limit: '10' } });
-  assert.deepEqual(calls[0][2], { limit: 10 });
+  assert.deepEqual(calls[0][1], { limit: 10 });
 
   for (const limit of ['0', '101', 'abc', '2.5']) {
     await assert.rejects(

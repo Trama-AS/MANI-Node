@@ -17,9 +17,10 @@ const CATEGORIA = '33333333-3333-4333-8333-333333333333';
 const ZONA = '44444444-4444-4444-8444-444444444444';
 const SOLICITUD = '55555555-5555-4555-8555-555555555555';
 const ALLY = '66666666-6666-4666-8666-666666666666';
+const USUARIO = '22222222-2222-4222-8222-222222222222';
 
 function tokenFor({ tenantId = TENANT, role = 'cliente' } = {}) {
-  return jwt.sign({ sub: 'user-1', app_metadata: { tenant_id: tenantId, user_role: role } }, config.supabaseJwtSecret, {
+  return jwt.sign({ sub: USUARIO, app_metadata: { tenant_id: tenantId, user_role: role } }, config.supabaseJwtSecret, {
     algorithm: 'HS256',
     expiresIn: '1h',
   });
@@ -44,8 +45,8 @@ function withFakes(fakes, fn) {
 const eligibleFake = (calls) => ({
   listEligibleAlliesUseCase: new ListEligibleAlliesUseCase({
     elegibilidadRepository: {
-      findEligible: async (criteria) => {
-        calls.push(criteria);
+      findEligible: async (ctx, criteria) => {
+        calls.push({ ...criteria, ctx });
         return {
           allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO' }],
           totalCount: 1,
@@ -80,7 +81,7 @@ test('GET /allies/eligible usa el tenant del token y no el de la cabecera X-Tena
   assert.equal(res.status, 200);
   assert.equal(res.body.totalCount, 1);
   assert.equal(res.body.allies[0].nombreRazonSocial, 'Ana');
-  assert.equal(calls[0].tenantId, TENANT);
+  assert.equal(calls[0].ctx.tenantId, TENANT);
   assert.equal(calls[0].tipo, 'PERSONA_NATURAL');
 }));
 
@@ -115,8 +116,8 @@ test('GET /solicitudes/:id/context devuelve la solicitud o 404', async () => {
   const fake = {
     getSolicitudContextUseCase: new GetSolicitudContextUseCase({
       solicitudContextRepository: {
-        findContext: async (tenantId, id) =>
-          id === SOLICITUD ? { id, tenantId, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PUBLICADA' } : null,
+        findContext: async (ctx, id) =>
+          id === SOLICITUD ? { id, tenantId: ctx.tenantId, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PUBLICADA' } : null,
       },
     }),
   };
@@ -137,7 +138,7 @@ test('POST /notifications publica la oferta con el tenant del token', async () =
   const created = [];
   const fake = {
     publishNotificationUseCase: new PublishNotificationUseCase({
-      notificacionRepository: { createForAlly: async (n) => { created.push(n); return { id: 'n1', usuarioId: 'u-ally' }; } },
+      notificacionRepository: { createForAlly: async (ctx, n) => { created.push({ ...n, tenantId: ctx.tenantId }); return { id: 'n1', usuarioId: 'u-ally' }; } },
       pushProvider: new MockPushProvider(),
     }),
   };
@@ -238,7 +239,7 @@ test('GET /allies/me devuelve el perfil del aliado del token y rechaza a un clie
   await withFakes(fake, async () => {
     const ok = await request(app).get('/api/v1/allies/me').set('Authorization', bearer({ role: 'aliado' }));
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.body, { id: ALLY, tenantId: TENANT, usuarioId: 'user-1', estadoVerificacion: 'VERIFICADO' });
+    assert.deepEqual(ok.body, { id: ALLY, tenantId: TENANT, usuarioId: USUARIO, estadoVerificacion: 'VERIFICADO' });
 
     const cliente = await request(app).get('/api/v1/allies/me').set('Authorization', bearer({ role: 'cliente' }));
     assert.equal(cliente.status, 403);

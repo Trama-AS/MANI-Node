@@ -13,7 +13,8 @@ class PublishNotificationUseCase {
   }
 
   async execute({ session, body = {} }) {
-    const { tenantId } = requireDispatchSession(session);
+    const ctx = requireDispatchSession(session);
+    const { tenantId } = ctx;
 
     // El tenant sale del JWT. Si el cuerpo trae otro, es un intento cross-tenant (ADR-0018).
     if (body.tenantId !== undefined && body.tenantId !== tenantId) {
@@ -32,8 +33,7 @@ class PublishNotificationUseCase {
     }
     requireUuid(body.payload.requestId, 'payload.requestId');
 
-    const created = await this.notificacionRepository.createForAlly({
-      tenantId,
+    const created = await this.notificacionRepository.createForAlly(ctx, {
       allyId,
       tipo: body.tipo,
       canal: body.canal,
