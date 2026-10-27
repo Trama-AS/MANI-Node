@@ -8,6 +8,7 @@ const availabilityController = require('../controllers/availability.controller')
 const dispatchIntegrationController = require('../controllers/dispatchIntegration.controller');
 const requestsController = require('../controllers/requests.controller');
 const notificationsController = require('../controllers/notifications.controller');
+const quotesController = require('../controllers/quotes.controller');
 const { authenticate, requireRole } = require('../middlewares/auth.middleware');
 
 const router = Router();
@@ -60,6 +61,9 @@ router.get('/notifications', authenticate, dispatchIntegrationController.listNot
 router.get('/profiles/me/inbox', authenticate, notificationsController.listMyInbox);
 // US-04.1.1-M2 (SCRUM-1072): el cliente crea la solicitud en Core; el despacho es un paso posterior en Dispatch.
 router.post('/solicitudes', authenticate, uploadFotosSolicitud.array('fotos', 5), requestsController.createRequest);
+// US-04.2.1 (SCRUM-865): el aliado asignado cotiza; el cliente dueño y ese aliado consultan las versiones.
+router.post('/solicitudes/:id/cotizaciones', authenticate, quotesController.createQuote);
+router.get('/solicitudes/:id/cotizaciones', authenticate, quotesController.listQuotes);
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
 // aliado, pre-auth): devuelve las categorías globales de fixtures más las
