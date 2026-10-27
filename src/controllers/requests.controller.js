@@ -49,4 +49,20 @@ async function cancelOwnRequest(req, res, next) {
   }
 }
 
-module.exports = { createRequest, listOwnRequests, getOwnRequest, cancelOwnRequest };
+// HU-M05-07 (SCRUM-1403), decisión 6A: comando interno que Dispatch entrega cuando un aliado acepta. El aliado
+// sale del JWT reenviado; el cuerpo va vacío. 200 en ambos casos: `asignada` false si era un reintento.
+async function assignRequest(req, res, next) {
+  try {
+    const { solicitud, asignada } = await container.assignServiceRequestUseCase.execute({
+      user: req.user,
+      solicitudId: req.params.id,
+      correlationId: req.correlationId || null,
+      idempotencyKey: req.get('Idempotency-Key') || null,
+    });
+    res.status(200).json({ solicitud, asignada, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createRequest, listOwnRequests, getOwnRequest, cancelOwnRequest, assignRequest };

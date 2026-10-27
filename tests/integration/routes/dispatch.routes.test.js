@@ -248,3 +248,42 @@ test('GET /allies/me devuelve el perfil del aliado del token y rechaza a un clie
     assert.equal(sinToken.status, 401);
   })();
 });
+
+test('GET /allies/me/offers devuelve la bandeja del aliado de la sesión y rechaza a un cliente', async () => {
+  const ListAllyOffersUseCase = require('../../../src/application/useCases/dispatch/ListAllyOffersUseCase');
+  const llamadas = [];
+  const fake = {
+    listAllyOffersUseCase: new ListAllyOffersUseCase({
+      solicitudAsignacionRepository: { ofertasDelAliado: async (ctx) => { llamadas.push(ctx); return [{ id: SOLICITUD, esMia: false }]; } },
+    }),
+  };
+  await withFakes(fake, async () => {
+    const ok = await request(app).get('/api/v1/allies/me/offers').set('Authorization', bearer({ role: 'aliado' }));
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.body.items, [{ id: SOLICITUD, esMia: false }]);
+    assert.deepEqual(llamadas[0], { tenantId: TENANT, userId: USUARIO, role: 'ALLY' });
+
+    const cliente = await request(app).get('/api/v1/allies/me/offers').set('Authorization', bearer());
+    assert.equal(cliente.status, 403);
+  })();
+});
+
+test('POST /notifications con una oferta que ya existía responde 200 sin repetir el push', async () => {
+  const push = new MockPushProvider();
+  const fake = {
+    publishNotificationUseCase: new PublishNotificationUseCase({
+      notificacionRepository: { createForAlly: async () => ({ id: 'n1', usuarioId: 'u-ally', nueva: false }) },
+      pushProvider: push,
+    }),
+  };
+  await withFakes(fake, async () => {
+    const res = await request(app)
+      .post('/api/v1/notifications')
+      .set('Authorization', bearer())
+      .send({ allyId: ALLY, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: SOLICITUD } });
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { id: 'n1', nueva: false, entrega: null });
+    assert.deepEqual(push.sentTo(TENANT, 'u-ally'), []);
+  })();
+});

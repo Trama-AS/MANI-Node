@@ -36,8 +36,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0016`** | [`0016_politica_solicitud_rechazo.sql`](migrations/0016_politica_solicitud_rechazo.sql) | `SCRUM-1450` | La política `solicitud_rechazo_aliado` deja de leer `aliado` (D-3): usa la función `SECURITY DEFINER` `app.es_aliado_del_usuario`, que solo responde por el aliado y el tenant de la sesión. Dispatch no gana lectura sobre `aliado`. |
 | **`0017`** | [`0017_mensaje_idempotencia.sql`](migrations/0017_mensaje_idempotencia.sql) | `SCRUM-881` | `mensaje.clave_idempotencia` (reintento sin duplicar) con índice único por remitente y el índice del hilo `(tenant_id, solicitud_id, created_at, id)` para la consulta incremental. |
 | **`0018`** | [`0018_solicitud_huella_idempotencia.sql`](migrations/0018_solicitud_huella_idempotencia.sql) | `SCRUM-1405` | Columna `huella_idempotencia` en `solicitud`: sha256 de los datos y fotos de la creación. Si la misma `clave_idempotencia` llega con otra huella, Core responde `409 MANI-SOL-409K` en vez de devolver la fila previa (HU-M05-09 C2). Las filas anteriores quedan sin huella y se tratan como coincidencia. |
+| **`0019`** | [`0019_frontera_asignacion_6a.sql`](migrations/0019_frontera_asignacion_6a.sql) | `SCRUM-1403` | Decisión 6A: se revoca `UPDATE` sobre `solicitud` a `mani_dispatch_svc` y se elimina `solicitud_aceptar_aliado` (Core registra la asignación con `POST /solicitudes/{id}/asignacion`). Nueva política `solicitud_rechazo_lectura_despacho` para que Dispatch lea los rechazos al orquestar con el token del cliente o admin. Índice único `ux_notificacion_oferta_despacho`: una oferta por aliado y solicitud; **antes del índice borra las ofertas duplicadas** y conserva la más antigua. |
 
-La siguiente migración libre es la **`0019`**.
+La siguiente migración libre es la **`0020`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
@@ -97,8 +98,8 @@ Toda tabla con `tenant_id` tiene `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL 
 | `solicitud_foto` | Core | `SELECT, INSERT` | — | `solicitud_foto_tenant` (`TO authenticated, mani_core_svc`) | Patrón T: `tenant_id = app.tenant_id()`. |
 | `documento_legal` | Core | `SELECT, INSERT` | — | `documento_legal_lectura`, `documento_legal_alta` | Lectura de activos globales (`tenant_id IS NULL`) o del tenant (`app.tenant_id()`). |
 | `consentimiento_usuario` | Core | `SELECT, INSERT` | — | `consentimiento_usuario_propio`, `consentimiento_usuario_alta` | `usuario_id = app.user_id()` **y** (`tenant_id IS NULL` o `tenant_id = app.tenant_id()`). |
-| `solicitud` | Core / Dispatch | `SELECT, INSERT, UPDATE` | `SELECT, UPDATE` | `solicitud_lectura`, `solicitud_alta_cliente`, `solicitud_aceptar_aliado`, `solicitud_transicion_core` | Lectura por tenant; alta exige `app.user_role() = 'cliente'`; aceptación en Dispatch exige `app.user_role() = 'aliado'` (`H-02`/`KI-13`). |
-| `solicitud_rechazo` | Dispatch | — | `SELECT, INSERT` | `solicitud_rechazo_aliado` (`TO authenticated, mani_dispatch_svc`) | Mismo tenant (`app.tenant_id()`) **y** aliado dueño (`app.user_id()`). |
+| `solicitud` | Core | `SELECT, INSERT, UPDATE` | `SELECT` | `solicitud_lectura`, `solicitud_alta_cliente`, `solicitud_transicion_core` | Lectura por tenant; alta exige `app.user_role() = 'cliente'`. Desde la `0019` (decisión 6A) solo Core escribe el estado: la aceptación que decide Dispatch se registra con el comando de asignación de Core. |
+| `solicitud_rechazo` | Dispatch | — | `SELECT, INSERT` | `solicitud_rechazo_aliado` (`TO authenticated, mani_dispatch_svc`), `solicitud_rechazo_lectura_despacho` (`TO mani_dispatch_svc`, solo `SELECT`) | Mismo tenant (`app.tenant_id()`) **y** aliado dueño (`app.user_id()`); para orquestar, Dispatch lee los rechazos del tenant con el rol `cliente` o `admin_tenant`. |
 | `storage.objects` | Core | Storage API | — | `kyc_isolation`, `solicitudes_isolation` (`TO authenticated, mani_core_svc`) | Exige `(storage.foldername(name))[1] = app.tenant_id()::text` y carpeta de usuario `(storage.foldername(name))[2] = app.user_id()::text` (o `admin_tenant`). |
 
 ---

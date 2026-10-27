@@ -190,7 +190,7 @@ test('contexto: id inválido 400; sesión sin usuario UUID, sin tenant o con otr
 
 // ---- publicar notificación ----
 
-function publishUseCase(result = { id: 'n1', usuarioId: 'u-ally' }, pushProvider = new MockPushProvider({ idFactory: () => 'x' })) {
+function publishUseCase(result = { id: 'n1', usuarioId: 'u-ally', nueva: true }, pushProvider = new MockPushProvider({ idFactory: () => 'x' })) {
   const calls = [];
   const useCase = new PublishNotificationUseCase({
     notificacionRepository: { createForAlly: async (ctx, n) => { calls.push({ ...n, tenantId: ctx.tenantId }); return result; } },
@@ -210,6 +210,7 @@ test('publicar: crea la notificación con el tenant de la sesión', async () => 
 
   assert.deepEqual(created, {
     id: 'n1',
+    nueva: true,
     entrega: { proveedor: 'mock', estado: 'SIMULADA', simulada: true, mensajeId: 'mock-x' },
   });
   assert.equal(calls[0].tenantId, TENANT);
@@ -234,7 +235,16 @@ test('publicar: si el proveedor push falla, la notificación queda persistida y 
   const created = await useCase.execute({ session: client, body: validBody() });
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(created, { id: 'n1', entrega: { proveedor: 'mock', estado: 'FALLIDA', simulada: true } });
+  assert.deepEqual(created, { id: 'n1', nueva: true, entrega: { proveedor: 'mock', estado: 'FALLIDA', simulada: true } });
+});
+
+test('publicar: una oferta que ya existía (reintento de la orquestación) no repite el push', async () => {
+  const { useCase, pushProvider } = publishUseCase({ id: 'n1', usuarioId: 'u-ally', nueva: false });
+
+  const created = await useCase.execute({ session: client, body: validBody() });
+
+  assert.deepEqual(created, { id: 'n1', nueva: false, entrega: null });
+  assert.deepEqual(pushProvider.sentTo(TENANT, 'u-ally'), []);
 });
 
 test('publicar: un aliado inexistente no llega al proveedor push', async () => {

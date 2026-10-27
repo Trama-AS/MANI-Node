@@ -43,6 +43,11 @@ class PublishNotificationUseCase {
       throw new NotFoundError('MANI-DSP-404: aliado no encontrado para el tenant', 'MANI-DSP-404');
     }
 
+    // Reintento de una orquestación (RNF-03): la oferta ya estaba en la bandeja del aliado y el push no se repite.
+    if (created.nueva === false) {
+      return { id: created.id, nueva: false, entrega: null };
+    }
+
     // La notificación ya quedó en la bandeja del aliado. Si la entrega push falla, no se pierde ni se
     // repite: se informa como FALLIDA y el usuario la ve igual al abrir su bandeja (HU-M09-06).
     let entrega;
@@ -57,7 +62,7 @@ class PublishNotificationUseCase {
     } catch {
       entrega = { proveedor: this.pushProvider.name, estado: 'FALLIDA', simulada: this.pushProvider.name === 'mock' };
     }
-    return { id: created.id, entrega };
+    return { id: created.id, nueva: true, entrega };
   }
 }
 

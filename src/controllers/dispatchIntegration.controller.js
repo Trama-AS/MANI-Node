@@ -24,7 +24,8 @@ async function getSolicitudContext(req, res, next) {
 async function publishNotification(req, res, next) {
   try {
     const created = await container.publishNotificationUseCase.execute({ session: req.user, body: req.body });
-    res.status(201).json(created);
+    // 200 si la oferta ya existía para ese aliado y solicitud (reintento de la orquestación).
+    res.status(created.nueva === false ? 200 : 201).json(created);
   } catch (err) {
     next(err);
   }
@@ -48,4 +49,20 @@ async function listNotifications(req, res, next) {
   }
 }
 
-module.exports = { listEligibleAllies, getSolicitudContext, getOwnAllyProfile, publishNotification, listNotifications };
+async function listOwnOffers(req, res, next) {
+  try {
+    const items = await container.listAllyOffersUseCase.execute({ session: req.user });
+    res.status(200).json({ items, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  listEligibleAllies,
+  getSolicitudContext,
+  getOwnAllyProfile,
+  listOwnOffers,
+  publishNotification,
+  listNotifications,
+};

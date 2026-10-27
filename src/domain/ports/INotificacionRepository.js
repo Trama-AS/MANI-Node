@@ -6,7 +6,8 @@
 class INotificacionRepository {
   /**
    * Crea la notificación para el usuario del aliado. Devuelve null si el aliado no existe en el tenant.
-   * @returns {Promise<{ id: string, usuarioId: string } | null>}
+   * Una oferta de despacho que ya existe para ese aliado y solicitud no se duplica: se devuelve con `nueva` false.
+   * @returns {Promise<{ id: string, usuarioId: string, nueva: boolean } | null>}
    */
   async createForAlly(_ctx, _notification) {
     throw new Error('Método createForAlly() no implementado en INotificacionRepository');
