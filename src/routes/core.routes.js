@@ -76,6 +76,8 @@ router.get('/solicitudes/:id/ejecucion', authenticate, executionController.getEx
 // US-04.3.2 (SCRUM-869): el aliado asignado registra eventos durante la ejecución; dueño y aliado los consultan.
 router.post('/solicitudes/:id/eventos', authenticate, uploadEvidencia.single('foto'), serviceEventsController.registerEvent);
 router.get('/solicitudes/:id/eventos', authenticate, serviceEventsController.listEvents);
+// US-04.3.3 (SCRUM-870): URL temporal de la foto de un evento para el cliente dueño o el aliado asignado.
+router.get('/solicitudes/:id/eventos/:eventoId/evidencia', authenticate, serviceEventsController.getEventEvidence);
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
 // aliado, pre-auth): devuelve las categorías globales de fixtures más las

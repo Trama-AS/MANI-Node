@@ -21,6 +21,14 @@ class IServiceEventRepository {
   async listar(_ctx, _solicitudId) {
     throw new Error('Método listar() no implementado en IServiceEventRepository');
   }
+
+  /**
+   * SCRUM-870: ruta en Storage de la evidencia de un evento, para el cliente dueño o el aliado asignado.
+   * @returns {Promise<string>}
+   */
+  async rutaEvidencia(_ctx, _solicitudId, _eventoId) {
+    throw new Error('Método rutaEvidencia() no implementado en IServiceEventRepository');
+  }
 }
 
 module.exports = IServiceEventRepository;

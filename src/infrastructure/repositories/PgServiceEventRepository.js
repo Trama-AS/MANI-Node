@@ -23,6 +23,20 @@ const noEncontrada = () => new NotFoundError('MANI-EVT-404: solicitud no encontr
 const noAsignado = () =>
   new ForbiddenError('MANI-EVT-403A: solo el aliado asignado registra eventos del servicio', 'MANI-EVT-403A');
 
+// Solo el cliente dueño o el aliado asignado; para cualquier otro la solicitud no existe.
+async function verificarAcceso(client, ctx, solicitudId) {
+  const { rows } = await client.query(
+    `SELECT 1
+     FROM solicitud s
+     LEFT JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
+     LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
+     WHERE s.id = $1 AND s.tenant_id = $2
+       AND (($3 = 'CLIENT' AND c.usuario_id = $4) OR ($3 = 'ALLY' AND a.usuario_id = $4))`,
+    [solicitudId, ctx.tenantId, ctx.role, ctx.userId]
+  );
+  if (rows.length === 0) throw noEncontrada();
+}
+
 async function porClave(client, ctx, solicitudId, clave) {
   const { rows } = await client.query(
     `SELECT ${COLUMNAS} FROM evento_servicio e JOIN usuario u ON u.id = e.actor_id
@@ -100,17 +114,7 @@ class PgServiceEventRepository extends IServiceEventRepository {
 
   async listar(ctx, solicitudId) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      // Solo el cliente dueño o el aliado asignado; para cualquier otro la solicitud no existe.
-      const acceso = await client.query(
-        `SELECT 1
-         FROM solicitud s
-         LEFT JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
-         LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
-         WHERE s.id = $1 AND s.tenant_id = $2
-           AND (($3 = 'CLIENT' AND c.usuario_id = $4) OR ($3 = 'ALLY' AND a.usuario_id = $4))`,
-        [solicitudId, ctx.tenantId, ctx.role, ctx.userId]
-      );
-      if (acceso.rows.length === 0) throw noEncontrada();
+      await verificarAcceso(client, ctx, solicitudId);
 
       const { rows } = await client.query(
         `SELECT ${COLUMNAS} FROM evento_servicio e JOIN usuario u ON u.id = e.actor_id
@@ -119,6 +123,20 @@ class PgServiceEventRepository extends IServiceEventRepository {
         [solicitudId, ctx.tenantId]
       );
       return rows.map(toEvento);
+    });
+  }
+
+  async rutaEvidencia(ctx, solicitudId, eventoId) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      await verificarAcceso(client, ctx, solicitudId);
+      const { rows } = await client.query(
+        'SELECT evidencia_ruta FROM evento_servicio WHERE id = $1 AND solicitud_id = $2 AND tenant_id = $3',
+        [eventoId, solicitudId, ctx.tenantId]
+      );
+      if (rows.length === 0 || !rows[0].evidencia_ruta) {
+        throw new NotFoundError('MANI-EVT-404E: el evento no tiene evidencia', 'MANI-EVT-404E');
+      }
+      return rows[0].evidencia_ruta;
     });
   }
 }
