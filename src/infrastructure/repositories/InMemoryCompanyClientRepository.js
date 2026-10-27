@@ -2,19 +2,44 @@ const crypto = require('crypto');
 const CompanyClient = require('../../domain/entities/CompanyClient');
 const Site = require('../../domain/entities/Site');
 const ICompanyClientRepository = require('../../domain/ports/ICompanyClientRepository');
+const { ValidationError } = require('../../domain/errors/DomainError');
+
+// Mismo mensaje y código que traduce el adaptador de PostgreSQL cuando la FK
+// a `zona` falla: el doble en memoria debe rechazar lo mismo que la base.
+const ZONA_INVALIDA = 'zonaId no corresponde a una zona del catálogo (RF-09)';
 
 /**
  * Adaptador de Infraestructura en Memoria para Cliente Empresa y Sitios.
  * Utilizado para pruebas unitarias y entornos sin base de datos activa.
  */
 class InMemoryCompanyClientRepository extends ICompanyClientRepository {
-  constructor() {
+  /**
+   * @param {object} [deps]
+   * @param {import('../../domain/ports/IZoneRepository')} [deps.zoneRepository]
+   *   Catálogo de zonas con el que validar `zonaId`. En PostgreSQL ese
+   *   rechazo lo da la llave foránea a `zona`; sin él, este doble aceptaba
+   *   una zona inexistente con 201 y el error solo aparecía contra la base
+   *   real. Es opcional para no obligar a las pruebas que no lo necesitan.
+   */
+  constructor({ zoneRepository } = {}) {
     super();
     this.clients = new Map(); // key: id -> CompanyClient
     this.sites = new Map();   // key: id -> Site
+    this.zoneRepository = zoneRepository || null;
+  }
+
+  async _assertZonaExiste(zonaId) {
+    if (!this.zoneRepository) return;
+    const zona = await this.zoneRepository.findById(zonaId);
+    if (!zona) {
+      throw new ValidationError(ZONA_INVALIDA, 'VALIDATION_ERROR');
+    }
   }
 
   async save(companyClient, sites, { userId } = {}) {
+    for (const site of sites || []) {
+      await this._assertZonaExiste(site.zonaId);
+    }
     const clientId = crypto.randomUUID();
     const effectiveUserId = userId || crypto.randomUUID();
 
@@ -87,6 +112,7 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async addSite(clienteId, tenantId, site) {
+    await this._assertZonaExiste(site.zonaId);
     const siteId = site.id || crypto.randomUUID();
     const savedSite = new Site({
       id: siteId,
@@ -123,6 +149,9 @@ class InMemoryCompanyClientRepository extends ICompanyClientRepository {
   async updateSite(clienteId, tenantId, site) {
     const actual = await this.findSiteById(clienteId, site.id, tenantId);
     if (!actual) return null;
+    // La edición también cambia la zona: se valida igual que el alta, porque
+    // en PostgreSQL la misma FK rechaza el UPDATE.
+    await this._assertZonaExiste(site.zonaId);
     const guardada = new Site({ ...site.toJSON(), reglas: actual.reglas, creadoEn: actual.creadoEn });
     this.sites.set(site.id, guardada);
     return guardada;

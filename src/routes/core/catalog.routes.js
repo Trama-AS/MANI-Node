@@ -2,7 +2,7 @@ const { Router } = require('express');
 const catalogController = require('../../controllers/catalog.controller');
 const { authenticate, requireRole } = require('../../middlewares/auth.middleware');
 
-// Dominio Catálogo de categorías de servicio.
+// Dominio Catálogo: categorías de servicio y zonas geográficas.
 const router = Router();
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
@@ -20,5 +20,12 @@ router.get('/catalog/categories/:id', authenticate, requireAdmin, catalogControl
 router.put('/catalog/categories/:id', authenticate, requireAdmin, catalogController.updateCategory);
 router.patch('/catalog/categories/:id/activate', authenticate, requireAdmin, catalogController.activateCategory);
 router.patch('/catalog/categories/:id/deactivate', authenticate, requireAdmin, catalogController.deactivateCategory);
+
+// Catálogo jerárquico de zonas geográficas (HU-M04-04, REST-01). Solo
+// lectura: el catálogo lo administra la infraestructura de datos, no este
+// servicio. Requiere JWT verificado (T4/T7) aunque la tabla sea global,
+// porque es la única forma de no confiar en un tenant enviado por el cliente.
+router.get('/catalog/zones', authenticate, catalogController.listZoneCatalog);
+router.get('/catalog/zones/:id', authenticate, catalogController.getZone);
 
 module.exports = router;

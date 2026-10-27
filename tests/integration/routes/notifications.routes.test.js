@@ -39,7 +39,7 @@ test('GET /profiles/me/inbox devuelve la bandeja del usuario del token, marcada 
     assert.equal(res.status, 200);
     assert.equal(res.body.simulada, true);
     assert.equal(res.body.items[0].id, 'n1');
-    assert.deepEqual(calls[0], [TENANT, USER, { limit: 5 }]);
+    assert.deepEqual(calls[0], [{ tenantId: TENANT, userId: USER, role: 'ALLY' }, { limit: 5 }]);
   } finally {
     container.listMyInboxUseCase = original;
   }

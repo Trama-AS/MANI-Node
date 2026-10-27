@@ -16,10 +16,10 @@ class InMemoryFileStorageService extends IFileStorageService {
     this.files.delete(path);
   }
 
-  async createSignedUrl(path, expiresInSeconds = 300) {
-    const cleanPath = String(path || '').replace(/^kyc-documentos\//, '');
+  async createSignedUrl(path, expiresInSeconds = 300, { bucket = 'kyc-documentos' } = {}) {
+    const cleanPath = String(path || '').replace(new RegExp(`^${bucket}/`), '');
     return {
-      signedUrl: `https://storage.mani.local/kyc-documentos/${cleanPath}?token=signed-temp-token&expiresIn=${expiresInSeconds}`,
+      signedUrl: `https://storage.mani.local/${bucket}/${cleanPath}?token=signed-temp-token&expiresIn=${expiresInSeconds}`,
       expiresIn: expiresInSeconds,
     };
   }
