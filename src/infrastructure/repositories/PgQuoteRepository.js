@@ -1,6 +1,7 @@
 const IQuoteRepository = require('../../domain/ports/IQuoteRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
+const { aliadoDeSesion, clienteActivoDeSesion, solicitudVisible } = require('./sesionActores');
 
 // La solicitud admite cotización desde que Dispatch la asigna y mientras el cliente no la haya resuelto.
 const ESTADOS_COTIZABLES = ['ASIGNADA', 'COTIZANDO'];
@@ -42,12 +43,7 @@ class PgQuoteRepository extends IQuoteRepository {
 
   async emitir(ctx, datos) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      const aliado = await client.query('SELECT id FROM aliado WHERE usuario_id = $1 AND tenant_id = $2', [
-        ctx.userId,
-        ctx.tenantId,
-      ]);
-      if (aliado.rows.length === 0) throw noAsignado();
-      const aliadoId = aliado.rows[0].id;
+      const aliadoId = await aliadoDeSesion(client, ctx, noAsignado);
 
       const solicitud = await client.query(
         'SELECT estado, aliado_id FROM solicitud WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
@@ -103,18 +99,7 @@ class PgQuoteRepository extends IQuoteRepository {
 
   async listarPorSolicitud(ctx, solicitudId) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      // Solo el cliente dueño o el aliado asignado. Para cualquier otro la solicitud no existe: así no se
-      // revela que hay una solicitud ajena con ese id.
-      const acceso = await client.query(
-        `SELECT 1
-         FROM solicitud s
-         LEFT JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
-         LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
-         WHERE s.id = $1 AND s.tenant_id = $2
-           AND (($3 = 'CLIENT' AND c.usuario_id = $4) OR ($3 = 'ALLY' AND a.usuario_id = $4))`,
-        [solicitudId, ctx.tenantId, ctx.role, ctx.userId]
-      );
-      if (acceso.rows.length === 0) throw noEncontrada();
+      await solicitudVisible(client, ctx, solicitudId, noEncontrada);
 
       const { rows } = await client.query(
         `SELECT ${COLUMNAS} FROM cotizacion
@@ -128,14 +113,11 @@ class PgQuoteRepository extends IQuoteRepository {
 
   async responder(ctx, datos) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      const cliente = await client.query(
-        `SELECT c.id FROM cliente c JOIN usuario u ON u.id = c.usuario_id
-         WHERE c.usuario_id = $1 AND c.tenant_id = $2 AND u.estado = 'ACTIVO'`,
-        [ctx.userId, ctx.tenantId]
+      const clienteId = await clienteActivoDeSesion(
+        client,
+        ctx,
+        () => new ForbiddenError('MANI-COT-403C: solo un cliente activo responde cotizaciones', 'MANI-COT-403C')
       );
-      if (cliente.rows.length === 0) {
-        throw new ForbiddenError('MANI-COT-403C: solo un cliente activo responde cotizaciones', 'MANI-COT-403C');
-      }
 
       // Se bloquean la cotización y su solicitud: dos respuestas simultáneas no producen dos transiciones.
       const fila = await client.query(
@@ -147,7 +129,7 @@ class PgQuoteRepository extends IQuoteRepository {
         [datos.cotizacionId, ctx.tenantId]
       );
       // Una cotización de otro cliente responde igual que una inexistente: no se revela que existe.
-      if (fila.rows.length === 0 || fila.rows[0].cliente_id !== cliente.rows[0].id) throw cotizacionNoEncontrada();
+      if (fila.rows.length === 0 || fila.rows[0].cliente_id !== clienteId) throw cotizacionNoEncontrada();
       const actual = fila.rows[0];
       if (actual.estado !== 'PENDIENTE') {
         throw new ConflictError(
