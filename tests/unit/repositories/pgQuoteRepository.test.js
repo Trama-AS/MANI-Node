@@ -119,7 +119,7 @@ test('primera cotización de una solicitud en COTIZANDO queda como versión 1', 
 
 test('lista las cotizaciones del cliente dueño o del aliado asignado, de la más reciente a la más antigua', async () => {
   const { factory, sentencias } = fakeFactory({
-    'SELECT 1': { rows: [{}] },
+    'SELECT s.estado': { rows: [{}] },
     'FROM cotizacion': { rows: [filaCotizacion] },
   });
   const cliente = { ...ctx, role: 'CLIENT' };
@@ -128,7 +128,7 @@ test('lista las cotizaciones del cliente dueño o del aliado asignado, de la má
 
   assert.equal(lista.length, 1);
   assert.equal(lista[0].total, 155500.5);
-  const acceso = sentencias.find((s) => s.sql.startsWith('SELECT 1'));
+  const acceso = sentencias.find((s) => s.sql.startsWith('SELECT s.estado'));
   assert.deepEqual(acceso.params, [SOLICITUD, TENANT, 'CLIENT', USER]);
   assert.match(acceso.sql, /c\.usuario_id = \$4/);
   assert.match(acceso.sql, /a\.usuario_id = \$4/);
@@ -138,7 +138,7 @@ test('lista las cotizaciones del cliente dueño o del aliado asignado, de la má
 });
 
 test('C3: para quien no es dueño ni aliado asignado la solicitud no existe (404)', async () => {
-  const { factory, sentencias } = fakeFactory({ 'SELECT 1': { rows: [] } });
+  const { factory, sentencias } = fakeFactory({ 'SELECT s.estado': { rows: [] } });
   await assert.rejects(new PgQuoteRepository({ pgPoolFactory: factory }).listarPorSolicitud(ctx, SOLICITUD), {
     statusCode: 404,
     code: 'MANI-COT-404',
