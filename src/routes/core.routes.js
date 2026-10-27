@@ -61,6 +61,10 @@ router.post('/solicitudes', authenticate, uploadFotosSolicitud.array('fotos', 5)
 // US-04.2.1 (SCRUM-865): el aliado asignado cotiza; el cliente dueño y ese aliado consultan las versiones.
 router.post('/solicitudes/:id/cotizaciones', authenticate, quotesController.createQuote);
 router.get('/solicitudes/:id/cotizaciones', authenticate, quotesController.listQuotes);
+// US-04.2.3 (SCRUM-867): el cliente dueño acepta, rechaza o pide ajustar la cotización pendiente.
+router.post('/cotizaciones/:id/aceptar', authenticate, quotesController.acceptQuote);
+router.post('/cotizaciones/:id/rechazar', authenticate, quotesController.rejectQuote);
+router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQuote);
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
 // aliado, pre-auth): devuelve las categorías globales de fixtures más las

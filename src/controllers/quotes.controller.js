@@ -23,4 +23,25 @@ async function listQuotes(req, res, next) {
   }
 }
 
-module.exports = { createQuote, listQuotes };
+// US-04.2.3 (SCRUM-867): una ruta por decisión del cliente sobre la cotización pendiente.
+function responder(accion) {
+  return async (req, res, next) => {
+    try {
+      const resultado = await container.respondQuoteUseCase.execute({
+        user: req.user,
+        cotizacionId: req.params.id,
+        accion,
+        body: req.body || {},
+      });
+      res.json({ ...resultado, correlationId: req.correlationId || 'none' });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+const acceptQuote = responder('ACEPTAR');
+const rejectQuote = responder('RECHAZAR');
+const adjustQuote = responder('AJUSTAR');
+
+module.exports = { createQuote, listQuotes, acceptQuote, rejectQuote, adjustQuote };

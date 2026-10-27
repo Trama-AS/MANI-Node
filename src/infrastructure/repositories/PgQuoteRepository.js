@@ -26,6 +26,7 @@ function toQuote(row) {
 const noEncontrada = () => new NotFoundError('MANI-COT-404: solicitud no encontrada', 'MANI-COT-404');
 const noAsignado = () =>
   new ForbiddenError('MANI-COT-403A: solo el aliado asignado a la solicitud puede cotizarla', 'MANI-COT-403A');
+const cotizacionNoEncontrada = () => new NotFoundError('MANI-COT-404: cotización no encontrada', 'MANI-COT-404');
 
 /**
  * Cotización sobre `pg` dentro de una transacción con withTenantContext (ADR-0032). Toda consulta filtra por
@@ -122,6 +123,85 @@ class PgQuoteRepository extends IQuoteRepository {
         [solicitudId, ctx.tenantId]
       );
       return rows.map(toQuote);
+    });
+  }
+
+  async responder(ctx, datos) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const cliente = await client.query(
+        `SELECT c.id FROM cliente c JOIN usuario u ON u.id = c.usuario_id
+         WHERE c.usuario_id = $1 AND c.tenant_id = $2 AND u.estado = 'ACTIVO'`,
+        [ctx.userId, ctx.tenantId]
+      );
+      if (cliente.rows.length === 0) {
+        throw new ForbiddenError('MANI-COT-403C: solo un cliente activo responde cotizaciones', 'MANI-COT-403C');
+      }
+
+      // Se bloquean la cotización y su solicitud: dos respuestas simultáneas no producen dos transiciones.
+      const fila = await client.query(
+        `SELECT cot.estado, cot.aliado_id, s.id AS solicitud_id, s.cliente_id, s.estado AS estado_solicitud
+         FROM cotizacion cot
+         JOIN solicitud s ON s.id = cot.solicitud_id AND s.tenant_id = cot.tenant_id
+         WHERE cot.id = $1 AND cot.tenant_id = $2
+         FOR UPDATE OF cot, s`,
+        [datos.cotizacionId, ctx.tenantId]
+      );
+      // Una cotización de otro cliente responde igual que una inexistente: no se revela que existe.
+      if (fila.rows.length === 0 || fila.rows[0].cliente_id !== cliente.rows[0].id) throw cotizacionNoEncontrada();
+      const actual = fila.rows[0];
+      if (actual.estado !== 'PENDIENTE') {
+        throw new ConflictError(
+          `MANI-COT-409R: la cotización ya fue respondida (estado ${actual.estado})`,
+          'MANI-COT-409R'
+        );
+      }
+      if (actual.estado_solicitud !== 'COTIZANDO') {
+        throw new ConflictError(
+          `MANI-COT-409E: la solicitud en estado ${actual.estado_solicitud} no admite respuesta a la cotización`,
+          'MANI-COT-409E'
+        );
+      }
+
+      const actualizada = await client.query(
+        `UPDATE cotizacion SET estado = $1 WHERE id = $2 AND tenant_id = $3 RETURNING ${COLUMNAS}`,
+        [datos.decision.cotizacion, datos.cotizacionId, ctx.tenantId]
+      );
+      const cotizacion = toQuote(actualizada.rows[0]);
+
+      await client.query('UPDATE solicitud SET estado = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3', [
+        datos.decision.solicitud,
+        actual.solicitud_id,
+        ctx.tenantId,
+      ]);
+      await client.query(
+        `INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, descripcion)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          ctx.tenantId,
+          actual.solicitud_id,
+          ctx.userId,
+          datos.decision.evento,
+          datos.detalle ? `Cotización v${cotizacion.version}: ${datos.detalle}` : `Cotización v${cotizacion.version}`,
+        ]
+      );
+      // El aliado se entera en su bandeja (/profiles/me/inbox, HU-M09-06); el envío push es del proveedor.
+      await client.query(
+        `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
+         SELECT $1, a.usuario_id, 'RESPUESTA_COTIZACION', 'PUSH', $3::jsonb
+         FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1`,
+        [
+          ctx.tenantId,
+          actual.aliado_id,
+          JSON.stringify({
+            requestId: actual.solicitud_id,
+            cotizacionId: cotizacion.id,
+            version: cotizacion.version,
+            decision: datos.decision.accion,
+          }),
+        ]
+      );
+
+      return { cotizacion, solicitud: { id: actual.solicitud_id, estado: datos.decision.solicitud } };
     });
   }
 }
