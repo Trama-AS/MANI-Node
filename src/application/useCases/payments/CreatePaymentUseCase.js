@@ -1,6 +1,11 @@
 const { DomainError, ValidationError } = require('../../../domain/errors/DomainError');
 const PaymentProviderError = require('../../../domain/errors/PaymentProviderError');
+const callProvider = require('../../providers/callProvider');
 const { contextoDeSesion, uuidValido } = require('./paymentAccess');
+
+// Política de proveedores (SCRUM-1240): un cobro tiene tiempo máximo y Core NO lo reintenta. Si no hay desenlace,
+// el cliente reintenta con la misma claveIdempotencia y el proveedor devuelve el mismo desenlace sin cobrar dos veces.
+const POLITICA_PAGOS = Object.freeze({ timeoutMs: 10000, retries: 0 });
 
 const DESENLACES = new Set(['APROBADO', 'RECHAZADO', 'PENDIENTE']);
 // Campos que NUNCA debe traer el cuerpo: el sandbox no recibe datos de tarjeta (RNF-06, REST-03).
@@ -28,11 +33,18 @@ function desenlaceValido(resultado) {
  * falso ni efecto financiero, y la respuesta lleva el `correlationId` del manejador de errores (C2).
  */
 class CreatePaymentUseCase {
-  constructor({ paymentRepository, paymentProvider, auditLogger = (entry) => console.info(JSON.stringify(entry)) }) {
+  constructor({
+    paymentRepository,
+    paymentProvider,
+    politica = POLITICA_PAGOS,
+    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+  }) {
     if (!paymentRepository) throw new Error('paymentRepository es requerido para CreatePaymentUseCase');
     if (!paymentProvider) throw new Error('paymentProvider es requerido para CreatePaymentUseCase');
     this.paymentRepository = paymentRepository;
     this.paymentProvider = paymentProvider;
+    // Un cobro nunca se reintenta automáticamente, aunque la configuración lo pida.
+    this.politica = { ...POLITICA_PAGOS, ...politica, retries: 0 };
     this.auditLogger = auditLogger;
   }
 
@@ -53,13 +65,20 @@ class CreatePaymentUseCase {
 
     let resultado;
     try {
-      resultado = await this.paymentProvider.charge({
-        monto: cobro.monto,
-        moneda: cobro.moneda,
-        referencia: cobro.cotizacionId,
-        escenario,
-        correlationId,
-      });
+      resultado = await callProvider(
+        ({ signal }) =>
+          this.paymentProvider.charge({
+            monto: cobro.monto,
+            moneda: cobro.moneda,
+            referencia: cobro.cotizacionId,
+            escenario,
+            // La clave es la del cliente, no la cotización: un pago rechazado se puede volver a intentar.
+            idempotencyKey: claveIdempotencia || undefined,
+            correlationId,
+            signal,
+          }),
+        { ...this.politica, ErrorClass: PaymentProviderError, proveedor: `El proveedor de pagos ${this.paymentProvider.name}` }
+      );
       if (!desenlaceValido(resultado)) {
         throw new PaymentProviderError('INVALID_RESPONSE', 'El proveedor devolvió un desenlace fuera del contrato');
       }
@@ -122,4 +141,5 @@ class CreatePaymentUseCase {
 }
 
 CreatePaymentUseCase.CAMPOS_DE_TARJETA = CAMPOS_DE_TARJETA;
+CreatePaymentUseCase.POLITICA_PAGOS = POLITICA_PAGOS;
 module.exports = CreatePaymentUseCase;

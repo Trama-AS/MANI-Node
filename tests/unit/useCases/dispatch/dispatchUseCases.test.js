@@ -229,12 +229,22 @@ test('publicar: entrega por el proveedor push al usuario del aliado después de 
 });
 
 test('publicar: si el proveedor push falla, la notificación queda persistida y la entrega se informa FALLIDA', async () => {
-  const failing = { name: 'mock', send: async () => { throw new Error('proveedor caído'); } };
+  let intentos = 0;
+  const failing = {
+    name: 'mock',
+    simulated: true,
+    send: async () => {
+      intentos += 1;
+      throw new Error('proveedor caído');
+    },
+  };
   const { useCase, calls } = publishUseCase(undefined, failing);
 
   const created = await useCase.execute({ session: client, body: validBody() });
 
   assert.equal(calls.length, 1);
+  // SCRUM-1240: un fallo pasajero se reintenta dos veces (tres intentos) antes de informar FALLIDA.
+  assert.equal(intentos, 3);
   assert.deepEqual(created, { id: 'n1', nueva: true, entrega: { proveedor: 'mock', estado: 'FALLIDA', simulada: true } });
 });
 
