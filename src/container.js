@@ -89,6 +89,8 @@ const { createPushProvider } = require('./infrastructure/push/createPushProvider
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const PgRequestFormRepository = require('./infrastructure/repositories/PgRequestFormRepository');
+const GetRequestFormOptionsUseCase = require('./application/useCases/requests/GetRequestFormOptionsUseCase');
 
 const config = require('./config');
 
@@ -271,6 +273,11 @@ class Container {
     this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
       fileStorageService: this.fileStorageService,
+    });
+    // Lecturas del formulario de solicitud (SCRUM-1465), con el mismo contexto de tenant. Sin DATABASE_URL: 503.
+    this.requestFormRepository = new PgRequestFormRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.getRequestFormOptionsUseCase = new GetRequestFormOptionsUseCase({
+      requestFormRepository: this.requestFormRepository,
     });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
