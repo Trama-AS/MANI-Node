@@ -15,6 +15,30 @@ const PROYECCION_SQL = `
   LEFT JOIN zona zp ON zp.id = z.zona_padre_id
   WHERE s.id = $1 AND s.tenant_id = $2`;
 
+// Seguimiento del cliente (SCRUM-871): solo sus solicitudes, por el usuario del JWT y el tenant.
+const SEGUIMIENTO_SQL = `
+  SELECT s.id, s.estado, c.nombre AS categoria, z.nombre AS zona, z.nivel AS zona_nivel, zp.nombre AS zona_padre,
+         s.created_at, s.updated_at
+  FROM solicitud s
+  JOIN cliente cl ON cl.id = s.cliente_id AND cl.tenant_id = s.tenant_id
+  JOIN categoria_servicio c ON c.id = s.categoria_id
+  JOIN zona z ON z.id = s.zona_id
+  LEFT JOIN zona zp ON zp.id = z.zona_padre_id
+  WHERE cl.usuario_id = $1 AND s.tenant_id = $2`;
+const MAX_SEGUIMIENTO = 50;
+
+function seguimiento(r) {
+  return {
+    id: r.id,
+    estado: r.estado,
+    categoria: r.categoria,
+    // Zona declarada al publicar la solicitud; nunca la posición del aliado.
+    zonaDeclarada: { nombre: r.zona, nivel: r.zona_nivel, zonaPadre: r.zona_padre },
+    creadaEn: r.created_at,
+    actualizadaEn: r.updated_at,
+  };
+}
+
 function rechazo(codigo, mensaje) {
   return new DomainError(`${codigo}: ${mensaje}`, codigo, 422);
 }
@@ -144,6 +168,23 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
       );
 
       return { solicitud: await proyeccion(client, ctx.tenantId, solicitudId), creada: true };
+    });
+  }
+
+  async listarDelCliente(ctx) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const { rows } = await client.query(`${SEGUIMIENTO_SQL} ORDER BY s.updated_at DESC, s.id LIMIT ${MAX_SEGUIMIENTO}`, [
+        ctx.userId,
+        ctx.tenantId,
+      ]);
+      return rows.map(seguimiento);
+    });
+  }
+
+  async obtenerDelCliente(ctx, id) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const { rows } = await client.query(`${SEGUIMIENTO_SQL} AND s.id = $3`, [ctx.userId, ctx.tenantId, id]);
+      return rows.length ? seguimiento(rows[0]) : null;
     });
   }
 }

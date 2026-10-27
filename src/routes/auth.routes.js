@@ -176,6 +176,10 @@ function createAuthRouter(env = process.env, deps = {}) {
   // Cliente empresa (HU-M02-07): NIT y representante, sin documentos ni sitios.
   router.post('/auth/register/client/company', authController.registerClientCompany);
 
+  // Recuperación de contraseña (HU-M02-10): pre-auth, el tenant sale solo de X-Tenant-Slug.
+  router.post('/auth/password-recovery', authController.requestPasswordRecovery);
+  router.post('/auth/password-reset', authController.resetPassword);
+
   return router;
 }
 
