@@ -32,6 +32,18 @@ class IServiceRequestRepository {
   async obtenerDelCliente(_ctx, _id) {
     throw new Error('Método obtenerDelCliente() no implementado en IServiceRequestRepository');
   }
+
+  /**
+   * Cancela la solicitud propia del cliente antes de la ejecución (US-04.5.1 / SCRUM-877).
+   * @param {{ tenantId: string, userId: string, role: string }} _ctx contexto verificado
+   * @param {{ solicitudId: string, motivo?: string }} _datos
+   * @returns {Promise<{ solicitud: object, cancelada: boolean }>} `solicitud` con la forma de `obtenerDelCliente`;
+   *   `cancelada` es false si ya estaba cancelada
+   * @throws {import('../errors/DomainError').DomainError} 404 si no es del cliente, 409 si ya está en ejecución o cerrada
+   */
+  async cancelar(_ctx, _datos) {
+    throw new Error('Método cancelar() no implementado en IServiceRequestRepository');
+  }
 }
 
 module.exports = IServiceRequestRepository;

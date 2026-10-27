@@ -93,6 +93,7 @@ const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwn
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
 const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
+const CancelServiceRequestUseCase = require('./application/useCases/requests/CancelServiceRequestUseCase');
 const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
@@ -286,6 +287,9 @@ class Container {
       fileStorageService: this.fileStorageService,
     });
     this.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+    });
+    this.cancelServiceRequestUseCase = new CancelServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
     });
 

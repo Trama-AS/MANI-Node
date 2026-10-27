@@ -1,5 +1,5 @@
 const IServiceRequestRepository = require('../../domain/ports/IServiceRequestRepository');
-const { DomainError, ForbiddenError } = require('../../domain/errors/DomainError');
+const { DomainError, ForbiddenError, NotFoundError, ConflictError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
 
 const UNIQUE_VIOLATION = '23505';
@@ -26,6 +26,10 @@ const SEGUIMIENTO_SQL = `
   LEFT JOIN zona zp ON zp.id = z.zona_padre_id
   WHERE cl.usuario_id = $1 AND s.tenant_id = $2`;
 const MAX_SEGUIMIENTO = 50;
+
+// Cancelación (SCRUM-877): se cancela cualquier estado anterior a la ejecución.
+const ESTADOS_CANCELABLES = ['PENDIENTE', 'ASIGNADA', 'COTIZANDO', 'ACEPTADA', 'RECHAZADA'];
+const MOTIVO_CANCELACION = 'El cliente canceló la solicitud.';
 
 function seguimiento(r) {
   return {
@@ -185,6 +189,58 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       const { rows } = await client.query(`${SEGUIMIENTO_SQL} AND s.id = $3`, [ctx.userId, ctx.tenantId, id]);
       return rows.length ? seguimiento(rows[0]) : null;
+    });
+  }
+
+  /**
+   * Cancela la solicitud propia del cliente antes de la ejecución (US-04.5.1 / SCRUM-877). La fila se bloquea
+   * con FOR UPDATE, así que una aceptación o un inicio de ejecución concurrentes esperan y luego encuentran la
+   * solicitud ya cancelada. Una ajena o de otro tenant es indistinguible de una inexistente (404).
+   * Repetir la cancelación no repite el evento ni la notificación (`cancelada` false).
+   */
+  async cancelar(ctx, { solicitudId, motivo }) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const actual = await client.query(
+        `SELECT s.estado, s.aliado_id
+         FROM solicitud s
+         JOIN cliente cl ON cl.id = s.cliente_id AND cl.tenant_id = s.tenant_id
+         WHERE cl.usuario_id = $1 AND s.tenant_id = $2 AND s.id = $3
+         FOR UPDATE OF s`,
+        [ctx.userId, ctx.tenantId, solicitudId]
+      );
+      if (actual.rows.length === 0) throw new NotFoundError('MANI-SOL-404: solicitud no encontrada', 'MANI-SOL-404');
+      const { estado, aliado_id: aliadoId } = actual.rows[0];
+
+      if (estado !== 'CANCELADA') {
+        if (!ESTADOS_CANCELABLES.includes(estado)) {
+          throw new ConflictError(`MANI-SOL-409C: una solicitud ${estado} ya no se puede cancelar`, 'MANI-SOL-409C');
+        }
+
+        await client.query("UPDATE solicitud SET estado = 'CANCELADA', updated_at = now() WHERE id = $1 AND tenant_id = $2", [
+          solicitudId,
+          ctx.tenantId,
+        ]);
+
+        // QS-12: la cancelación queda en la línea de tiempo del servicio con el motivo del cliente.
+        await client.query(
+          `INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, descripcion)
+           VALUES ($1, $2, $3, 'SOLICITUD_CANCELADA', $4)`,
+          [ctx.tenantId, solicitudId, ctx.userId, motivo || MOTIVO_CANCELACION]
+        );
+
+        // El aliado asignado se entera en su bandeja, igual que con SOLICITUD_ASIGNADA (migración 005).
+        if (aliadoId) {
+          await client.query(
+            `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
+             SELECT $1, a.usuario_id, 'SOLICITUD_CANCELADA', 'IN_APP', $3::jsonb
+             FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1`,
+            [ctx.tenantId, aliadoId, JSON.stringify({ requestId: solicitudId })]
+          );
+        }
+      }
+
+      const { rows } = await client.query(`${SEGUIMIENTO_SQL} AND s.id = $3`, [ctx.userId, ctx.tenantId, solicitudId]);
+      return { solicitud: seguimiento(rows[0]), cancelada: estado !== 'CANCELADA' };
     });
   }
 }
