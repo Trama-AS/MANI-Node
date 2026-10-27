@@ -39,7 +39,9 @@ const OFERTA_SQL = `
 // cuando la solicitud es del aliado.
 const BANDEJA_SQL = `
   SELECT s.id, s.estado, (s.aliado_id IS NOT DISTINCT FROM $3) AS es_mia,
-         c.nombre AS categoria, c.flujo_operativo, z.nombre AS zona, zp.nombre AS zona_padre,
+         c.nombre AS categoria, c.flujo_operativo, s.descripcion,
+         (SELECT count(*)::int FROM solicitud_foto f WHERE f.solicitud_id = s.id AND f.tenant_id = s.tenant_id) AS fotos,
+         z.nombre AS zona, zp.nombre AS zona_padre,
          COALESCE(si.reglas, '{}'::jsonb) AS reglas_sitio,
          CASE WHEN s.aliado_id = $3 THEN si.direccion END AS direccion,
          s.created_at,
@@ -165,6 +167,8 @@ class PgSolicitudAsignacionRepository extends ISolicitudAsignacionRepository {
         esMia: r.es_mia,
         categoria: r.categoria,
         flujoOperativo: r.flujo_operativo,
+        descripcion: r.descripcion,
+        fotos: r.fotos,
         zona: r.zona,
         zonaPadre: r.zona_padre,
         reglasSitio: r.reglas_sitio,

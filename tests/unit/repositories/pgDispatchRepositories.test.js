@@ -261,8 +261,8 @@ test('bandeja del aliado: filtra por tenant, usuario y aliado de la sesión y ma
     if (sql.includes('JOIN usuario u')) return { rows: [{ id: ALLY, estado_verificacion: 'VERIFICADO', estado_usuario: 'ACTIVO' }] };
     return {
       rows: [{
-        id: SOLICITUD, estado: 'PENDIENTE', es_mia: false, categoria: 'Plomería', flujo_operativo: null, zona: 'Chapinero',
-        zona_padre: 'Bogotá', reglas_sitio: {}, direccion: null, created_at: creada, asignada_at: null,
+        id: SOLICITUD, estado: 'PENDIENTE', es_mia: false, categoria: 'Plomería', flujo_operativo: null,
+        descripcion: 'Gotea el lavaplatos', fotos: 2, zona: 'Chapinero', zona_padre: 'Bogotá', reglas_sitio: {}, direccion: null, created_at: creada, asignada_at: null,
       }],
     };
   });
@@ -270,8 +270,8 @@ test('bandeja del aliado: filtra por tenant, usuario y aliado de la sesión y ma
   const items = await new PgSolicitudAsignacionRepository({ pgPoolFactory: factory }).ofertasDelAliado(ctxAliado);
 
   assert.deepEqual(items, [{
-    id: SOLICITUD, estado: 'PENDIENTE', esMia: false, categoria: 'Plomería', flujoOperativo: null, zona: 'Chapinero',
-    zonaPadre: 'Bogotá', reglasSitio: {}, direccion: null, creadaEn: creada, asignadaEn: null,
+    id: SOLICITUD, estado: 'PENDIENTE', esMia: false, categoria: 'Plomería', flujoOperativo: null,
+    descripcion: 'Gotea el lavaplatos', fotos: 2, zona: 'Chapinero', zonaPadre: 'Bogotá', reglasSitio: {}, direccion: null, creadaEn: creada, asignadaEn: null,
   }]);
   assert.deepEqual(negocio()[1].params, [TENANT, USER, ALLY]);
   assert.match(negocio()[1].sql, /tipo = 'OFERTA_DESPACHO'/);

@@ -174,8 +174,13 @@ test('PG bandeja del aliado: ofertas pendientes y asignadas propias, sin direcci
   const ana = await aliado(pool, s);
   const beto = await aliado(pool, s);
 
+  await pool.query("UPDATE solicitud SET descripcion = 'Gotea el lavaplatos' WHERE id = $1", [s.solicitud]);
+  await pool.query("INSERT INTO solicitud_foto (tenant_id, solicitud_id, ruta_storage, orden) VALUES ($1, $2, 'f/1.jpg', 1)", [s.tenant, s.solicitud]);
+
   let bandeja = await repo.ofertasDelAliado(ana.ctx);
   assert.deepEqual(bandeja.map((x) => x.id), [s.solicitud]);
+  assert.equal(bandeja[0].descripcion, 'Gotea el lavaplatos', 'el aliado ve el problema antes de aceptar');
+  assert.equal(bandeja[0].fotos, 1);
   assert.equal(bandeja[0].esMia, false);
   assert.equal(bandeja[0].direccion, null, 'antes de asignarse no ve la dirección');
   assert.equal(bandeja[0].categoria, 'Plomeria');
