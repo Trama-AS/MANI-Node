@@ -30,7 +30,10 @@ const uploadFotosSolicitud = multer({ storage: multer.memoryStorage(), limits: {
 // Evidencia de un evento del servicio (SCRUM-869): una imagen de 5 MB en el campo `foto`.
 const uploadEvidencia = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 
-router.get('/tenants', tenantsController.listTenants);
+// SCRUM-1364: el listado global de tenants es de la administración de plataforma. Antes no pedía sesión y cualquiera
+// podía enumerar todas las empresas; ahora exige autenticación y el permiso explícito PLATFORM_ADMIN, que ningún rol
+// de tenant (ni siquiera admin_tenant) incluye. Cada persona ve el nombre de su propio tenant en GET /profiles/me.
+router.get('/tenants', authenticate, requireRole('PLATFORM_ADMIN'), tenantsController.listTenants);
 router.get('/profiles/me', profilesController.getOwnProfile);
 // SCRUM-854: una ruta por operación sobre el perfil propio. Los datos van por PATCH (JSON) y la foto
 // solo por subida de archivo; no hay ruta por :id porque el caso de uso edita únicamente el perfil propio.
@@ -54,6 +57,9 @@ router.get('/aliados/:id/documentos/:documentoId/url', verificationController.ge
 // Superficie que consume MANI-Dispatch (ADR-0030): Core es dueño de la elegibilidad y de la mensajería.
 router.get('/allies/eligible', authenticate, dispatchIntegrationController.listEligibleAllies);
 router.get('/allies/me', authenticate, dispatchIntegrationController.getOwnAllyProfile);
+// HU-M07-04 (SCRUM-871): el cliente consulta sus solicitudes. Van antes de las rutas `/solicitudes/:id/...`.
+router.get('/solicitudes/me', authenticate, requestsController.listOwnRequests);
+router.get('/solicitudes/me/:id', authenticate, requestsController.getOwnRequest);
 router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
 router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
 router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
