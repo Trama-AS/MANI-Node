@@ -176,7 +176,7 @@ class Container {
       } else {
         this.siteRepository = new InMemorySiteRepository();
         this.clientRepository = new InMemoryClientRepository();
-        this.companyClientRepository = new InMemoryCompanyClientRepository();
+        this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
       }
     } else {
       this.profileRepository = new InMemoryProfileRepository();
@@ -196,7 +196,7 @@ class Container {
       this.clientRepository = new InMemoryClientRepository();
       this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
       this.userConsentRepository = new InMemoryUserConsentRepository();
-      this.companyClientRepository = new InMemoryCompanyClientRepository();
+      this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)

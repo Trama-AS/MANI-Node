@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { INSECURE_DEV_SECRET } = require('../../../src/config/jwtSecret');
 
 const CONFIG_PATH = path.join(__dirname, '../../../src/config/index.js');
 
@@ -175,7 +176,12 @@ test('en test, si SUPABASE_URL está configurada, NO cae al secreto JWT inseguro
   );
 });
 
-test('en development sin SUPABASE_URL, sí usa el secreto JWT inseguro fijo (modo 100% en memoria)', () => {
+// El valor concreto no es lo que importa: lo que importa es que sea el MISMO
+// que usa config/jwtSecret.js, con el que /auth/validate-token verifica para
+// el Gateway. Cuando eran dos valores distintos, el Gateway aceptaba el token
+// y el middleware `authenticate` lo rechazaba después, así que toda ruta
+// autenticada quedaba rota en local sin SUPABASE_JWT_SECRET.
+test('en development sin SUPABASE_URL usa el mismo secreto de desarrollo que la verificación del Gateway', () => {
   withEnv(
     {
       NODE_ENV: 'development',
@@ -183,7 +189,7 @@ test('en development sin SUPABASE_URL, sí usa el secreto JWT inseguro fijo (mod
       SUPABASE_JWT_SECRET: undefined,
     },
     (config) => {
-      assert.equal(config.supabaseJwtSecret, 'dev-jwt-secret-insecure-32chars!!');
+      assert.equal(config.supabaseJwtSecret, INSECURE_DEV_SECRET);
     }
   );
 });
