@@ -82,6 +82,8 @@ const config = {
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
   // Proveedor de notificaciones push (HU-M09-06). Hoy solo existe `mock`; otro valor detiene el arranque.
   pushProvider: process.env.PUSH_PROVIDER || 'mock',
+  // Proveedor de pagos (HU-M11-01). Hoy solo existe `mock` (sandbox sin dinero real); otro valor detiene el arranque.
+  paymentProvider: process.env.PAYMENT_PROVIDER || 'mock',
   // Página de Flutter que recibe al usuario desde el correo de recuperación (HU-M02-10). Debe estar en la lista de
   // redirecciones permitidas del proyecto de Supabase; sin ella el proveedor usa su Site URL.
   passwordRecoveryRedirectUrl: process.env.PASSWORD_RECOVERY_REDIRECT_URL,

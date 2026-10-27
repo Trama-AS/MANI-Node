@@ -20,7 +20,12 @@ class SupabaseProfileRepository extends IProfileRepository {
   async findByUserId(userId, tenantId = null) {
     const client = this.supabaseClientFactory.getClient();
 
-    let query = client.from('usuario').select('id, tenant_id, email, rol, estado').eq('id', userId);
+    // telefono, direccion y foto_url se leen para que lo guardado con PATCH /profiles/me siga visible al recargar
+    // (SCRUM-1377, C1); antes solo se devolvía al momento de guardar.
+    let query = client
+      .from('usuario')
+      .select('id, tenant_id, email, rol, estado, telefono, direccion, foto_url')
+      .eq('id', userId);
     if (tenantId) query = query.eq('tenant_id', tenantId);
 
     const { data: usuario, error } = await query.maybeSingle();
@@ -44,7 +49,17 @@ class SupabaseProfileRepository extends IProfileRepository {
       }
     }
 
-    return new Profile({ id: usuario.id, userId: usuario.id, role, fullName, status, tenantId: usuario.tenant_id });
+    return new Profile({
+      id: usuario.id,
+      userId: usuario.id,
+      role,
+      fullName,
+      status,
+      tenantId: usuario.tenant_id,
+      phone: usuario.telefono ?? undefined,
+      address: usuario.direccion ?? undefined,
+      photoUrl: usuario.foto_url ?? undefined,
+    });
   }
 
   async updateOwnProfile(userId, tenantId, changes = {}) {
@@ -75,11 +90,15 @@ class SupabaseProfileRepository extends IProfileRepository {
       if (aliadoErr) throw new DomainError(`Error actualizando aliado: ${aliadoErr.message}`, 'INTERNAL_ERROR', 500);
     }
 
+    // El nombre solo se guarda para el aliado (aliado.nombre_razon_social). `usuario` no tiene columna de nombre, así
+    // que para otros roles no se afirma un cambio que no quedó en la base: la respuesta devuelve el nombre vigente.
+    const fullNameGuardado = changes.fullName !== undefined && current.role === 'ALLY';
+
     return new Profile({
       id: current.id,
       userId: current.userId,
       role: current.role,
-      fullName: changes.fullName !== undefined ? changes.fullName : current.fullName,
+      fullName: fullNameGuardado ? changes.fullName : current.fullName,
       status: current.status,
       tenantId: current.tenantId,
       phone: changes.phone !== undefined ? changes.phone : current.phone,

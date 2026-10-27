@@ -13,7 +13,8 @@ class PublishNotificationUseCase {
   }
 
   async execute({ session, body = {} }) {
-    const { tenantId } = requireDispatchSession(session);
+    const ctx = requireDispatchSession(session);
+    const { tenantId } = ctx;
 
     // El tenant sale del JWT. Si el cuerpo trae otro, es un intento cross-tenant (ADR-0018).
     if (body.tenantId !== undefined && body.tenantId !== tenantId) {
@@ -32,8 +33,7 @@ class PublishNotificationUseCase {
     }
     requireUuid(body.payload.requestId, 'payload.requestId');
 
-    const created = await this.notificacionRepository.createForAlly({
-      tenantId,
+    const created = await this.notificacionRepository.createForAlly(ctx, {
       allyId,
       tipo: body.tipo,
       canal: body.canal,
@@ -41,6 +41,11 @@ class PublishNotificationUseCase {
     });
     if (!created) {
       throw new NotFoundError('MANI-DSP-404: aliado no encontrado para el tenant', 'MANI-DSP-404');
+    }
+
+    // Reintento de una orquestación (RNF-03): la oferta ya estaba en la bandeja del aliado y el push no se repite.
+    if (created.nueva === false) {
+      return { id: created.id, nueva: false, entrega: null };
     }
 
     // La notificación ya quedó en la bandeja del aliado. Si la entrega push falla, no se pierde ni se
@@ -57,7 +62,7 @@ class PublishNotificationUseCase {
     } catch {
       entrega = { proveedor: this.pushProvider.name, estado: 'FALLIDA', simulada: this.pushProvider.name === 'mock' };
     }
-    return { id: created.id, entrega };
+    return { id: created.id, nueva: true, entrega };
   }
 }
 

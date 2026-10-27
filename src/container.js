@@ -74,6 +74,7 @@ const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/U
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
+const LogoutUseCase = require('./application/useCases/auth/LogoutUseCase');
 const RequestPasswordRecoveryUseCase = require('./application/useCases/auth/RequestPasswordRecoveryUseCase');
 const ResetPasswordUseCase = require('./application/useCases/auth/ResetPasswordUseCase');
 const RegisterClientCompanyUseCase = require('./application/useCases/auth/RegisterClientCompanyUseCase');
@@ -92,9 +93,28 @@ const PublishNotificationUseCase = require('./application/useCases/dispatch/Publ
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
 const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
 const { createPushProvider } = require('./infrastructure/push/createPushProvider');
+const { createPaymentProvider } = require('./infrastructure/payments/createPaymentProvider');
+const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
+const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
+const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgMessageRepository = require('./infrastructure/repositories/PgMessageRepository');
+const MessagesUseCase = require('./application/useCases/messages/MessagesUseCase');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
+const CancelServiceRequestUseCase = require('./application/useCases/requests/CancelServiceRequestUseCase');
+const AssignServiceRequestUseCase = require('./application/useCases/requests/AssignServiceRequestUseCase');
+const PgSolicitudAsignacionRepository = require('./infrastructure/repositories/PgSolicitudAsignacionRepository');
+const ListAllyOffersUseCase = require('./application/useCases/dispatch/ListAllyOffersUseCase');
+const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
+const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
+const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
+const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
+const PgServiceExecutionRepository = require('./infrastructure/repositories/PgServiceExecutionRepository');
+const ServiceExecutionUseCase = require('./application/useCases/services/ServiceExecutionUseCase');
+const PgServiceEventRepository = require('./infrastructure/repositories/PgServiceEventRepository');
+const ServiceEventsUseCase = require('./application/useCases/services/ServiceEventsUseCase');
 
 const config = require('./config');
 
@@ -206,6 +226,7 @@ class Container {
 
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
+      tenantRepository: this.tenantRepository,
     });
 
     this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
@@ -255,6 +276,19 @@ class Container {
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
     this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
 
+    // Pagos del sandbox (HU-M11-01): proveedor simulado por ambiente (PAYMENT_PROVIDER, por omisión el mock).
+    this.paymentProvider = createPaymentProvider(config.paymentProvider);
+    this.paymentRepository = new PgPaymentRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createPaymentUseCase = new CreatePaymentUseCase({
+      paymentRepository: this.paymentRepository,
+      paymentProvider: this.paymentProvider,
+    });
+    this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
+
+    // Mensajería cliente-aliado por servicio (HU-M09-02 / SCRUM-881).
+    this.messageRepository = new PgMessageRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.messagesUseCase = new MessagesUseCase({ messageRepository: this.messageRepository });
+
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
     });
@@ -283,6 +317,39 @@ class Container {
     this.serviceRequestRepository = new PgServiceRequestRepository({ pgPoolFactory: this.pgPoolFactory });
     this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
+      fileStorageService: this.fileStorageService,
+    });
+    this.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+    });
+    this.cancelServiceRequestUseCase = new CancelServiceRequestUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+    });
+    // Asignación (SCRUM-1403, decisión 6A): Core registra la aceptación que decide Dispatch y expone la bandeja
+    // del aliado. Sin DATABASE_URL responde 503.
+    this.solicitudAsignacionRepository = new PgSolicitudAsignacionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.assignServiceRequestUseCase = new AssignServiceRequestUseCase({
+      solicitudAsignacionRepository: this.solicitudAsignacionRepository,
+    });
+    this.listAllyOffersUseCase = new ListAllyOffersUseCase({
+      solicitudAsignacionRepository: this.solicitudAsignacionRepository,
+    });
+
+    // Cotización (SCRUM-865): Core es dueño del estado tras la asignación (decisión 6A, SAD §7.4).
+    // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
+    this.quoteRepository = new PgQuoteRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createQuoteUseCase = new CreateQuoteUseCase({ quoteRepository: this.quoteRepository });
+    this.listQuotesUseCase = new ListQuotesUseCase({ quoteRepository: this.quoteRepository });
+    this.respondQuoteUseCase = new RespondQuoteUseCase({ quoteRepository: this.quoteRepository });
+    // Ejecución del servicio (SCRUM-868), con el mismo criterio: sin DATABASE_URL responde 503.
+    this.serviceExecutionRepository = new PgServiceExecutionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.serviceExecutionUseCase = new ServiceExecutionUseCase({
+      serviceExecutionRepository: this.serviceExecutionRepository,
+    });
+    // Eventos durante la ejecución (SCRUM-869); la evidencia va al bucket `solicitudes`.
+    this.serviceEventRepository = new PgServiceEventRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.serviceEventsUseCase = new ServiceEventsUseCase({
+      serviceEventRepository: this.serviceEventRepository,
       fileStorageService: this.fileStorageService,
     });
 
@@ -408,6 +475,9 @@ class Container {
       registerUserConsentUseCase: this.registerUserConsentUseCase,
       userConsentRepository: this.userConsentRepository,
     });
+
+    // HU-M02-03: constancia del cierre de sesión para auditoría.
+    this.logoutUseCase = new LogoutUseCase();
 
     // HU-M02-10: recuperación de contraseña orquestada contra el proveedor de identidad.
     this.requestPasswordRecoveryUseCase = new RequestPasswordRecoveryUseCase({
