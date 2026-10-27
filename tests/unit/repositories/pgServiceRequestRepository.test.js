@@ -148,3 +148,49 @@ test('sin DATABASE_URL falla cerrado con 503 y exige pgPoolFactory', async () =>
   await assert.rejects(() => new PgServiceRequestRepository({ pgPoolFactory: { getPool: () => null } }).crear(ctx, datosBase), (e) => e.statusCode === 503);
   assert.throws(() => new PgServiceRequestRepository({}), /pgPoolFactory/);
 });
+
+// HU-M07-04 (SCRUM-871): seguimiento del cliente.
+const filaSeguimiento = {
+  id: 'sol-1', estado: 'ASIGNADA', categoria: 'Plomería', zona: 'Chapinero', zona_nivel: 'LOCALIDAD', zona_padre: 'Bogotá',
+  created_at: new Date('2026-10-19T00:00:00Z'), updated_at: new Date('2026-10-20T00:00:00Z'),
+};
+
+test('SCRUM-871: lista solo las solicitudes del usuario del token en su tenant, dentro del contexto de tenant', async () => {
+  const { factory, sentencias } = fakeFactory({ 'JOIN cliente cl': { rows: [filaSeguimiento] } });
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).listarDelCliente(ctx);
+
+  const consulta = sentencias.find((s) => s.sql.includes('JOIN cliente cl'));
+  assert.match(consulta.sql, /WHERE cl\.usuario_id = \$1 AND s\.tenant_id = \$2/);
+  assert.match(consulta.sql, /cl\.tenant_id = s\.tenant_id/);
+  assert.match(consulta.sql, /ORDER BY s\.updated_at DESC, s\.id LIMIT 50/);
+  assert.deepEqual(consulta.params, [USER, TENANT]);
+  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+  assert.deepEqual(r, [{
+    id: 'sol-1',
+    estado: 'ASIGNADA',
+    categoria: 'Plomería',
+    zonaDeclarada: { nombre: 'Chapinero', nivel: 'LOCALIDAD', zonaPadre: 'Bogotá' },
+    creadaEn: filaSeguimiento.created_at,
+    actualizadaEn: filaSeguimiento.updated_at,
+  }]);
+});
+
+test('SCRUM-871: obtiene una solicitud filtrando por id, usuario y tenant; ajena o inexistente da null', async () => {
+  const conFila = fakeFactory({ 'JOIN cliente cl': { rows: [filaSeguimiento] } });
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: conFila.factory }).obtenerDelCliente(ctx, 'sol-1');
+
+  const consulta = conFila.sentencias.find((s) => s.sql.includes('JOIN cliente cl'));
+  assert.match(consulta.sql, /AND s\.id = \$3$/);
+  assert.deepEqual(consulta.params, [USER, TENANT, 'sol-1']);
+  assert.equal(r.zonaDeclarada.nombre, 'Chapinero');
+
+  const vacia = fakeFactory({ 'JOIN cliente cl': { rows: [] } });
+  assert.equal(await new PgServiceRequestRepository({ pgPoolFactory: vacia.factory }).obtenerDelCliente(ctx, 'otra'), null);
+});
+
+test('SCRUM-871: el seguimiento sin DATABASE_URL falla cerrado con 503', async () => {
+  const repo = new PgServiceRequestRepository({ pgPoolFactory: { getPool: () => null } });
+  await assert.rejects(() => repo.listarDelCliente(ctx), (e) => e.statusCode === 503);
+  await assert.rejects(() => repo.obtenerDelCliente(ctx, 'sol-1'), (e) => e.statusCode === 503);
+});

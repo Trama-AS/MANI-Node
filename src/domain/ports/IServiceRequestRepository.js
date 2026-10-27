@@ -13,6 +13,25 @@ class IServiceRequestRepository {
   async crear(_ctx, _datos) {
     throw new Error('Método crear() no implementado en IServiceRequestRepository');
   }
+
+  /**
+   * Solicitudes del cliente de la sesión (SCRUM-871), de la más reciente a la más antigua.
+   * @param {{ tenantId: string, userId: string, role: string }} _ctx contexto verificado
+   * @returns {Promise<object[]>}
+   */
+  async listarDelCliente(_ctx) {
+    throw new Error('Método listarDelCliente() no implementado en IServiceRequestRepository');
+  }
+
+  /**
+   * Una solicitud del cliente de la sesión, o `null` si no existe o es de otro cliente o tenant (SCRUM-871).
+   * @param {{ tenantId: string, userId: string, role: string }} _ctx contexto verificado
+   * @param {string} _id
+   * @returns {Promise<object|null>}
+   */
+  async obtenerDelCliente(_ctx, _id) {
+    throw new Error('Método obtenerDelCliente() no implementado en IServiceRequestRepository');
+  }
 }
 
 module.exports = IServiceRequestRepository;
