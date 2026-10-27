@@ -1,6 +1,7 @@
 const IServiceExecutionRepository = require('../../domain/ports/IServiceExecutionRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
+const { aliadoDeSesion, solicitudVisible } = require('./sesionActores');
 
 const EVENTO = { INICIO: 'INICIO_EJECUCION', FIN: 'FIN_EJECUCION' };
 const AVISO = { INICIO: 'EJECUCION_INICIADA', FIN: 'EJECUCION_FINALIZADA' };
@@ -42,11 +43,7 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
 
   async marcar(ctx, datos) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      const aliado = await client.query('SELECT id FROM aliado WHERE usuario_id = $1 AND tenant_id = $2', [
-        ctx.userId,
-        ctx.tenantId,
-      ]);
-      if (aliado.rows.length === 0) throw noAsignado();
+      const aliadoId = await aliadoDeSesion(client, ctx, noAsignado);
 
       // La fila se bloquea: dos marcas simultáneas no producen dos transiciones.
       const fila = await client.query(
@@ -60,7 +57,7 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
       );
       if (fila.rows.length === 0) throw noEncontrada();
       const actual = fila.rows[0];
-      if (actual.aliado_id !== aliado.rows[0].id) throw noAsignado();
+      if (actual.aliado_id !== aliadoId) throw noAsignado();
 
       const nuevo = transicion(datos.hito, actual.estado, actual.flujo_operativo);
 
@@ -97,17 +94,7 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
 
   async consultar(ctx, solicitudId) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      // Solo el cliente dueño o el aliado asignado; para cualquier otro la solicitud no existe.
-      const acceso = await client.query(
-        `SELECT s.estado
-         FROM solicitud s
-         LEFT JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
-         LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
-         WHERE s.id = $1 AND s.tenant_id = $2
-           AND (($3 = 'CLIENT' AND c.usuario_id = $4) OR ($3 = 'ALLY' AND a.usuario_id = $4))`,
-        [solicitudId, ctx.tenantId, ctx.role, ctx.userId]
-      );
-      if (acceso.rows.length === 0) throw noEncontrada();
+      const { estado } = await solicitudVisible(client, ctx, solicitudId, noEncontrada);
 
       const { rows } = await client.query(
         `SELECT DISTINCT ON (tipo_evento) tipo_evento, timestamp, descripcion
@@ -119,7 +106,7 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
       const porTipo = Object.fromEntries(rows.map((r) => [r.tipo_evento, r]));
       return {
         solicitudId,
-        estado: acceso.rows[0].estado,
+        estado,
         inicio: marca(porTipo.INICIO_EJECUCION),
         fin: marca(porTipo.FIN_EJECUCION),
       };

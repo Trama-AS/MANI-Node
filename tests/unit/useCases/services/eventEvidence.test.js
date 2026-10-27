@@ -66,12 +66,12 @@ function fakeFactory(respuestas) {
 }
 
 test('repositorio: verifica el acceso antes de leer la ruta y responde 404E sin evidencia', async () => {
-  let r = fakeFactory({ 'SELECT 1': { rows: [{}] }, 'SELECT evidencia_ruta': { rows: [{ evidencia_ruta: 'a/b.png' }] } });
+  let r = fakeFactory({ 'SELECT s.estado': { rows: [{ estado: 'EN_EJECUCION' }] }, 'SELECT evidencia_ruta': { rows: [{ evidencia_ruta: 'a/b.png' }] } });
   assert.equal(await new PgServiceEventRepository({ pgPoolFactory: r.factory }).rutaEvidencia(cliente, SOLICITUD, EVENTO), 'a/b.png');
   assert.deepEqual(r.sentencias.find((s) => s.sql.startsWith('SELECT evidencia_ruta')).params, [EVENTO, SOLICITUD, TENANT]);
 
   for (const filas of [[], [{ evidencia_ruta: null }]]) {
-    r = fakeFactory({ 'SELECT 1': { rows: [{}] }, 'SELECT evidencia_ruta': { rows: filas } });
+    r = fakeFactory({ 'SELECT s.estado': { rows: [{ estado: 'EN_EJECUCION' }] }, 'SELECT evidencia_ruta': { rows: filas } });
     await assert.rejects(new PgServiceEventRepository({ pgPoolFactory: r.factory }).rutaEvidencia(cliente, SOLICITUD, EVENTO), {
       statusCode: 404,
       code: 'MANI-EVT-404E',
