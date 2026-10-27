@@ -118,6 +118,19 @@ test('exige un timeout positivo: no se permite esperar indefinidamente', async (
   }
 });
 
+test('los puertos base obligan a cada adaptador a declarar name, simulated y la operación', async () => {
+  const IPaymentProvider = require('../../../src/domain/ports/IPaymentProvider');
+  const IPushProvider = require('../../../src/domain/ports/IPushProvider');
+  const pagos = new IPaymentProvider();
+  const push = new IPushProvider();
+  assert.throws(() => pagos.name, /name no implementada/);
+  assert.throws(() => pagos.simulated, /simulated no implementada/);
+  await assert.rejects(pagos.charge({}), /charge\(\) no implementado/);
+  assert.throws(() => push.name, /name no implementada/);
+  assert.throws(() => push.simulated, /simulated no implementada/);
+  await assert.rejects(push.send({}), /send\(\) no implementado/);
+});
+
 test('ProviderError: solo acepta los tres tipos del contrato y marca como pasajeros TIMEOUT y UNAVAILABLE', () => {
   assert.throws(() => new ProviderError('RECHAZADO'), TypeError);
   assert.equal(new ProviderError('TIMEOUT').transient, true);

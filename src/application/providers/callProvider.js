@@ -29,17 +29,18 @@ async function callProvider(operacion, { timeoutMs, retries = 0, baseDelayMs = 1
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new TypeError('callProvider: timeoutMs debe ser un número positivo');
   }
-  let ultimo;
-  for (let intento = 1; intento <= retries + 1; intento += 1) {
+  let intento = 1;
+  // Cada vuelta termina devolviendo el resultado, lanzando el fallo o esperando para el siguiente intento.
+  while (true) {
     try {
       return await conTimeout(operacion, intento, { timeoutMs, ErrorClass, proveedor });
     } catch (err) {
-      ultimo = err instanceof ProviderError ? err : new ErrorClass('UNAVAILABLE', `${proveedor} no está disponible`);
-      if (!ultimo.transient || intento > retries) throw ultimo;
+      const fallo = err instanceof ProviderError ? err : new ErrorClass('UNAVAILABLE', `${proveedor} no está disponible`);
+      if (!fallo.transient || intento > retries) throw fallo;
       await esperar(baseDelayMs * 2 ** (intento - 1));
+      intento += 1;
     }
   }
-  throw ultimo;
 }
 
 async function conTimeout(operacion, intento, { timeoutMs, ErrorClass, proveedor }) {
