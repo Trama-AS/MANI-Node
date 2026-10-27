@@ -70,6 +70,8 @@ const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/U
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
+const RequestPasswordRecoveryUseCase = require('./application/useCases/auth/RequestPasswordRecoveryUseCase');
+const ResetPasswordUseCase = require('./application/useCases/auth/ResetPasswordUseCase');
 const RegisterClientCompanyUseCase = require('./application/useCases/auth/RegisterClientCompanyUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
@@ -394,6 +396,19 @@ class Container {
       authIdentityService: this.authIdentityService,
       registerUserConsentUseCase: this.registerUserConsentUseCase,
       userConsentRepository: this.userConsentRepository,
+    });
+
+    // HU-M02-10: recuperación de contraseña orquestada contra el proveedor de identidad.
+    this.requestPasswordRecoveryUseCase = new RequestPasswordRecoveryUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      authIdentityService: this.authIdentityService,
+      redirectTo: config.passwordRecoveryRedirectUrl,
+    });
+    this.resetPasswordUseCase = new ResetPasswordUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      authIdentityService: this.authIdentityService,
     });
   }
 }

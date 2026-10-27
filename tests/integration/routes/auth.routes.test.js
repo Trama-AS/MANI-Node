@@ -397,3 +397,106 @@ test('POST /api/v1/auth/register/client/company con NIT inválido responde 400 V
   assert.equal(res.body.code, 'VALIDATION_ERROR');
 });
 
+
+// ---- HU-M02-10 (SCRUM-1378): recuperación de contraseña ----
+
+const container = require('../../../src/container');
+
+async function registrarClienteParaRecuperar(email, password = 'ClaveVieja123') {
+  const res = await request(app)
+    .post('/api/v1/auth/register/client')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .send({ fullName: 'Ana Recupera', email, password });
+  assert.equal(res.status, 201);
+}
+
+const tokenEnviadoA = (email) => container.authIdentityService.sentRecoveries.filter((r) => r.email === email.toLowerCase()).at(-1)?.token;
+
+test('POST /auth/password-recovery responde 202 igual con y sin cuenta y solo envía el enlace si existe', async () => {
+  const email = `recupera.${Date.now()}@mani.test`;
+  await registrarClienteParaRecuperar(email);
+
+  const conCuenta = await request(app).post('/api/v1/auth/password-recovery').set('X-Tenant-Slug', 'trama-demo').send({ email });
+  const sinCuenta = await request(app)
+    .post('/api/v1/auth/password-recovery')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .send({ email: `nadie.${Date.now()}@mani.test` });
+
+  assert.equal(conCuenta.status, 202);
+  assert.equal(sinCuenta.status, 202);
+  assert.deepEqual(conCuenta.body, sinCuenta.body, 'la respuesta no distingue si el correo existe');
+  assert.ok(tokenEnviadoA(email));
+});
+
+test('POST /auth/password-recovery valida el correo y el tenant', async () => {
+  const sinSlug = await request(app).post('/api/v1/auth/password-recovery').send({ email: 'a@mani.test' });
+  assert.equal(sinSlug.status, 400);
+
+  const malCorreo = await request(app).post('/api/v1/auth/password-recovery').set('X-Tenant-Slug', 'trama-demo').send({ email: 'no-es-correo' });
+  assert.equal(malCorreo.status, 400);
+  assert.equal(malCorreo.body.code, 'VALIDATION_ERROR');
+
+  const tenantMalo = await request(app).post('/api/v1/auth/password-recovery').set('X-Tenant-Slug', 'no-existe').send({ email: 'a@mani.test' });
+  assert.equal(tenantMalo.status, 400);
+  assert.equal(tenantMalo.body.code, 'TENANT_NOT_FOUND');
+});
+
+test('recuperación completa: el enlace cambia la contraseña, la vieja deja de servir y el enlace sirve una vez', async () => {
+  const email = `flujo.${Date.now()}@mani.test`;
+  await registrarClienteParaRecuperar(email);
+  await request(app).post('/api/v1/auth/password-recovery').set('X-Tenant-Slug', 'trama-demo').send({ email });
+  const accessToken = tokenEnviadoA(email);
+
+  const reset = await request(app)
+    .post('/api/v1/auth/password-reset')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .send({ accessToken, newPassword: 'ClaveNueva456' });
+  assert.equal(reset.status, 200);
+
+  const identity = container.authIdentityService;
+  await assert.rejects(
+    () => identity.authenticate({ tenantId: 'trama-demo', email, password: 'ClaveVieja123' }),
+    (err) => err.code === 'INVALID_CREDENTIALS'
+  );
+  const session = await identity.authenticate({ tenantId: 'trama-demo', email, password: 'ClaveNueva456' });
+  assert.ok(session.accessToken, 'la contraseña nueva inicia sesión');
+
+  const otraVez = await request(app)
+    .post('/api/v1/auth/password-reset')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .send({ accessToken, newPassword: 'OtraClave789' });
+  assert.equal(otraVez.status, 401);
+  assert.equal(otraVez.body.code, 'INVALID_RECOVERY_TOKEN');
+});
+
+test('POST /auth/password-reset: un enlace de un tenant no sirve en otro (401) y no cambia la contraseña', async () => {
+  const email = `cruce.${Date.now()}@mani.test`;
+  await registrarClienteParaRecuperar(email);
+  await request(app).post('/api/v1/auth/password-recovery').set('X-Tenant-Slug', 'trama-demo').send({ email });
+  const accessToken = tokenEnviadoA(email);
+
+  const enOtroTenant = await request(app)
+    .post('/api/v1/auth/password-reset')
+    .set('X-Tenant-Slug', 'plomeria-express')
+    .send({ accessToken, newPassword: 'ClaveNueva456' });
+  assert.equal(enOtroTenant.status, 401);
+  assert.equal(enOtroTenant.body.code, 'INVALID_RECOVERY_TOKEN');
+
+  const aunSirve = await request(app)
+    .post('/api/v1/auth/password-reset')
+    .set('X-Tenant-Slug', 'trama-demo')
+    .send({ accessToken, newPassword: 'ClaveNueva456' });
+  assert.equal(aunSirve.status, 200, 'el intento cruzado no consumió el enlace');
+});
+
+test('POST /auth/password-reset rechaza token inventado, contraseña corta y falta de datos', async () => {
+  const inventado = await request(app).post('/api/v1/auth/password-reset').set('X-Tenant-Slug', 'trama-demo').send({ accessToken: 'x', newPassword: 'ClaveNueva456' });
+  assert.equal(inventado.status, 401);
+
+  const corta = await request(app).post('/api/v1/auth/password-reset').set('X-Tenant-Slug', 'trama-demo').send({ accessToken: 'x', newPassword: 'corta' });
+  assert.equal(corta.status, 400);
+  assert.equal(corta.body.code, 'VALIDATION_ERROR');
+
+  const sinCuerpo = await request(app).post('/api/v1/auth/password-reset').set('X-Tenant-Slug', 'trama-demo').send({});
+  assert.equal(sinCuerpo.status, 400);
+});
