@@ -315,3 +315,69 @@ test('sin DATABASE_URL la cancelación falla cerrado con 503', async (t) => {
   const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({});
   assert.equal(res.status, 503);
 });
+
+const AssignServiceRequestUseCase = require('../../../src/application/useCases/requests/AssignServiceRequestUseCase');
+const SOL_ASIGNAR = '77777777-7777-4777-8777-777777777777';
+
+function conAsignacion(asignar, fn) {
+  return async () => {
+    const original = container.assignServiceRequestUseCase;
+    const logs = [];
+    container.assignServiceRequestUseCase = new AssignServiceRequestUseCase({
+      solicitudAsignacionRepository: { asignar },
+      auditLogger: (entry) => logs.push(entry),
+    });
+    try {
+      await fn(logs);
+    } finally {
+      container.assignServiceRequestUseCase = original;
+    }
+  };
+}
+
+test('POST /solicitudes/:id/asignacion (6A): 200 con la sesión del aliado; asignada=false en el reintento', conAsignacion(
+  async (ctx, id) => ({ solicitud: { id, estado: 'ASIGNADA', aliadoId: 'a-1', tenant: ctx.tenantId }, asignada: id === SOL_ASIGNAR }),
+  async (logs) => {
+    const res = await request(app)
+      .post(`/api/v1/solicitudes/${SOL_ASIGNAR}/asignacion`)
+      .set('Authorization', `Bearer ${token({ role: 'aliado' })}`)
+      .set('X-Correlation-ID', 'corr-asig')
+      .set('Idempotency-Key', 'k-asig')
+      .set('X-Tenant-Id', '99999999-9999-4999-8999-999999999999');
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.asignada, true);
+    assert.equal(res.body.solicitud.tenant, TENANT, 'el tenant sale del JWT, no de la cabecera');
+    assert.equal(logs[0].correlationId, 'corr-asig');
+    assert.equal(logs[0].idempotencyKey, 'k-asig');
+
+    const reintento = await request(app)
+      .post('/api/v1/solicitudes/88888888-8888-4888-8888-888888888888/asignacion')
+      .set('Authorization', `Bearer ${token({ role: 'aliado' })}`);
+    assert.equal(reintento.status, 200);
+    assert.equal(reintento.body.asignada, false);
+  }
+));
+
+test('POST /solicitudes/:id/asignacion: 409 con el formato único y sin el aliado ganador; cliente 403; sin token 401', conAsignacion(
+  async () => {
+    const { ConflictError } = require('../../../src/domain/errors/DomainError');
+    throw new ConflictError('MANI-SOL-409: la solicitud ya no está disponible', 'MANI-SOL-409');
+  },
+  async () => {
+    const res = await request(app)
+      .post(`/api/v1/solicitudes/${SOL_ASIGNAR}/asignacion`)
+      .set('Authorization', `Bearer ${token({ role: 'aliado' })}`)
+      .set('X-Correlation-ID', 'corr-409');
+    assert.equal(res.status, 409);
+    assert.deepEqual(Object.keys(res.body).sort(), ['code', 'correlationId', 'error']);
+    assert.equal(res.body.code, 'MANI-SOL-409');
+
+    const cliente = await request(app).post(`/api/v1/solicitudes/${SOL_ASIGNAR}/asignacion`).set('Authorization', `Bearer ${token()}`);
+    assert.equal(cliente.status, 403);
+    assert.equal(cliente.body.code, 'MANI-SOL-403');
+
+    const anonimo = await request(app).post(`/api/v1/solicitudes/${SOL_ASIGNAR}/asignacion`);
+    assert.equal(anonimo.status, 401);
+  }
+));

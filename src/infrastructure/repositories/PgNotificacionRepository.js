@@ -10,17 +10,36 @@ class PgNotificacionRepository extends INotificacionRepository {
     this.pgPoolFactory = pgPoolFactory;
   }
 
+  // Una oferta de despacho por aliado y solicitud (índice ux_notificacion_oferta_despacho, migración 0019):
+  // si ya existe, no se inserta otra y se devuelve la existente con `nueva` false, para que el push no se repita.
+  // La existente se busca en una segunda sentencia: si la escribió una orquestación concurrente, la primera
+  // sentencia no la ve en su snapshot aunque el ON CONFLICT la haya esperado.
   async createForAlly(ctx, { allyId, tipo, canal, payload }) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      const { rows } = await client.query(
+      const params = [ctx.tenantId, allyId, tipo, canal, JSON.stringify(payload)];
+      const insertada = await client.query(
         `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
          SELECT $1, a.usuario_id, $3, $4, $5::jsonb
          FROM aliado a
          WHERE a.id = $2 AND a.tenant_id = $1
+         ON CONFLICT (tenant_id, usuario_id, (payload->>'requestId')) WHERE tipo = 'OFERTA_DESPACHO' DO NOTHING
          RETURNING id, usuario_id`,
-        [ctx.tenantId, allyId, tipo, canal, JSON.stringify(payload)]
+        params
       );
-      return rows.length === 0 ? null : { id: rows[0].id, usuarioId: rows[0].usuario_id };
+      if (insertada.rows.length) {
+        return { id: insertada.rows[0].id, usuarioId: insertada.rows[0].usuario_id, nueva: true };
+      }
+
+      const existente = await client.query(
+        `SELECT n.id, n.usuario_id
+         FROM notificacion n
+         JOIN aliado a ON a.usuario_id = n.usuario_id AND a.tenant_id = n.tenant_id
+         WHERE a.id = $2 AND n.tenant_id = $1 AND n.tipo = $3 AND n.payload->>'requestId' = $4::jsonb->>'requestId'
+         ORDER BY n.enviado_at, n.id
+         LIMIT 1`,
+        [ctx.tenantId, allyId, tipo, params[4]]
+      );
+      return existente.rows.length ? { id: existente.rows[0].id, usuarioId: existente.rows[0].usuario_id, nueva: false } : null;
     });
   }
 

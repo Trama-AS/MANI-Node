@@ -232,8 +232,9 @@ test('PG bandeja (HU-M09-06) como mani_core_svc: el usuario ve solo las suyas, m
   const ana = await addAliado(pool, s, { nombre: 'Ana' });
   const beto = await addAliado(pool, s, { nombre: 'Beto' });
   const ajeno = await addAliado(pool, otro, { nombre: 'Ajeno' });
+  // Una oferta por aliado y solicitud (0019): cada envío va con una solicitud distinta.
   const send = (ctx, allyId, n) =>
-    repo.createForAlly(ctx, { allyId, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: solicitud, n } });
+    repo.createForAlly(ctx, { allyId, tipo: 'OFERTA_DESPACHO', canal: 'PUSH', payload: { requestId: n === 1 ? solicitud : uuid(), n } });
 
   const primera = await send(s.ctxCliente, ana.aliado, 1);
   await pool.query("UPDATE notificacion SET enviado_at = now() - interval '1 hour' WHERE id = $1", [primera.id]);

@@ -58,12 +58,15 @@ router.get('/aliados/:id/documentos/:documentoId/url', verificationController.ge
 // Superficie que consume MANI-Dispatch (ADR-0030): Core es dueño de la elegibilidad y de la mensajería.
 router.get('/allies/eligible', authenticate, dispatchIntegrationController.listEligibleAllies);
 router.get('/allies/me', authenticate, dispatchIntegrationController.getOwnAllyProfile);
+router.get('/allies/me/offers', authenticate, dispatchIntegrationController.listOwnOffers);
 // HU-M07-04 (SCRUM-871): el cliente consulta sus solicitudes. Van antes de las rutas `/solicitudes/:id/...`.
 router.get('/solicitudes/me', authenticate, requestsController.listOwnRequests);
 router.get('/solicitudes/me/:id', authenticate, requestsController.getOwnRequest);
 // US-04.5.1 (SCRUM-877): el cliente cancela su solicitud antes de la ejecución.
 router.patch('/solicitudes/me/:id/cancelar', authenticate, requestsController.cancelOwnRequest);
 router.get('/solicitudes/:id/context', authenticate, dispatchIntegrationController.getSolicitudContext);
+// HU-M05-07 (SCRUM-1403), decisión 6A: comando interno de asignación; solo lo llama Dispatch (el Gateway lo bloquea).
+router.post('/solicitudes/:id/asignacion', authenticate, requestsController.assignRequest);
 router.post('/notifications', authenticate, dispatchIntegrationController.publishNotification);
 router.get('/notifications', authenticate, dispatchIntegrationController.listNotifications);
 // HU-M09-06 (SCRUM-1428): bandeja propia de notificaciones. Va bajo /profiles/me porque el Gateway cierra al

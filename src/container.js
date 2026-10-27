@@ -100,6 +100,9 @@ const PgServiceRequestRepository = require('./infrastructure/repositories/PgServ
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
 const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
 const CancelServiceRequestUseCase = require('./application/useCases/requests/CancelServiceRequestUseCase');
+const AssignServiceRequestUseCase = require('./application/useCases/requests/AssignServiceRequestUseCase');
+const PgSolicitudAsignacionRepository = require('./infrastructure/repositories/PgSolicitudAsignacionRepository');
+const ListAllyOffersUseCase = require('./application/useCases/dispatch/ListAllyOffersUseCase');
 const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
@@ -310,6 +313,15 @@ class Container {
     });
     this.cancelServiceRequestUseCase = new CancelServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
+    });
+    // Asignación (SCRUM-1403, decisión 6A): Core registra la aceptación que decide Dispatch y expone la bandeja
+    // del aliado. Sin DATABASE_URL responde 503.
+    this.solicitudAsignacionRepository = new PgSolicitudAsignacionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.assignServiceRequestUseCase = new AssignServiceRequestUseCase({
+      solicitudAsignacionRepository: this.solicitudAsignacionRepository,
+    });
+    this.listAllyOffersUseCase = new ListAllyOffersUseCase({
+      solicitudAsignacionRepository: this.solicitudAsignacionRepository,
     });
 
     // Cotización (SCRUM-865): Core es dueño del estado tras la asignación (decisión 6A, SAD §7.4).
