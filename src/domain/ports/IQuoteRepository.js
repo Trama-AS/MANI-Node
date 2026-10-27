@@ -22,6 +22,18 @@ class IQuoteRepository {
   async listarPorSolicitud(_ctx, _solicitudId) {
     throw new Error('Método listarPorSolicitud() no implementado en IQuoteRepository');
   }
+
+  /**
+   * US-04.2.3 (SCRUM-867): el cliente dueño responde una cotización pendiente. La cotización, el estado de la
+   * solicitud, el evento y la notificación al aliado van en la misma transacción.
+   * @param {{ tenantId: string, userId: string, role: string }} _ctx contexto verificado
+   * @param {{ cotizacionId: string, decision: { cotizacion: string, solicitud: string, evento: string,
+   *           accion: string }, detalle: string }} _datos decisión ya validada
+   * @returns {Promise<{ cotizacion: object, solicitud: { id: string, estado: string } }>}
+   */
+  async responder(_ctx, _datos) {
+    throw new Error('Método responder() no implementado en IQuoteRepository');
+  }
 }
 
 module.exports = IQuoteRepository;

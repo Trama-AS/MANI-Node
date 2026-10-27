@@ -1,6 +1,7 @@
 const IQuoteRepository = require('../../domain/ports/IQuoteRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
+const { aliadoDeSesion, clienteActivoDeSesion, solicitudVisible } = require('./sesionActores');
 
 // La solicitud admite cotización desde que Dispatch la asigna y mientras el cliente no la haya resuelto.
 const ESTADOS_COTIZABLES = ['ASIGNADA', 'COTIZANDO'];
@@ -26,6 +27,7 @@ function toQuote(row) {
 const noEncontrada = () => new NotFoundError('MANI-COT-404: solicitud no encontrada', 'MANI-COT-404');
 const noAsignado = () =>
   new ForbiddenError('MANI-COT-403A: solo el aliado asignado a la solicitud puede cotizarla', 'MANI-COT-403A');
+const cotizacionNoEncontrada = () => new NotFoundError('MANI-COT-404: cotización no encontrada', 'MANI-COT-404');
 
 /**
  * Cotización sobre `pg` dentro de una transacción con withTenantContext (ADR-0032). Toda consulta filtra por
@@ -41,12 +43,7 @@ class PgQuoteRepository extends IQuoteRepository {
 
   async emitir(ctx, datos) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      const aliado = await client.query('SELECT id FROM aliado WHERE usuario_id = $1 AND tenant_id = $2', [
-        ctx.userId,
-        ctx.tenantId,
-      ]);
-      if (aliado.rows.length === 0) throw noAsignado();
-      const aliadoId = aliado.rows[0].id;
+      const aliadoId = await aliadoDeSesion(client, ctx, noAsignado);
 
       const solicitud = await client.query(
         'SELECT estado, aliado_id FROM solicitud WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
@@ -102,18 +99,7 @@ class PgQuoteRepository extends IQuoteRepository {
 
   async listarPorSolicitud(ctx, solicitudId) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      // Solo el cliente dueño o el aliado asignado. Para cualquier otro la solicitud no existe: así no se
-      // revela que hay una solicitud ajena con ese id.
-      const acceso = await client.query(
-        `SELECT 1
-         FROM solicitud s
-         LEFT JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
-         LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
-         WHERE s.id = $1 AND s.tenant_id = $2
-           AND (($3 = 'CLIENT' AND c.usuario_id = $4) OR ($3 = 'ALLY' AND a.usuario_id = $4))`,
-        [solicitudId, ctx.tenantId, ctx.role, ctx.userId]
-      );
-      if (acceso.rows.length === 0) throw noEncontrada();
+      await solicitudVisible(client, ctx, solicitudId, noEncontrada);
 
       const { rows } = await client.query(
         `SELECT ${COLUMNAS} FROM cotizacion
@@ -122,6 +108,82 @@ class PgQuoteRepository extends IQuoteRepository {
         [solicitudId, ctx.tenantId]
       );
       return rows.map(toQuote);
+    });
+  }
+
+  async responder(ctx, datos) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const clienteId = await clienteActivoDeSesion(
+        client,
+        ctx,
+        () => new ForbiddenError('MANI-COT-403C: solo un cliente activo responde cotizaciones', 'MANI-COT-403C')
+      );
+
+      // Se bloquean la cotización y su solicitud: dos respuestas simultáneas no producen dos transiciones.
+      const fila = await client.query(
+        `SELECT cot.estado, cot.aliado_id, s.id AS solicitud_id, s.cliente_id, s.estado AS estado_solicitud
+         FROM cotizacion cot
+         JOIN solicitud s ON s.id = cot.solicitud_id AND s.tenant_id = cot.tenant_id
+         WHERE cot.id = $1 AND cot.tenant_id = $2
+         FOR UPDATE OF cot, s`,
+        [datos.cotizacionId, ctx.tenantId]
+      );
+      // Una cotización de otro cliente responde igual que una inexistente: no se revela que existe.
+      if (fila.rows.length === 0 || fila.rows[0].cliente_id !== clienteId) throw cotizacionNoEncontrada();
+      const actual = fila.rows[0];
+      if (actual.estado !== 'PENDIENTE') {
+        throw new ConflictError(
+          `MANI-COT-409R: la cotización ya fue respondida (estado ${actual.estado})`,
+          'MANI-COT-409R'
+        );
+      }
+      if (actual.estado_solicitud !== 'COTIZANDO') {
+        throw new ConflictError(
+          `MANI-COT-409E: la solicitud en estado ${actual.estado_solicitud} no admite respuesta a la cotización`,
+          'MANI-COT-409E'
+        );
+      }
+
+      const actualizada = await client.query(
+        `UPDATE cotizacion SET estado = $1 WHERE id = $2 AND tenant_id = $3 RETURNING ${COLUMNAS}`,
+        [datos.decision.cotizacion, datos.cotizacionId, ctx.tenantId]
+      );
+      const cotizacion = toQuote(actualizada.rows[0]);
+
+      await client.query('UPDATE solicitud SET estado = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3', [
+        datos.decision.solicitud,
+        actual.solicitud_id,
+        ctx.tenantId,
+      ]);
+      await client.query(
+        `INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, descripcion)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          ctx.tenantId,
+          actual.solicitud_id,
+          ctx.userId,
+          datos.decision.evento,
+          datos.detalle ? `Cotización v${cotizacion.version}: ${datos.detalle}` : `Cotización v${cotizacion.version}`,
+        ]
+      );
+      // El aliado se entera en su bandeja (/profiles/me/inbox, HU-M09-06); el envío push es del proveedor.
+      await client.query(
+        `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
+         SELECT $1, a.usuario_id, 'RESPUESTA_COTIZACION', 'PUSH', $3::jsonb
+         FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1`,
+        [
+          ctx.tenantId,
+          actual.aliado_id,
+          JSON.stringify({
+            requestId: actual.solicitud_id,
+            cotizacionId: cotizacion.id,
+            version: cotizacion.version,
+            decision: datos.decision.accion,
+          }),
+        ]
+      );
+
+      return { cotizacion, solicitud: { id: actual.solicitud_id, estado: datos.decision.solicitud } };
     });
   }
 }

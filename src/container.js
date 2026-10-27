@@ -96,6 +96,7 @@ const ConsultOwnServiceRequestsUseCase = require('./application/useCases/request
 const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
+const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
 
 const config = require('./config');
 
@@ -289,6 +290,7 @@ class Container {
     this.quoteRepository = new PgQuoteRepository({ pgPoolFactory: this.pgPoolFactory });
     this.createQuoteUseCase = new CreateQuoteUseCase({ quoteRepository: this.quoteRepository });
     this.listQuotesUseCase = new ListQuotesUseCase({ quoteRepository: this.quoteRepository });
+    this.respondQuoteUseCase = new RespondQuoteUseCase({ quoteRepository: this.quoteRepository });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
