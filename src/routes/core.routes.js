@@ -74,5 +74,12 @@ router.put('/catalog/categories/:id', authenticate, requireAdmin, catalogControl
 router.patch('/catalog/categories/:id/activate', authenticate, requireAdmin, catalogController.activateCategory);
 router.patch('/catalog/categories/:id/deactivate', authenticate, requireAdmin, catalogController.deactivateCategory);
 
+// Catálogo jerárquico de zonas geográficas (HU-M04-04, REST-01). Solo
+// lectura: el catálogo lo administra la infraestructura de datos, no este
+// servicio. Requiere JWT verificado (T4/T7) aunque la tabla sea global,
+// porque es la única forma de no confiar en un tenant enviado por el cliente.
+router.get('/catalog/zones', authenticate, catalogController.listZoneCatalog);
+router.get('/catalog/zones/:id', authenticate, catalogController.getZone);
+
 module.exports = router;
 
