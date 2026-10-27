@@ -102,6 +102,8 @@ const MessagesUseCase = require('./application/useCases/messages/MessagesUseCase
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const PgRequestFormRepository = require('./infrastructure/repositories/PgRequestFormRepository');
+const GetRequestFormOptionsUseCase = require('./application/useCases/requests/GetRequestFormOptionsUseCase');
 const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
 const CancelServiceRequestUseCase = require('./application/useCases/requests/CancelServiceRequestUseCase');
 const AssignServiceRequestUseCase = require('./application/useCases/requests/AssignServiceRequestUseCase');
@@ -322,6 +324,11 @@ class Container {
     this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
       fileStorageService: this.fileStorageService,
+    });
+    // Lecturas del formulario de solicitud (SCRUM-1465), con el mismo contexto de tenant. Sin DATABASE_URL: 503.
+    this.requestFormRepository = new PgRequestFormRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.getRequestFormOptionsUseCase = new GetRequestFormOptionsUseCase({
+      requestFormRepository: this.requestFormRepository,
     });
     this.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
