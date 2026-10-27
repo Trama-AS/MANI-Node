@@ -7,6 +7,7 @@ async function createRequest(req, res, next) {
       user: req.user,
       body: req.body || {},
       files: req.files || [],
+      idempotencyKey: req.get('Idempotency-Key') || null,
     });
     // 201 si se creó; 200 si era un reintento con la misma clave de idempotencia.
     res.status(creada ? 201 : 200).json({ solicitud, correlationId: req.correlationId || 'none' });
@@ -15,4 +16,53 @@ async function createRequest(req, res, next) {
   }
 }
 
-module.exports = { createRequest };
+// HU-M07-04 (SCRUM-871): estado y zona declarada de las solicitudes del cliente de la sesión.
+async function listOwnRequests(req, res, next) {
+  try {
+    const solicitudes = await container.consultOwnServiceRequestsUseCase.listar({ user: req.user });
+    res.status(200).json({ solicitudes, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getOwnRequest(req, res, next) {
+  try {
+    const solicitud = await container.consultOwnServiceRequestsUseCase.obtener({ user: req.user, solicitudId: req.params.id });
+    res.status(200).json({ solicitud, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// US-04.5.1 (SCRUM-877): cancelar antes de la ejecución. Repetirla es idempotente: 200 en ambos casos.
+async function cancelOwnRequest(req, res, next) {
+  try {
+    const { solicitud, cancelada } = await container.cancelServiceRequestUseCase.execute({
+      user: req.user,
+      solicitudId: req.params.id,
+      body: req.body || {},
+    });
+    res.status(200).json({ solicitud, cancelada, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// HU-M05-07 (SCRUM-1403), decisión 6A: comando interno que Dispatch entrega cuando un aliado acepta. El aliado
+// sale del JWT reenviado; el cuerpo va vacío. 200 en ambos casos: `asignada` false si era un reintento.
+async function assignRequest(req, res, next) {
+  try {
+    const { solicitud, asignada } = await container.assignServiceRequestUseCase.execute({
+      user: req.user,
+      solicitudId: req.params.id,
+      correlationId: req.correlationId || null,
+      idempotencyKey: req.get('Idempotency-Key') || null,
+    });
+    res.status(200).json({ solicitud, asignada, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createRequest, listOwnRequests, getOwnRequest, cancelOwnRequest, assignRequest };
