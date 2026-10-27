@@ -10,6 +10,7 @@ const requestsController = require('../controllers/requests.controller');
 const notificationsController = require('../controllers/notifications.controller');
 const quotesController = require('../controllers/quotes.controller');
 const executionController = require('../controllers/execution.controller');
+const serviceEventsController = require('../controllers/serviceEvents.controller');
 const { authenticate, requireRole } = require('../middlewares/auth.middleware');
 
 const router = Router();
@@ -26,6 +27,8 @@ const photoMiddleware = uploadPhoto.fields([
 ]);
 // Fotos de la solicitud (SCRUM-1072): hasta 5 imágenes de 5 MB en el campo `fotos`.
 const uploadFotosSolicitud = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
+// Evidencia de un evento del servicio (SCRUM-869): una imagen de 5 MB en el campo `foto`.
+const uploadEvidencia = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 
 // SCRUM-1364: el listado global de tenants es de la administración de plataforma. Antes no pedía sesión y cualquiera
 // podía enumerar todas las empresas; ahora exige autenticación y el permiso explícito PLATFORM_ADMIN, que ningún rol
@@ -76,6 +79,9 @@ router.post('/cotizaciones/:id/ajustar', authenticate, quotesController.adjustQu
 router.post('/solicitudes/:id/iniciar', authenticate, executionController.startExecution);
 router.post('/solicitudes/:id/finalizar', authenticate, executionController.finishExecution);
 router.get('/solicitudes/:id/ejecucion', authenticate, executionController.getExecution);
+// US-04.3.2 (SCRUM-869): el aliado asignado registra eventos durante la ejecución; dueño y aliado los consultan.
+router.post('/solicitudes/:id/eventos', authenticate, uploadEvidencia.single('foto'), serviceEventsController.registerEvent);
+router.get('/solicitudes/:id/eventos', authenticate, serviceEventsController.listEvents);
 
 // Vitrina pública del catálogo (usada por el formulario de registro de
 // aliado, pre-auth): devuelve las categorías globales de fixtures más las

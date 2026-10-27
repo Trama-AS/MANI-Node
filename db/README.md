@@ -31,6 +31,7 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | ~~`0011`~~ | — | `SCRUM-865` | **Retirado.** Ver §2.1. |
 | ~~`0012`~~ | — | `SCRUM-869` | **Retirado.** Ver §2.1. |
 | **`0013`** | [`0013_sitio_contacto.sql`](migrations/0013_sitio_contacto.sql) | `SCRUM-852` | `contacto_nombre` y `contacto_telefono` en `sitio` (contacto de la sede). |
+| **`0014`** | [`0014_evento_servicio_evidencia_idempotencia.sql`](migrations/0014_evento_servicio_evidencia_idempotencia.sql) | `SCRUM-869` | `evidencia_ruta` (contenido de la `0012` retirada) y `clave_idempotencia` en `evento_servicio`, con índice único parcial por tenant y solicitud. |
 
 La siguiente migración libre es la **`0014`**.
 
@@ -50,7 +51,7 @@ Mientras la `0013` entraba por SCRUM-852, esas ramas ya existían. Por eso la `0
 2. Esos dos números **no se reutilizan**. Si alguna base aplicó esas ramas para probarlas, ya tiene registradas las versiones `'0011'` o `'0012'` en `schema_migrations`. Como el `INSERT ... ON CONFLICT DO NOTHING` no la rechaza, otra migración con el mismo número se daría por aplicada sin crear sus objetos.
 3. Para comprobarlo en cada ambiente: `SELECT version, description FROM schema_migrations WHERE version IN ('0011', '0012');` debe devolver 0 filas. Si devuelve alguna, quien la aplicó registra en esta sección el ambiente y la fecha, y la columna se conserva: las dos son aditivas y nullable.
 
-**Decisión sobre recuperar `0012_evento_servicio_evidencia.sql`:** no se recupera en este cambio. La columna solo sirve a SCRUM-869 (CONS-25), que en el Sprint 5 depende de CONS-24 y de esta tarea. Cuando SCRUM-869 se retome, su PR trae el mismo contenido con el **siguiente número libre** (hoy `0014`) y la descripción `'SCRUM-869 columna evidencia_ruta ...'`. El archivo se recupera con `git show cd32501:db/migrations/0012_evento_servicio_evidencia.sql`. Lo mismo vale para la `0011` de SCRUM-865 (`git show 58159cc:db/migrations/0011_cotizacion_observacion.sql`).
+**Decisión sobre recuperar `0012_evento_servicio_evidencia.sql`:** no se recupera en este cambio. La columna solo sirve a SCRUM-869 (CONS-25), que en el Sprint 5 depende de CONS-24 y de esta tarea. Cuando SCRUM-869 se retome, su PR trae el mismo contenido con el **siguiente número libre** (hoy `0014`) y la descripción `'SCRUM-869 columna evidencia_ruta ...'`. El archivo se recupera con `git show cd32501:db/migrations/0012_evento_servicio_evidencia.sql`. Lo mismo vale para la `0011` de SCRUM-865 (`git show 58159cc:db/migrations/0011_cotizacion_observacion.sql`). **Hecho en SCRUM-869:** la columna entra en la `0014` junto con `clave_idempotencia`. La `0011` no se recuperó: SCRUM-865 no necesita `observacion`.
 
 La prueba `tests/unit/db/migrationsNumbering.test.js` vigila la regla: falla si aparece un número repetido, un hueco distinto de los retirados, un archivo `0011`/`0012`, o una migración `0005+` que registre en `schema_migrations` una versión distinta de la de su nombre.
 
