@@ -95,6 +95,8 @@ const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCa
 const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
 const PgServiceExecutionRepository = require('./infrastructure/repositories/PgServiceExecutionRepository');
 const ServiceExecutionUseCase = require('./application/useCases/services/ServiceExecutionUseCase');
+const PgServiceEventRepository = require('./infrastructure/repositories/PgServiceEventRepository');
+const ServiceEventsUseCase = require('./application/useCases/services/ServiceEventsUseCase');
 
 const config = require('./config');
 
@@ -289,6 +291,12 @@ class Container {
     this.serviceExecutionRepository = new PgServiceExecutionRepository({ pgPoolFactory: this.pgPoolFactory });
     this.serviceExecutionUseCase = new ServiceExecutionUseCase({
       serviceExecutionRepository: this.serviceExecutionRepository,
+    });
+    // Eventos durante la ejecución (SCRUM-869); la evidencia va al bucket `solicitudes`.
+    this.serviceEventRepository = new PgServiceEventRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.serviceEventsUseCase = new ServiceEventsUseCase({
+      serviceEventRepository: this.serviceEventRepository,
+      fileStorageService: this.fileStorageService,
     });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
