@@ -98,3 +98,79 @@ test('sin DATABASE_URL la creación falla cerrado con 503', async (t) => {
 
   assert.equal(res.status, 503);
 });
+
+// HU-M07-04 (SCRUM-871): seguimiento del cliente por el Gateway.
+const ConsultOwnServiceRequestsUseCase = require('../../../src/application/useCases/requests/ConsultOwnServiceRequestsUseCase');
+const SOL = '44444444-4444-4444-8444-444444444444';
+
+function conSeguimiento(repo, fn) {
+  return async () => {
+    const original = container.consultOwnServiceRequestsUseCase;
+    container.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({ serviceRequestRepository: repo });
+    try {
+      await fn();
+    } finally {
+      container.consultOwnServiceRequestsUseCase = original;
+    }
+  };
+}
+
+test('GET /solicitudes/me sin token o con token expirado responde 401', async () => {
+  for (const auth of [null, token({ expiresIn: -60 })]) {
+    const req = request(app).get('/api/v1/solicitudes/me');
+    if (auth) req.set('Authorization', `Bearer ${auth}`);
+    assert.equal((await req).status, 401);
+  }
+});
+
+test('GET /solicitudes/me con rol aliado responde 403 MANI-SOL-403C', async () => {
+  const res = await request(app).get('/api/v1/solicitudes/me').set('Authorization', `Bearer ${token({ role: 'aliado' })}`);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.code, 'MANI-SOL-403C');
+});
+
+test('GET /solicitudes/me lista con el tenant y el usuario del token, ignorando cabeceras del cliente', conSeguimiento(
+  {
+    listarDelCliente: async (ctx) => [{ id: SOL, estado: 'PENDIENTE', tenant: ctx.tenantId, usuario: ctx.userId }],
+  },
+  async () => {
+    const res = await request(app)
+      .get('/api/v1/solicitudes/me')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Tenant-Id', '99999999-9999-4999-8999-999999999999');
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.solicitudes, [{ id: SOL, estado: 'PENDIENTE', tenant: TENANT, usuario: USER }]);
+  }
+));
+
+test('GET /solicitudes/me/:id devuelve la solicitud propia', conSeguimiento(
+  { obtenerDelCliente: async (_ctx, id) => ({ id, estado: 'ASIGNADA', zonaDeclarada: { nombre: 'Chapinero' } }) },
+  async () => {
+    const res = await request(app).get(`/api/v1/solicitudes/me/${SOL}`).set('Authorization', `Bearer ${token()}`);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.solicitud.id, SOL);
+    assert.equal(res.body.solicitud.zonaDeclarada.nombre, 'Chapinero');
+  }
+));
+
+test('GET /solicitudes/me/:id ajena o inexistente responde 404 y un id inválido 400', conSeguimiento(
+  { obtenerDelCliente: async () => null },
+  async () => {
+    const ajena = await request(app).get(`/api/v1/solicitudes/me/${SOL}`).set('Authorization', `Bearer ${token()}`);
+    assert.equal(ajena.status, 404);
+    assert.equal(ajena.body.code, 'MANI-SOL-404');
+
+    const invalida = await request(app).get('/api/v1/solicitudes/me/no-es-uuid').set('Authorization', `Bearer ${token()}`);
+    assert.equal(invalida.status, 400);
+    assert.equal(invalida.body.code, 'MANI-SOL-400');
+  }
+));
+
+test('GET /solicitudes/me no tapa la ruta de contexto de Dispatch', async () => {
+  const res = await request(app).get(`/api/v1/solicitudes/${SOL}/context`);
+
+  assert.equal(res.status, 401);
+});
