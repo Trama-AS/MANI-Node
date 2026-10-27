@@ -66,15 +66,19 @@ src/
   app.js            # Construcción de la app Express (sin listen, usada en tests)
   server.js         # Punto de entrada: carga env y arranca el servidor
   config/           # Lectura centralizada de variables de entorno
-  routes/           # Enrutamiento HTTP
+  container.js      # Composition Root (inyección de dependencias)
+  domain/           # Entidades, errores y puertos (sin dependencias externas)
+  application/      # Casos de uso, una carpeta por dominio interno
+  infrastructure/   # Repositorios (pg con withTenantContext / Supabase), clientes HTTP, seguridad
+  routes/           # Enrutamiento HTTP; routes/core/ tiene un archivo por dominio interno
   controllers/      # Orquestación de la petición/respuesta HTTP
-  services/         # Lógica de dominio del core
-  repositories/      # Acceso a datos (PostgreSQL/Supabase)
-  middlewares/       # Correlation-ID, manejo de errores, etc.
+  middlewares/      # Autenticación, Correlation-ID, manejo de errores
 tests/
-  unit/             # Pruebas de servicios sin HTTP
-  integration/      # Pruebas de rutas vía supertest
+  unit/             # Casos de uso, repositorios y middlewares sin HTTP
+  integration/      # Rutas vía supertest; integration/pg contra PostgreSQL real
 ```
+
+Los dominios internos y sus límites están en `docs/arquitectura/MODULOS_CORE.md` (SCRUM-1447).
 
 ---
 
