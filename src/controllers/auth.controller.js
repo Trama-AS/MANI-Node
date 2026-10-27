@@ -138,7 +138,18 @@ async function resetPassword(req, res, next) {
   }
 }
 
+// HU-M02-03 (SCRUM-1371): constancia del cierre de sesión. La sesión la deja `authenticate` a partir del JWT.
+function logout(req, res, next) {
+  try {
+    container.logoutUseCase.execute({ session: req.user, correlationId: correlationOf(req, res) });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
+  logout,
   registerAllyNaturalPerson,
   registerAllyCompany,
   registerClientNaturalPerson,

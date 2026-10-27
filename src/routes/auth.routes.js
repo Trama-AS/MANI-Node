@@ -2,6 +2,7 @@ const { Router } = require('express');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const authController = require('../controllers/auth.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
 const { resolveJwtSecret, isDevTokenEnabled } = require('../config/jwtSecret');
 const JwtVerifier = require('../infrastructure/security/JwtVerifier');
 
@@ -175,6 +176,9 @@ function createAuthRouter(env = process.env, deps = {}) {
   router.post('/auth/register/client', authController.registerClientNaturalPerson);
   // Cliente empresa (HU-M02-07): NIT y representante, sin documentos ni sitios.
   router.post('/auth/register/client/company', authController.registerClientCompany);
+
+  // Cierre de sesión (HU-M02-03): lleva el JWT; Core lo verifica aquí porque /auth/ es público en el Gateway.
+  router.post('/auth/logout', authenticate, authController.logout);
 
   // Recuperación de contraseña (HU-M02-10): pre-auth, el tenant sale solo de X-Tenant-Slug.
   router.post('/auth/password-recovery', authController.requestPasswordRecovery);
