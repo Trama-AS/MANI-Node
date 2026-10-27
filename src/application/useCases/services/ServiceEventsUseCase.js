@@ -5,6 +5,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MIMES_IMAGEN = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MIN_OBSERVACION = 3;
 const MAX_OBSERVACION = 2000;
+// La URL de la evidencia vence pronto: se pide cada vez que el usuario la abre (SCRUM-870).
+const SEGUNDOS_URL_EVIDENCIA = 300;
 
 // Tipos que el aliado elige al registrar un evento durante la ejecución (RF-18). Se guardan con el prefijo
 // EJECUCION_ para distinguirlos de los eventos que registra el sistema (SOLICITUD_CREADA, INICIO_EJECUCION...).
@@ -103,6 +105,24 @@ class ServiceEventsUseCase {
       );
     }
     return this.serviceEventRepository.listar(ctx, solicitudIdValido(solicitudId));
+  }
+
+  /** SCRUM-870: URL firmada y temporal de la foto de un evento, para el cliente dueño o el aliado asignado. */
+  async evidencia({ user, solicitudId, eventoId }) {
+    const ctx = contexto(user);
+    if (ctx.role !== 'ALLY' && ctx.role !== 'CLIENT') {
+      throw new ForbiddenError(
+        'MANI-EVT-403: solo el cliente dueño o el aliado asignado consultan los eventos',
+        'MANI-EVT-403'
+      );
+    }
+    const id = solicitudIdValido(solicitudId);
+    if (!UUID_RE.test(String(eventoId || ''))) throw invalido('el id del evento no es válido');
+    const ruta = await this.serviceEventRepository.rutaEvidencia(ctx, id, String(eventoId));
+    const { signedUrl, expiresIn } = await this.fileStorageService.createSignedUrl(ruta, SEGUNDOS_URL_EVIDENCIA, {
+      bucket: 'solicitudes',
+    });
+    return { url: signedUrl, expiraEnSegundos: expiresIn };
   }
 
   async descartar(ruta) {

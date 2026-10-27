@@ -25,4 +25,18 @@ async function listEvents(req, res, next) {
   }
 }
 
-module.exports = { registerEvent, listEvents };
+// SCRUM-870: la URL vence en minutos, así que no se guarda ni se cachea.
+async function getEventEvidence(req, res, next) {
+  try {
+    const evidencia = await container.serviceEventsUseCase.evidencia({
+      user: req.user,
+      solicitudId: req.params.id,
+      eventoId: req.params.eventoId,
+    });
+    res.set('Cache-Control', 'no-store').json({ evidencia, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { registerEvent, listEvents, getEventEvidence };

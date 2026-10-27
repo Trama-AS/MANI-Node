@@ -17,7 +17,13 @@ class IFileStorageService {
     throw new Error('Método delete() no implementado en IFileStorageService');
   }
 
-  async createSignedUrl(_path, _expiresInSeconds) {
+  /**
+   * @param {string} _path ruta dentro del bucket
+   * @param {number} [_expiresInSeconds]
+   * @param {{ bucket?: string }} [_opciones] bucket del objeto; por omisión `kyc-documentos`
+   * @returns {Promise<{ signedUrl: string, expiresIn: number }>}
+   */
+  async createSignedUrl(_path, _expiresInSeconds, _opciones) {
     throw new Error('Método createSignedUrl() no implementado en IFileStorageService');
   }
 }

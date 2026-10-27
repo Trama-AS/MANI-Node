@@ -108,6 +108,20 @@ class PgServiceEventRepository extends IServiceEventRepository {
       return rows.map(toEvento);
     });
   }
+
+  async rutaEvidencia(ctx, solicitudId, eventoId) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      await solicitudVisible(client, ctx, solicitudId, noEncontrada);
+      const { rows } = await client.query(
+        'SELECT evidencia_ruta FROM evento_servicio WHERE id = $1 AND solicitud_id = $2 AND tenant_id = $3',
+        [eventoId, solicitudId, ctx.tenantId]
+      );
+      if (rows.length === 0 || !rows[0].evidencia_ruta) {
+        throw new NotFoundError('MANI-EVT-404E: el evento no tiene evidencia', 'MANI-EVT-404E');
+      }
+      return rows[0].evidencia_ruta;
+    });
+  }
 }
 
 module.exports = PgServiceEventRepository;
