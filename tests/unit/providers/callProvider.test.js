@@ -41,9 +41,10 @@ test('C2: si el proveedor no responde a tiempo, aborta la señal y lanza TIMEOUT
 test('C2: una excepción sin tipo se informa como UNAVAILABLE, sin filtrar el mensaje interno', async () => {
   await assert.rejects(
     callProvider(async () => {
-      throw new Error('ECONNREFUSED 10.0.0.7:443 api-key=secreta');
+      throw new Error('ECONNREFUSED pasarela-interna detalle-reservado');
     }, { ...politica, ErrorClass: PushProviderError }),
-    (err) => err instanceof PushProviderError && err.kind === 'UNAVAILABLE' && !/secreta|ECONNREFUSED/.test(err.message)
+    (err) =>
+      err instanceof PushProviderError && err.kind === 'UNAVAILABLE' && !/detalle-reservado|ECONNREFUSED/.test(err.message)
   );
 });
 
