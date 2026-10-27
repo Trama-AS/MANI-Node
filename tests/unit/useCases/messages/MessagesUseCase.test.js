@@ -49,8 +49,9 @@ for (const [nombre, body] of [
 }
 
 test('enviar: acepta exactamente 1000 caracteres', async () => {
-  const { uc } = crear();
+  const { uc, llamadas } = crear();
   await uc.enviar({ user: cliente, solicitudId: SOLICITUD, body: { contenido: 'a'.repeat(1000) } });
+  assert.equal(llamadas.enviar[0].datos.contenido.length, 1000);
 });
 
 test('enviar: id de solicitud inválido responde 400', async () => {
