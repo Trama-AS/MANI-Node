@@ -70,6 +70,9 @@ const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/U
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
+const LogoutUseCase = require('./application/useCases/auth/LogoutUseCase');
+const RequestPasswordRecoveryUseCase = require('./application/useCases/auth/RequestPasswordRecoveryUseCase');
+const ResetPasswordUseCase = require('./application/useCases/auth/ResetPasswordUseCase');
 const RegisterClientCompanyUseCase = require('./application/useCases/auth/RegisterClientCompanyUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
@@ -89,6 +92,7 @@ const { createPushProvider } = require('./infrastructure/push/createPushProvider
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
 const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
 const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
 const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
@@ -206,6 +210,7 @@ class Container {
 
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
+      tenantRepository: this.tenantRepository,
     });
 
     this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
@@ -279,6 +284,9 @@ class Container {
     this.createServiceRequestUseCase = new CreateServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
       fileStorageService: this.fileStorageService,
+    });
+    this.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
     });
 
     // Cotización (SCRUM-865): Core es dueño del estado tras la asignación (decisión 6A, SAD §7.4).
@@ -420,6 +428,22 @@ class Container {
       authIdentityService: this.authIdentityService,
       registerUserConsentUseCase: this.registerUserConsentUseCase,
       userConsentRepository: this.userConsentRepository,
+    });
+
+    // HU-M02-03: constancia del cierre de sesión para auditoría.
+    this.logoutUseCase = new LogoutUseCase();
+
+    // HU-M02-10: recuperación de contraseña orquestada contra el proveedor de identidad.
+    this.requestPasswordRecoveryUseCase = new RequestPasswordRecoveryUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      authIdentityService: this.authIdentityService,
+      redirectTo: config.passwordRecoveryRedirectUrl,
+    });
+    this.resetPasswordUseCase = new ResetPasswordUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      authIdentityService: this.authIdentityService,
     });
   }
 }

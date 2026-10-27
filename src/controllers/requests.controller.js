@@ -15,4 +15,23 @@ async function createRequest(req, res, next) {
   }
 }
 
-module.exports = { createRequest };
+// HU-M07-04 (SCRUM-871): estado y zona declarada de las solicitudes del cliente de la sesión.
+async function listOwnRequests(req, res, next) {
+  try {
+    const solicitudes = await container.consultOwnServiceRequestsUseCase.listar({ user: req.user });
+    res.status(200).json({ solicitudes, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getOwnRequest(req, res, next) {
+  try {
+    const solicitud = await container.consultOwnServiceRequestsUseCase.obtener({ user: req.user, solicitudId: req.params.id });
+    res.status(200).json({ solicitud, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createRequest, listOwnRequests, getOwnRequest };
