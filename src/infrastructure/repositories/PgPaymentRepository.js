@@ -2,6 +2,7 @@ const IPaymentRepository = require('../../domain/ports/IPaymentRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { clienteActivoDeSesion } = require('./sesionActores');
+const { registrarEventoTransaccion } = require('./transaccionEvento');
 
 const UNIQUE_VIOLATION = '23505';
 const MONEDA = 'COP';
@@ -105,7 +106,17 @@ class PgPaymentRepository extends IPaymentRepository {
             datos.claveIdempotencia,
           ]
         );
-        return { pago: toPayment(creado.rows[0]), creado: true };
+        const pago = toPayment(creado.rows[0]);
+        // Registro inmutable (SCRUM-889): en la misma transacción, así el pago y su evento nacen juntos o no nacen.
+        await registrarEventoTransaccion(client, ctx, {
+          pagoId: pago.id,
+          tipo: 'PAGO_REGISTRADO',
+          estado: pago.estado,
+          monto: pago.monto,
+          moneda: pago.moneda,
+          correlationId: datos.correlationId,
+        });
+        return { pago, creado: true };
       });
     } catch (err) {
       if (err.code !== UNIQUE_VIOLATION) throw err;

@@ -97,6 +97,8 @@ const { createPaymentProvider } = require('./infrastructure/payments/createPayme
 const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
 const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
 const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgTransactionAuditRepository = require('./infrastructure/repositories/PgTransactionAuditRepository');
+const TransactionAuditUseCase = require('./application/useCases/audit/TransactionAuditUseCase');
 const PgMessageRepository = require('./infrastructure/repositories/PgMessageRepository');
 const MessagesUseCase = require('./application/useCases/messages/MessagesUseCase');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
@@ -290,6 +292,10 @@ class Container {
       politica: { timeoutMs: config.paymentProviderTimeoutMs },
     });
     this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
+
+    // Registro inmutable de transacciones (HU-M11-03 / SCRUM-889): solo lectura; se escribe junto con cada pago.
+    this.transactionAuditRepository = new PgTransactionAuditRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.transactionAuditUseCase = new TransactionAuditUseCase({ auditRepository: this.transactionAuditRepository });
 
     // Mensajería cliente-aliado por servicio (HU-M09-02 / SCRUM-881).
     this.messageRepository = new PgMessageRepository({ pgPoolFactory: this.pgPoolFactory });
