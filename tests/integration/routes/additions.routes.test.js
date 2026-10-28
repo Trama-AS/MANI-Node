@@ -9,7 +9,7 @@ const container = require('../../../src/container');
 const RequestAdditionUseCase = require('../../../src/application/useCases/additions/RequestAdditionUseCase');
 const ListAdditionsUseCase = require('../../../src/application/useCases/additions/ListAdditionsUseCase');
 const RespondAdditionUseCase = require('../../../src/application/useCases/additions/RespondAdditionUseCase');
-const { ConflictError, ValidationError } = require('../../../src/domain/errors/DomainError');
+const { ConflictError, NotFoundError, ValidationError } = require('../../../src/domain/errors/DomainError');
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
@@ -131,6 +131,22 @@ test(
       const rol = await request(app).post(`/api/v1/adiciones/${ADICION}/aceptar`).set('Authorization', bearer('aliado'));
       assert.equal(rol.status, 403);
       assert.equal(rol.body.code, 'MANI-ADI-403');
+    }
+  )
+);
+
+test(
+  'GET /solicitudes/:id/adiciones: una solicitud ajena responde 404 con su código',
+  withRepo(
+    {
+      listarPorSolicitud: async () => {
+        throw new NotFoundError('MANI-ADI-404: solicitud no encontrada', 'MANI-ADI-404');
+      },
+    },
+    async () => {
+      const res = await request(app).get(`/api/v1/solicitudes/${SOLICITUD}/adiciones`).set('Authorization', bearer('cliente'));
+      assert.equal(res.status, 404);
+      assert.equal(res.body.code, 'MANI-ADI-404');
     }
   )
 );

@@ -229,3 +229,11 @@ test('responder: aceptar vuelve a comprobar el tope y no cambia nada si lo super
   assert.equal(sentencias.some((s) => s.sql.startsWith('UPDATE adicion_servicio')), false);
   assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
 });
+
+test('el puerto IAdditionRepository exige implementar sus tres métodos', async () => {
+  const IAdditionRepository = require('../../../src/domain/ports/IAdditionRepository');
+  const puerto = new IAdditionRepository();
+  await assert.rejects(puerto.solicitar(), /solicitar\(\) no implementado/);
+  await assert.rejects(puerto.listarPorSolicitud(), /listarPorSolicitud\(\) no implementado/);
+  await assert.rejects(puerto.responder(), /responder\(\) no implementado/);
+});
