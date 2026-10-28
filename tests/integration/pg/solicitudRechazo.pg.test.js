@@ -57,12 +57,13 @@ async function entorno(t) {
 }
 
 // El mismo SQL que ejecuta Dispatch (PostgresSolicitudAssignmentRepository.RejectRequestAsync).
-const RECHAZAR = `INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo)
-                  VALUES ($1, $2, $3, $4)
+const RECHAZAR = `INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo, detalle)
+                  VALUES ($1, $2, $3, $4, $5)
                   ON CONFLICT (solicitud_id, aliado_id) DO NOTHING`;
 
-const rechazar = (dispatch, ctx, { tenant, solicitud, aliado, motivo = 'OTRO' }) =>
-  runInTenantContext(dispatch, ctx, (client) => client.query(RECHAZAR, [tenant, solicitud, aliado, motivo]));
+// El motivo es obligatorio y solo OTRO lleva detalle (0025, SCRUM-1617).
+const rechazar = (dispatch, ctx, { tenant, solicitud, aliado, motivo = 'SIN_DISPONIBILIDAD', detalle = null }) =>
+  runInTenantContext(dispatch, ctx, (client) => client.query(RECHAZAR, [tenant, solicitud, aliado, motivo, detalle]));
 
 const contar = async (pool, solicitud) =>
   (await pool.query('SELECT count(*)::int AS n FROM solicitud_rechazo WHERE solicitud_id = $1', [solicitud])).rows[0].n;
@@ -123,9 +124,9 @@ test('PG D-3: Dispatch lee solo sus propios rechazos, no los de otro aliado ni l
   const { pool, dispatch } = await entorno(t);
   const a = await sembrar(pool);
   const b = await sembrar(pool);
-  await pool.query('INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id) VALUES ($1, $2, $3)', [a.tenant, a.solicitud, a.ana.aliado]);
-  await pool.query('INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id) VALUES ($1, $2, $3)', [a.tenant, a.solicitud, a.beto.aliado]);
-  await pool.query('INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id) VALUES ($1, $2, $3)', [b.tenant, b.solicitud, b.ana.aliado]);
+  await pool.query("INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo) VALUES ($1, $2, $3, 'FUERA_DE_ZONA')", [a.tenant, a.solicitud, a.ana.aliado]);
+  await pool.query("INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo) VALUES ($1, $2, $3, 'FUERA_DE_ZONA')", [a.tenant, a.solicitud, a.beto.aliado]);
+  await pool.query("INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo) VALUES ($1, $2, $3, 'FUERA_DE_ZONA')", [b.tenant, b.solicitud, b.ana.aliado]);
 
   const veAna = await runInTenantContext(dispatch, a.ana.ctx, (c) => c.query('SELECT aliado_id FROM solicitud_rechazo'));
   assert.deepEqual(veAna.rows.map((r) => r.aliado_id), [a.ana.aliado]);
@@ -168,4 +169,59 @@ test('PG D-3: la función de la política solo contesta por el aliado de la sesi
 test('PG D-3: sin DATABASE_URL el rechazo falla cerrado con 503', async () => {
   const dispatch = new PgPoolFactory({ databaseUrl: undefined });
   await assert.rejects(() => rechazar(dispatch, { tenantId: uuid(), userId: uuid(), role: 'ALLY' }, { tenant: uuid(), solicitud: uuid(), aliado: uuid() }), (err) => err.statusCode === 503);
+});
+
+// SCRUM-1617 (migración 0025): el motivo es obligatorio en filas nuevas y OTRO exige detalle. Se prueba con el rol de
+// servicio de Dispatch, que es quien escribe el rechazo.
+test('PG 0025: OTRO se guarda con su detalle con el rol de servicio de Dispatch', opts, async (t) => {
+  const { pool, dispatch } = await entorno(t);
+  const s = await sembrar(pool);
+
+  await rechazar(dispatch, s.ana.ctx, {
+    tenant: s.tenant,
+    solicitud: s.solicitud,
+    aliado: s.ana.aliado,
+    motivo: 'OTRO',
+    detalle: 'Mi herramienta está en reparación',
+  });
+
+  const fila = (await pool.query('SELECT motivo, detalle FROM solicitud_rechazo WHERE solicitud_id = $1', [s.solicitud])).rows[0];
+  assert.deepEqual({ ...fila }, { motivo: 'OTRO', detalle: 'Mi herramienta está en reparación' });
+});
+
+test('PG 0025: un rechazo sin motivo o con el detalle mal puesto no se guarda (check_violation)', opts, async (t) => {
+  const { pool, dispatch } = await entorno(t);
+  const s = await sembrar(pool);
+  const base = { tenant: s.tenant, solicitud: s.solicitud, aliado: s.ana.aliado };
+
+  for (const [motivo, detalle] of [
+    [null, null],
+    ['OTRO', null],
+    ['OTRO', 'ok'],
+    ['OTRO', ' con espacios '],
+    ['OTRO', 'x'.repeat(281)],
+    ['FUERA_DE_ZONA', 'Me queda lejos'],
+  ]) {
+    await assert.rejects(
+      () => rechazar(dispatch, s.ana.ctx, { ...base, motivo, detalle }),
+      (err) => err.code === '23514',
+      `motivo=${motivo} detalle=${detalle}`
+    );
+  }
+  assert.equal(await contar(pool, s.solicitud), 0);
+});
+
+test('PG 0025: las reglas nuevas son NOT VALID y no tocan los rechazos previos sin motivo', opts, async (t) => {
+  const { pool } = await entorno(t);
+  const { rows } = await pool.query(
+    `SELECT conname, convalidated FROM pg_constraint
+     WHERE conname IN ('ck_solicitud_rechazo_motivo_presente', 'ck_solicitud_rechazo_detalle_otro') ORDER BY conname`
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.conname, r.convalidated]),
+    [
+      ['ck_solicitud_rechazo_detalle_otro', false],
+      ['ck_solicitud_rechazo_motivo_presente', false],
+    ]
+  );
 });
