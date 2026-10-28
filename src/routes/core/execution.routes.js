@@ -2,9 +2,10 @@ const { Router } = require('express');
 const multer = require('multer');
 const executionController = require('../../controllers/execution.controller');
 const serviceEventsController = require('../../controllers/serviceEvents.controller');
+const additionsController = require('../../controllers/additions.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
-// Dominio Ejecución del servicio (M-07): marcas de inicio y fin, y bitácora de eventos con evidencia.
+// Dominio Ejecución del servicio (M-07): marcas de inicio y fin, bitácora de eventos con evidencia y adiciones.
 const router = Router();
 
 // Evidencia de un evento del servicio (SCRUM-869): una imagen de 5 MB en el campo `foto`.
@@ -19,5 +20,11 @@ router.post('/solicitudes/:id/eventos', authenticate, uploadEvidencia.single('fo
 router.get('/solicitudes/:id/eventos', authenticate, serviceEventsController.listEvents);
 // US-04.3.3 (SCRUM-870): URL temporal de la foto de un evento para el cliente dueño o el aliado asignado.
 router.get('/solicitudes/:id/eventos/:eventoId/evidencia', authenticate, serviceEventsController.getEventEvidence);
+// US-04.3.5 (SCRUM-872): el aliado asignado pide una adición durante la ejecución; el cliente dueño la acepta o la
+// rechaza. Ambos consultan las adiciones y el total vigente.
+router.post('/solicitudes/:id/adiciones', authenticate, additionsController.requestAddition);
+router.get('/solicitudes/:id/adiciones', authenticate, additionsController.listAdditions);
+router.post('/adiciones/:id/aceptar', authenticate, additionsController.acceptAddition);
+router.post('/adiciones/:id/rechazar', authenticate, additionsController.rejectAddition);
 
 module.exports = router;

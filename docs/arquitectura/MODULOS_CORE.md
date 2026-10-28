@@ -24,7 +24,7 @@ sección «Cómo se verificó».
 | Notificaciones | `/profiles/me/inbox` | `notifications/` y parte de `dispatch/` | `notificacion` | pg con contexto de tenant + proveedor push (mock de HU-M09-06) |
 | Cotización | `/solicitudes/:id/cotizaciones`, `/cotizaciones/:id/{aceptar,rechazar,ajustar}` | `quotes/` | `cotizacion`, `solicitud`, `evento_servicio`, `notificacion` | pg con contexto de tenant |
 | Pagos | `/pagos`, `/pagos/:id`, `/pagos/:id/comprobante` | `payments/` | pagos del sandbox (HU-M11-01) | pg con contexto de tenant + pasarela simulada |
-| Ejecución del servicio | `/solicitudes/:id/{iniciar,finalizar,ejecucion}`, `/solicitudes/:id/eventos*` | `services/` | `solicitud`, `evento_servicio`, `notificacion`; evidencia en el bucket `solicitudes` | pg con contexto de tenant + Storage |
+| Ejecución del servicio | `/solicitudes/:id/{iniciar,finalizar,ejecucion}`, `/solicitudes/:id/eventos*`, `/solicitudes/:id/adiciones`, `/adiciones/:id/{aceptar,rechazar}` | `services/`, `additions/` | `solicitud`, `evento_servicio`, `adicion_servicio`, `notificacion`; evidencia en el bucket `solicitudes` | pg con contexto de tenant + Storage |
 | Mensajería | `/solicitudes/:id/mensajes` | `messages/` | mensajes por servicio (HU-M09-02) | pg con contexto de tenant |
 | Salud | `/health` | `health/` | — | — |
 

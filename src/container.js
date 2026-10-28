@@ -120,6 +120,10 @@ const PgServiceExecutionRepository = require('./infrastructure/repositories/PgSe
 const ServiceExecutionUseCase = require('./application/useCases/services/ServiceExecutionUseCase');
 const PgServiceEventRepository = require('./infrastructure/repositories/PgServiceEventRepository');
 const ServiceEventsUseCase = require('./application/useCases/services/ServiceEventsUseCase');
+const PgAdditionRepository = require('./infrastructure/repositories/PgAdditionRepository');
+const RequestAdditionUseCase = require('./application/useCases/additions/RequestAdditionUseCase');
+const ListAdditionsUseCase = require('./application/useCases/additions/ListAdditionsUseCase');
+const RespondAdditionUseCase = require('./application/useCases/additions/RespondAdditionUseCase');
 
 const config = require('./config');
 
@@ -387,6 +391,17 @@ class Container {
     this.serviceEventsUseCase = new ServiceEventsUseCase({
       serviceEventRepository: this.serviceEventRepository,
       fileStorageService: this.fileStorageService,
+    });
+    // Adiciones por imprevisto durante la ejecución (SCRUM-872), con el mismo criterio: sin DATABASE_URL responde 503.
+    this.additionRepository = new PgAdditionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.requestAdditionUseCase = new RequestAdditionUseCase({
+      additionRepository: this.additionRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    this.listAdditionsUseCase = new ListAdditionsUseCase({ additionRepository: this.additionRepository });
+    this.respondAdditionUseCase = new RespondAdditionUseCase({
+      additionRepository: this.additionRepository,
+      notificador: this.notificarEventoServicioUseCase,
     });
 
     this.checkHealthUseCase = new CheckHealthUseCase({

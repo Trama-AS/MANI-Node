@@ -1,25 +1,13 @@
 const { ValidationError } = require('../../../domain/errors/DomainError');
 const { contextoDeSesion, exigirRol, solicitudIdValido } = require('./quoteAccess');
 const { entregarAviso } = require('../notifications/entregarAviso');
-
-// DECIMAL(12, 2) de `cotizacion`: hasta diez dígitos enteros y dos decimales.
-const IMPORTE_RE = /^\d{1,10}(\.\d{1,2})?$/;
+const { centavos } = require('./importe');
 
 function invalido(mensaje) {
   return new ValidationError(`MANI-COT-400: ${mensaje}`, 'MANI-COT-400');
 }
 
-// Acepta número o texto numérico, pero rechaza negativos, notación científica y más de dos decimales en lugar
-// de redondearlos: el importe que se persiste es exactamente el que envió el aliado.
-function importe(valor, campo) {
-  if (valor === undefined || valor === null || valor === '') throw invalido(`${campo} es obligatorio`);
-  if (typeof valor !== 'number' && typeof valor !== 'string') throw invalido(`${campo} debe ser numérico`);
-  const texto = typeof valor === 'number' ? String(valor) : valor.trim();
-  if (!IMPORTE_RE.test(texto)) {
-    throw invalido(`${campo} debe ser un valor no negativo con máximo dos decimales`);
-  }
-  return Math.round(Number(texto) * 100);
-}
+const importe = (valor, campo) => centavos(valor, campo, invalido);
 
 /**
  * US-04.2.1 (SCRUM-865, RF-15): el aliado asignado emite una cotización con mano de obra y materiales
