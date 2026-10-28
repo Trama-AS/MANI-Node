@@ -59,12 +59,14 @@ function uuid(valor, campo) {
  * se da por enviado cuando ya está guardado: si algo falla, no hay entrega exitosa (C2).
  */
 class MessagesUseCase {
-  constructor({ messageRepository }) {
+  constructor({ messageRepository, notificador = null }) {
     if (!messageRepository) throw new Error('messageRepository es requerido para MessagesUseCase');
     this.messageRepository = messageRepository;
+    // SCRUM-882: avisa al otro participante. Opcional para poder probar la mensajería sin notificaciones.
+    this.notificador = notificador;
   }
 
-  async enviar({ user, solicitudId, body = {} }) {
+  async enviar({ user, solicitudId, body = {}, correlationId }) {
     const ctx = contexto(user);
     const id = uuid(solicitudId, 'el id de la solicitud');
 
@@ -77,7 +79,27 @@ class MessagesUseCase {
     if (contenido.includes('\u0000')) throw invalido('el mensaje contiene caracteres no permitidos');
     const claveIdempotencia = body.claveIdempotencia ? uuid(body.claveIdempotencia, 'claveIdempotencia') : null;
 
-    return this.messageRepository.enviar(ctx, { solicitudId: id, contenido, claveIdempotencia });
+    const resultado = await this.messageRepository.enviar(ctx, { solicitudId: id, contenido, claveIdempotencia });
+    await this.#notificar(ctx, id, resultado.mensaje, correlationId);
+    return resultado;
+  }
+
+  /**
+   * SCRUM-882 (HU-M09-03, RF-20/21): el otro participante recibe una notificación con quién escribió y de qué servicio,
+   * sin el texto del mensaje. Se avisa también en un reintento con la misma clave (200): la clave del evento es el id del
+   * mensaje, así que si la primera vez no se llegó a notificar se recupera, y si ya se notificó no se duplica.
+   * El mensaje ya está guardado: el notificador no lanza y nunca lo revierte.
+   */
+  async #notificar(ctx, solicitudId, mensaje, correlationId) {
+    if (!this.notificador) return;
+    await this.notificador.execute(ctx, {
+      solicitudId,
+      destino: 'CONTRARIO',
+      tipo: 'MENSAJE_NUEVO',
+      claveEvento: mensaje.id,
+      payload: { mensajeId: mensaje.id, remitenteRol: ctx.role },
+      correlationId,
+    });
   }
 
   async listar({ user, solicitudId, query = {} }) {
