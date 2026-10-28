@@ -9,6 +9,7 @@ async function sendMessage(req, res, next) {
       user: req.user,
       solicitudId: req.params.id,
       body: req.body || {},
+      correlationId: correlationOf(req),
     });
     // 201 si se guardó; 200 si era un reintento con la misma clave de idempotencia.
     res.status(creado ? 201 : 200).json({ mensaje, correlationId: correlationOf(req) });

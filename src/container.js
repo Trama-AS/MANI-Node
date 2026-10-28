@@ -101,6 +101,7 @@ const PgTransactionAuditRepository = require('./infrastructure/repositories/PgTr
 const TransactionAuditUseCase = require('./application/useCases/audit/TransactionAuditUseCase');
 const PgMessageRepository = require('./infrastructure/repositories/PgMessageRepository');
 const MessagesUseCase = require('./application/useCases/messages/MessagesUseCase');
+const NotificarEventoServicioUseCase = require('./application/useCases/notifications/NotificarEventoServicioUseCase');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
@@ -299,7 +300,16 @@ class Container {
 
     // Mensajería cliente-aliado por servicio (HU-M09-02 / SCRUM-881).
     this.messageRepository = new PgMessageRepository({ pgPoolFactory: this.pgPoolFactory });
-    this.messagesUseCase = new MessagesUseCase({ messageRepository: this.messageRepository });
+    // Eventos del servicio que notifican por la frontera push (SCRUM-882/884); el timeout nunca pasa de 2 s para no
+    // hacer esperar a quien origina el evento.
+    this.notificarEventoServicioUseCase = new NotificarEventoServicioUseCase({
+      ...notificationDeps,
+      politica: { timeoutMs: Math.min(config.pushProviderTimeoutMs, 2000), retries: 0 },
+    });
+    this.messagesUseCase = new MessagesUseCase({
+      messageRepository: this.messageRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,

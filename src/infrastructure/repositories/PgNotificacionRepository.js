@@ -43,6 +43,53 @@ class PgNotificacionRepository extends INotificacionRepository {
     });
   }
 
+  async participantesDeSolicitud(ctx, solicitudId) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const { rows } = await client.query(
+        `SELECT s.estado, c.usuario_id AS cliente_usuario_id, a.usuario_id AS aliado_usuario_id, cat.nombre AS categoria
+         FROM solicitud s
+         JOIN cliente c ON c.id = s.cliente_id AND c.tenant_id = s.tenant_id
+         LEFT JOIN aliado a ON a.id = s.aliado_id AND a.tenant_id = s.tenant_id
+         LEFT JOIN categoria_servicio cat ON cat.id = s.categoria_id AND cat.tenant_id = s.tenant_id
+         WHERE s.id = $1 AND s.tenant_id = $2`,
+        [solicitudId, ctx.tenantId]
+      );
+      if (rows.length === 0) return null;
+      return {
+        clienteUsuarioId: rows[0].cliente_usuario_id,
+        aliadoUsuarioId: rows[0].aliado_usuario_id,
+        categoria: rows[0].categoria,
+        estado: rows[0].estado,
+      };
+    });
+  }
+
+  // Una notificación por evento y destinatario (índice ux_notificacion_clave_evento, migración 0022). Igual que en
+  // createForAlly, la existente se busca en una segunda sentencia: si la escribió un reintento concurrente, la primera
+  // no la ve en su snapshot aunque el ON CONFLICT la haya esperado.
+  async crearParaUsuario(ctx, { usuarioId, tipo, canal, payload, claveEvento }) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const insertada = await client.query(
+        `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload, clave_evento)
+         SELECT $1, u.id, $3, $4, $5::jsonb, $6
+         FROM usuario u
+         WHERE u.id = $2 AND u.tenant_id = $1
+         ON CONFLICT (tenant_id, usuario_id, tipo, clave_evento) WHERE clave_evento IS NOT NULL DO NOTHING
+         RETURNING id, usuario_id`,
+        [ctx.tenantId, usuarioId, tipo, canal, JSON.stringify(payload), claveEvento]
+      );
+      if (insertada.rows.length) {
+        return { id: insertada.rows[0].id, usuarioId: insertada.rows[0].usuario_id, nueva: true };
+      }
+      const existente = await client.query(
+        `SELECT id, usuario_id FROM notificacion
+         WHERE tenant_id = $1 AND usuario_id = $2 AND tipo = $3 AND clave_evento = $4`,
+        [ctx.tenantId, usuarioId, tipo, claveEvento]
+      );
+      return existente.rows.length ? { id: existente.rows[0].id, usuarioId: existente.rows[0].usuario_id, nueva: false } : null;
+    });
+  }
+
   async listByRequest(ctx, requestId, tipo) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       const { rows } = await client.query(
