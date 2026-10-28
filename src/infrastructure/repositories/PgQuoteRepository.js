@@ -2,6 +2,7 @@ const IQuoteRepository = require('../../domain/ports/IQuoteRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { aliadoDeSesion, clienteActivoDeSesion, solicitudVisible } = require('./sesionActores');
+const { avisoDeNotificacion } = require('./avisoDeNotificacion');
 
 // La solicitud admite cotización desde que Dispatch la asigna y mientras el cliente no la haya resuelto.
 const ESTADOS_COTIZABLES = ['ASIGNADA', 'COTIZANDO'];
@@ -93,7 +94,22 @@ class PgQuoteRepository extends IQuoteRepository {
         ]
       );
 
-      return cotizacion;
+      // El cliente se entera de que ya tiene una cotización por responder (SCRUM-884); el push se entrega tras el commit.
+      const aviso = await client.query(
+        `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload, clave_evento)
+         SELECT $1, cl.usuario_id, 'COTIZACION_RECIBIDA', 'PUSH', $3::jsonb, $4
+         FROM solicitud s JOIN cliente cl ON cl.id = s.cliente_id AND cl.tenant_id = s.tenant_id
+         WHERE s.id = $2 AND s.tenant_id = $1
+         RETURNING id`,
+        [
+          ctx.tenantId,
+          datos.solicitudId,
+          JSON.stringify({ requestId: datos.solicitudId, cotizacionId: cotizacion.id, version: cotizacion.version }),
+          `cotizacion-recibida:${cotizacion.id}`,
+        ]
+      );
+
+      return { ...cotizacion, ...avisoDeNotificacion(aviso) };
     });
   }
 
@@ -167,10 +183,11 @@ class PgQuoteRepository extends IQuoteRepository {
         ]
       );
       // El aliado se entera en su bandeja (/profiles/me/inbox, HU-M09-06); el envío push es del proveedor.
-      await client.query(
+      const aviso = await client.query(
         `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
          SELECT $1, a.usuario_id, 'RESPUESTA_COTIZACION', 'PUSH', $3::jsonb
-         FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1`,
+         FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1
+         RETURNING id`,
         [
           ctx.tenantId,
           actual.aliado_id,
@@ -183,7 +200,7 @@ class PgQuoteRepository extends IQuoteRepository {
         ]
       );
 
-      return { cotizacion, solicitud: { id: actual.solicitud_id, estado: datos.decision.solicitud } };
+      return { cotizacion, solicitud: { id: actual.solicitud_id, estado: datos.decision.solicitud }, ...avisoDeNotificacion(aviso) };
     });
   }
 }

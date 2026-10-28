@@ -1,5 +1,7 @@
 const { DomainError, UnauthorizedError, ForbiddenError, ValidationError } = require('../../../domain/errors/DomainError');
 
+const { entregarAviso } = require('../notifications/entregarAviso');
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_MOTIVO = 200;
 
@@ -9,12 +11,14 @@ const MAX_MOTIVO = 200;
  * salen del JWT verificado (T4); el cuerpo solo aporta el motivo, que es opcional.
  */
 class CancelServiceRequestUseCase {
-  constructor({ serviceRequestRepository }) {
+  constructor({ serviceRequestRepository, notificador = null }) {
     if (!serviceRequestRepository) throw new Error('serviceRequestRepository es requerido');
     this.serviceRequestRepository = serviceRequestRepository;
+    // SCRUM-884: el aliado asignado recibe el push de la cancelación. Opcional para probar sin notificaciones.
+    this.notificador = notificador;
   }
 
-  async execute({ user, solicitudId, body = {} }) {
+  async execute({ user, solicitudId, body = {}, correlationId }) {
     if (!user || !user.tenantId || !user.userId) {
       throw new UnauthorizedError('MANI-SOL-401: sesión requerida', 'MANI-SOL-401');
     }
@@ -33,10 +37,13 @@ class CancelServiceRequestUseCase {
       throw new DomainError(`MANI-SOL-422M: el motivo no puede superar ${MAX_MOTIVO} caracteres`, 'MANI-SOL-422M', 422);
     }
 
-    return this.serviceRequestRepository.cancelar(
-      { tenantId: user.tenantId, userId: user.userId, role: user.role },
-      { solicitudId, motivo: motivo || null }
-    );
+    const ctx = { tenantId: user.tenantId, userId: user.userId, role: user.role };
+    const { notificacionId, ...resultado } = await this.serviceRequestRepository.cancelar(ctx, {
+      solicitudId,
+      motivo: motivo || null,
+    });
+    await entregarAviso(this.notificador, ctx, notificacionId, correlationId);
+    return resultado;
   }
 }
 

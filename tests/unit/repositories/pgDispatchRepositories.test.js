@@ -221,7 +221,7 @@ test('asignación: bloquea la fila, actualiza con el predicado de versión e ins
   assert.match(update.sql, /estado = 'PENDIENTE' AND aliado_id IS NULL/);
   assert.deepEqual(update.params, [SOLICITUD, TENANT, ALLY]);
   assert.ok(sqls.some((s) => s.includes("'SOLICITUD_ASIGNADA', 'El aliado aceptó el servicio.'")));
-  assert.ok(sqls.some((s) => s.includes("'SOLICITUD_ASIGNADA', 'IN_APP'")));
+  assert.ok(sqls.some((s) => s.includes("'SOLICITUD_ASIGNADA', 'PUSH'")));
   assert.equal(sentencias.at(-1).sql, 'COMMIT');
 });
 

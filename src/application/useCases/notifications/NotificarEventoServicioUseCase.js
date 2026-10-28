@@ -81,24 +81,53 @@ class NotificarEventoServicioUseCase {
     // Reintento del mismo evento: ya estaba en la bandeja y el push no se repite.
     if (!creada.nueva) return { estado: 'DUPLICADA', notificacionId: creada.id };
 
+    const estado = await this.#empujar(ctx, { id: creada.id, usuarioId, tipo, payload: contenido }, correlationId);
+    return { estado, notificacionId: creada.id };
+  }
+
+  /**
+   * Entrega por push una notificación que ya está en la bandeja (SCRUM-884): la que dejó, dentro de su transacción, una
+   * operación del ciclo del servicio. Se llama después del commit. No lanza: la operación ya se confirmó (C2).
+   * @returns {Promise<{ estado: 'ENTREGADA'|'SIMULADA'|'FALLIDA'|'NO_ENCONTRADA'|'ERROR', notificacionId: string }>}
+   */
+  async entregar(ctx, { notificacionId, correlationId }) {
+    try {
+      const notificacion = await this.notificacionRepository.paraEntrega(ctx, notificacionId);
+      if (!notificacion) return { estado: 'NO_ENCONTRADA', notificacionId };
+      return { estado: await this.#empujar(ctx, notificacion, correlationId), notificacionId };
+    } catch (err) {
+      this.logger({
+        event: 'notificacion.entrega_servicio.error',
+        tenant_id: ctx.tenantId,
+        notificacion_id: notificacionId,
+        correlation_id: correlationId,
+        causa: err instanceof Error ? err.name : 'desconocida',
+      });
+      return { estado: 'ERROR', notificacionId };
+    }
+  }
+
+  // La notificación ya quedó en la bandeja. Si el proveedor falla, no se pierde ni se repite: se informa FALLIDA y el
+  // usuario la ve igual al abrir su bandeja. La clave de idempotencia es el id de la notificación.
+  async #empujar(ctx, { id, usuarioId, tipo, payload }, correlationId) {
     try {
       const entrega = await callProvider(
         ({ signal }) =>
           this.pushProvider.send({
-            notificacionId: creada.id,
+            notificacionId: id,
             tenantId: ctx.tenantId,
             usuarioId,
             tipo,
-            payload: contenido,
-            idempotencyKey: creada.id,
+            payload,
+            idempotencyKey: id,
             correlationId,
             signal,
           }),
         { ...this.politica, ErrorClass: PushProviderError, proveedor: `El proveedor push ${this.pushProvider.name}` }
       );
-      return { estado: entrega.estado, notificacionId: creada.id };
+      return entrega.estado;
     } catch {
-      return { estado: 'FALLIDA', notificacionId: creada.id };
+      return 'FALLIDA';
     }
   }
 

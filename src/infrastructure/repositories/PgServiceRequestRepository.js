@@ -1,6 +1,7 @@
 const IServiceRequestRepository = require('../../domain/ports/IServiceRequestRepository');
 const { DomainError, ForbiddenError, NotFoundError, ConflictError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
+const { avisoDeNotificacion } = require('./avisoDeNotificacion');
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -227,6 +228,7 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
       );
       if (actual.rows.length === 0) throw new NotFoundError('MANI-SOL-404: solicitud no encontrada', 'MANI-SOL-404');
       const { estado, aliado_id: aliadoId } = actual.rows[0];
+      let aviso = {};
 
       if (estado !== 'CANCELADA') {
         if (!ESTADOS_CANCELABLES.includes(estado)) {
@@ -247,17 +249,20 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
 
         // El aliado asignado se entera en su bandeja, igual que con SOLICITUD_ASIGNADA (migración 005).
         if (aliadoId) {
-          await client.query(
-            `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
-             SELECT $1, a.usuario_id, 'SOLICITUD_CANCELADA', 'IN_APP', $3::jsonb
-             FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1`,
-            [ctx.tenantId, aliadoId, JSON.stringify({ requestId: solicitudId })]
+          aviso = avisoDeNotificacion(
+            await client.query(
+              `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
+               SELECT $1, a.usuario_id, 'SOLICITUD_CANCELADA', 'PUSH', $3::jsonb
+               FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1
+               RETURNING id`,
+              [ctx.tenantId, aliadoId, JSON.stringify({ requestId: solicitudId })]
+            )
           );
         }
       }
 
       const { rows } = await client.query(`${SEGUIMIENTO_SQL} AND s.id = $3`, [ctx.userId, ctx.tenantId, solicitudId]);
-      return { solicitud: seguimiento(rows[0]), cancelada: estado !== 'CANCELADA' };
+      return { solicitud: seguimiento(rows[0]), cancelada: estado !== 'CANCELADA', ...aviso };
     });
   }
 }

@@ -90,6 +90,16 @@ class PgNotificacionRepository extends INotificacionRepository {
     });
   }
 
+  async paraEntrega(ctx, notificacionId) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const { rows } = await client.query(
+        'SELECT id, usuario_id, tipo, payload FROM notificacion WHERE id = $1 AND tenant_id = $2',
+        [notificacionId, ctx.tenantId]
+      );
+      return rows.length ? { id: rows[0].id, usuarioId: rows[0].usuario_id, tipo: rows[0].tipo, payload: rows[0].payload || {} } : null;
+    });
+  }
+
   async listByRequest(ctx, requestId, tipo) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       const { rows } = await client.query(

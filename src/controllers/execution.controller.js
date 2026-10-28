@@ -9,6 +9,7 @@ function marcar(hito) {
         solicitudId: req.params.id,
         hito,
         body: req.body || {},
+        correlationId: req.correlationId || null,
       });
       res.json({ ...resultado, correlationId: req.correlationId || 'none' });
     } catch (err) {

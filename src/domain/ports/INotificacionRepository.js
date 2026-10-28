@@ -32,6 +32,14 @@ class INotificacionRepository {
     throw new Error('Método crearParaUsuario() no implementado en INotificacionRepository');
   }
 
+  /**
+   * La notificación ya persistida, lista para entregarla por push (SCRUM-884). `null` si no existe en el tenant.
+   * @returns {Promise<{ id: string, usuarioId: string, tipo: string, payload: object } | null>}
+   */
+  async paraEntrega(_ctx, _notificacionId) {
+    throw new Error('Método paraEntrega() no implementado en INotificacionRepository');
+  }
+
   /** @returns {Promise<Array<{ payload: object, enviadoAt: Date }>>} */
   async listByRequest(_ctx, _requestId, _tipo) {
     throw new Error('Método listByRequest() no implementado en INotificacionRepository');

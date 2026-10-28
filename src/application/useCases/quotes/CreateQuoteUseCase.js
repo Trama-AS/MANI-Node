@@ -1,5 +1,6 @@
 const { ValidationError } = require('../../../domain/errors/DomainError');
 const { contextoDeSesion, exigirRol, solicitudIdValido } = require('./quoteAccess');
+const { entregarAviso } = require('../notifications/entregarAviso');
 
 // DECIMAL(12, 2) de `cotizacion`: hasta diez dígitos enteros y dos decimales.
 const IMPORTE_RE = /^\d{1,10}(\.\d{1,2})?$/;
@@ -26,12 +27,14 @@ function importe(valor, campo) {
  * La alerta contra el tarifario es de SCRUM-866 y la calcula Rules (SCRUM-1462): no bloquea el envío.
  */
 class CreateQuoteUseCase {
-  constructor({ quoteRepository }) {
+  constructor({ quoteRepository, notificador = null }) {
     if (!quoteRepository) throw new Error('quoteRepository es requerido');
     this.quoteRepository = quoteRepository;
+    // SCRUM-884: el cliente recibe el push de la cotización nueva. Opcional para probar sin notificaciones.
+    this.notificador = notificador;
   }
 
-  async execute({ user, solicitudId, body = {} }) {
+  async execute({ user, solicitudId, body = {}, correlationId }) {
     const ctx = contextoDeSesion(user);
     exigirRol(ctx, ['ALLY'], 'solo un aliado puede emitir cotizaciones');
     const id = solicitudIdValido(solicitudId);
@@ -48,11 +51,13 @@ class CreateQuoteUseCase {
       }
     }
 
-    return this.quoteRepository.emitir(ctx, {
+    const { notificacionId, ...cotizacion } = await this.quoteRepository.emitir(ctx, {
       solicitudId: id,
       valorManoObra: manoObra / 100,
       valorMateriales: materiales / 100,
     });
+    await entregarAviso(this.notificador, ctx, notificacionId, correlationId);
+    return cotizacion;
   }
 }
 

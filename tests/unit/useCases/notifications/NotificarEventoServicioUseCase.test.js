@@ -141,3 +141,47 @@ test('el constructor exige el repositorio y el proveedor', () => {
   assert.throws(() => new NotificarEventoServicioUseCase({ pushProvider: new MockPushProvider() }), /notificacionRepository/);
   assert.throws(() => new NotificarEventoServicioUseCase({ notificacionRepository: crearRepo() }), /pushProvider/);
 });
+
+// SCRUM-884: entrega por push de un aviso que ya dejó, dentro de su transacción, una operación del ciclo del servicio.
+test('entregar: empuja la notificación ya guardada con su id como clave de idempotencia y el mismo correlationId', async () => {
+  const repo = { paraEntrega: async (ctx, id) => ({ id, usuarioId: ALIADO, tipo: 'RESPUESTA_COTIZACION', payload: { requestId: SOLICITUD } }) };
+  const { uc, push } = crear({ repo });
+
+  const r = await uc.entregar(sesion(CLIENTE), { notificacionId: 'n-9', correlationId: 'corr-7' });
+
+  assert.deepEqual(r, { estado: 'SIMULADA', notificacionId: 'n-9' });
+  const enviado = push.sentTo(TENANT, ALIADO);
+  assert.equal(enviado.length, 1);
+  assert.equal(enviado[0].idempotencyKey, 'n-9');
+  assert.equal(enviado[0].correlationId, 'corr-7');
+  assert.equal(enviado[0].tipo, 'RESPUESTA_COTIZACION');
+});
+
+test('entregar: repetirla con el mismo id no entrega dos veces (idempotencia del proveedor)', async () => {
+  const repo = { paraEntrega: async (ctx, id) => ({ id, usuarioId: ALIADO, tipo: 'X', payload: {} }) };
+  const { uc, push } = crear({ repo });
+  await uc.entregar(sesion(CLIENTE), { notificacionId: 'n-1' });
+  await uc.entregar(sesion(CLIENTE), { notificacionId: 'n-1' });
+  assert.equal(push.sent.length, 1);
+});
+
+test('C2 entregar: si el push falla se informa FALLIDA y no lanza', async () => {
+  const push = { name: 'caido', simulated: false, send: async () => { throw new PushProviderError('UNAVAILABLE', 'caído'); } };
+  const repo = { paraEntrega: async (ctx, id) => ({ id, usuarioId: ALIADO, tipo: 'X', payload: {} }) };
+  assert.deepEqual(await crear({ repo, push }).uc.entregar(sesion(CLIENTE), { notificacionId: 'n-1' }), { estado: 'FALLIDA', notificacionId: 'n-1' });
+});
+
+test('C3 entregar: una notificación que no existe en el tenant no se entrega', async () => {
+  const { uc, push } = crear({ repo: { paraEntrega: async () => null } });
+  assert.deepEqual(await uc.entregar(sesion(CLIENTE), { notificacionId: 'ajena' }), { estado: 'NO_ENCONTRADA', notificacionId: 'ajena' });
+  assert.equal(push.sent.length, 0);
+});
+
+test('C2 entregar: si falla la base no lanza y el registro no lleva datos personales', async () => {
+  const repo = { paraEntrega: async () => { throw new Error('fallo con usuario@correo.test'); } };
+  const { uc, registros } = crear({ repo });
+
+  assert.deepEqual(await uc.entregar(sesion(CLIENTE), { notificacionId: 'n-1' }), { estado: 'ERROR', notificacionId: 'n-1' });
+  assert.equal(registros.length, 1);
+  assert.equal(JSON.stringify(registros[0]).includes('correo.test'), false);
+});

@@ -1,6 +1,7 @@
 const ISolicitudAsignacionRepository = require('../../domain/ports/ISolicitudAsignacionRepository');
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
+const { avisoDeNotificacion } = require('./avisoDeNotificacion');
 
 const MAX_BANDEJA = 100;
 
@@ -142,17 +143,19 @@ class PgSolicitudAsignacionRepository extends ISolicitudAsignacionRepository {
          VALUES ($1, $2, $3, 'SOLICITUD_ASIGNADA', 'El aliado aceptó el servicio.')`,
         [ctx.tenantId, solicitudId, ctx.userId]
       );
-      await client.query(
+      const aviso = await client.query(
         `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
-         SELECT $1, cl.usuario_id, 'SOLICITUD_ASIGNADA', 'IN_APP', $3::jsonb
+         SELECT $1, cl.usuario_id, 'SOLICITUD_ASIGNADA', 'PUSH', $3::jsonb
          FROM solicitud s JOIN cliente cl ON cl.id = s.cliente_id AND cl.tenant_id = s.tenant_id
-         WHERE s.id = $2 AND s.tenant_id = $1`,
+         WHERE s.id = $2 AND s.tenant_id = $1
+         RETURNING id`,
         [ctx.tenantId, solicitudId, JSON.stringify({ requestId: solicitudId })]
       );
 
       return {
         solicitud: { id: solicitudId, estado: 'ASIGNADA', aliadoId, asignadaEn: cambio.rows[0].updated_at },
         asignada: true,
+        ...avisoDeNotificacion(aviso),
       };
     });
   }

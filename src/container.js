@@ -351,12 +351,14 @@ class Container {
     });
     this.cancelServiceRequestUseCase = new CancelServiceRequestUseCase({
       serviceRequestRepository: this.serviceRequestRepository,
+      notificador: this.notificarEventoServicioUseCase,
     });
     // Asignación (SCRUM-1403, decisión 6A): Core registra la aceptación que decide Dispatch y expone la bandeja
     // del aliado. Sin DATABASE_URL responde 503.
     this.solicitudAsignacionRepository = new PgSolicitudAsignacionRepository({ pgPoolFactory: this.pgPoolFactory });
     this.assignServiceRequestUseCase = new AssignServiceRequestUseCase({
       solicitudAsignacionRepository: this.solicitudAsignacionRepository,
+      notificador: this.notificarEventoServicioUseCase,
     });
     this.listAllyOffersUseCase = new ListAllyOffersUseCase({
       solicitudAsignacionRepository: this.solicitudAsignacionRepository,
@@ -365,13 +367,20 @@ class Container {
     // Cotización (SCRUM-865): Core es dueño del estado tras la asignación (decisión 6A, SAD §7.4).
     // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
     this.quoteRepository = new PgQuoteRepository({ pgPoolFactory: this.pgPoolFactory });
-    this.createQuoteUseCase = new CreateQuoteUseCase({ quoteRepository: this.quoteRepository });
+    this.createQuoteUseCase = new CreateQuoteUseCase({
+      quoteRepository: this.quoteRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
     this.listQuotesUseCase = new ListQuotesUseCase({ quoteRepository: this.quoteRepository });
-    this.respondQuoteUseCase = new RespondQuoteUseCase({ quoteRepository: this.quoteRepository });
+    this.respondQuoteUseCase = new RespondQuoteUseCase({
+      quoteRepository: this.quoteRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
     // Ejecución del servicio (SCRUM-868), con el mismo criterio: sin DATABASE_URL responde 503.
     this.serviceExecutionRepository = new PgServiceExecutionRepository({ pgPoolFactory: this.pgPoolFactory });
     this.serviceExecutionUseCase = new ServiceExecutionUseCase({
       serviceExecutionRepository: this.serviceExecutionRepository,
+      notificador: this.notificarEventoServicioUseCase,
     });
     // Eventos durante la ejecución (SCRUM-869); la evidencia va al bucket `solicitudes`.
     this.serviceEventRepository = new PgServiceEventRepository({ pgPoolFactory: this.pgPoolFactory });

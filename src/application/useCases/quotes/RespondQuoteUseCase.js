@@ -1,5 +1,6 @@
 const { ValidationError } = require('../../../domain/errors/DomainError');
 const { contextoDeSesion, exigirRol } = require('./quoteAccess');
+const { entregarAviso } = require('../notifications/entregarAviso');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_TEXTO = 500;
@@ -40,23 +41,27 @@ function textoDe(accion, body) {
  * y la notificación al aliado son atómicos.
  */
 class RespondQuoteUseCase {
-  constructor({ quoteRepository }) {
+  constructor({ quoteRepository, notificador = null }) {
     if (!quoteRepository) throw new Error('quoteRepository es requerido');
     this.quoteRepository = quoteRepository;
+    // SCRUM-884: el aliado recibe el push de la decisión del cliente. Opcional para probar sin notificaciones.
+    this.notificador = notificador;
   }
 
-  async execute({ user, cotizacionId, accion, body = {} }) {
+  async execute({ user, cotizacionId, accion, body = {}, correlationId }) {
     const ctx = contextoDeSesion(user);
     exigirRol(ctx, ['CLIENT'], 'solo el cliente de la solicitud responde la cotización');
     if (!UUID_RE.test(String(cotizacionId || ''))) throw invalido('el id de la cotización no es válido');
     const decision = DECISIONES[accion];
     if (!decision) throw new Error(`Decisión desconocida: ${accion}`);
 
-    return this.quoteRepository.responder(ctx, {
+    const { notificacionId, ...resultado } = await this.quoteRepository.responder(ctx, {
       cotizacionId: String(cotizacionId),
       decision,
       detalle: textoDe(accion, body),
     });
+    await entregarAviso(this.notificador, ctx, notificacionId, correlationId);
+    return resultado;
   }
 }
 
