@@ -1,5 +1,7 @@
 const { ForbiddenError, UnauthorizedError, ValidationError } = require('../../../domain/errors/DomainError');
 
+const { entregarAviso } = require('../notifications/entregarAviso');
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_OBSERVACION = 500;
 
@@ -35,22 +37,26 @@ function observacionDe(body) {
  * ese aliado consultan las marcas. Las horas las pone el servidor; la app no envía fechas.
  */
 class ServiceExecutionUseCase {
-  constructor({ serviceExecutionRepository }) {
+  constructor({ serviceExecutionRepository, notificador = null }) {
     if (!serviceExecutionRepository) throw new Error('serviceExecutionRepository es requerido');
     this.serviceExecutionRepository = serviceExecutionRepository;
+    // SCRUM-884: el cliente recibe el push del inicio y del fin. Opcional para probar sin notificaciones.
+    this.notificador = notificador;
   }
 
-  async marcar({ user, solicitudId, hito, body = {} }) {
+  async marcar({ user, solicitudId, hito, body = {}, correlationId }) {
     const ctx = contexto(user);
     if (ctx.role !== 'ALLY') {
       throw new ForbiddenError('MANI-EJE-403: solo el aliado asignado marca la ejecución', 'MANI-EJE-403');
     }
     if (hito !== 'INICIO' && hito !== 'FIN') throw new Error(`Hito desconocido: ${hito}`);
-    return this.serviceExecutionRepository.marcar(ctx, {
+    const { notificacionId, ...resultado } = await this.serviceExecutionRepository.marcar(ctx, {
       solicitudId: solicitudIdValido(solicitudId),
       hito,
       observacion: observacionDe(body),
     });
+    await entregarAviso(this.notificador, ctx, notificacionId, correlationId);
+    return resultado;
   }
 
   async consultar({ user, solicitudId }) {

@@ -7,6 +7,7 @@ async function createQuote(req, res, next) {
       user: req.user,
       solicitudId: req.params.id,
       body: req.body || {},
+      correlationId: req.correlationId || null,
     });
     res.status(201).json({ cotizacion, correlationId: req.correlationId || 'none' });
   } catch (err) {
@@ -32,6 +33,7 @@ function responder(accion) {
         cotizacionId: req.params.id,
         accion,
         body: req.body || {},
+        correlationId: req.correlationId || null,
       });
       res.json({ ...resultado, correlationId: req.correlationId || 'none' });
     } catch (err) {

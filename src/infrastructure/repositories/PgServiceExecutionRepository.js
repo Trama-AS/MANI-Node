@@ -2,6 +2,7 @@ const IServiceExecutionRepository = require('../../domain/ports/IServiceExecutio
 const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { aliadoDeSesion, solicitudVisible } = require('./sesionActores');
+const { avisoDeNotificacion } = require('./avisoDeNotificacion');
 
 const EVENTO = { INICIO: 'INICIO_EJECUCION', FIN: 'FIN_EJECUCION' };
 const AVISO = { INICIO: 'EJECUCION_INICIADA', FIN: 'EJECUCION_FINALIZADA' };
@@ -74,9 +75,10 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
         [ctx.tenantId, datos.solicitudId, ctx.userId, EVENTO[datos.hito], datos.observacion || null]
       );
       const registradoEn = evento.rows[0].timestamp;
-      await client.query(
+      const aviso = await client.query(
         `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
-         VALUES ($1, $2, $3, 'PUSH', $4::jsonb)`,
+         VALUES ($1, $2, $3, 'PUSH', $4::jsonb)
+         RETURNING id`,
         [
           ctx.tenantId,
           actual.cliente_usuario_id,
@@ -88,6 +90,7 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
       return {
         solicitud: { id: datos.solicitudId, estado: nuevo },
         evento: { tipo: EVENTO[datos.hito], registradoEn },
+        ...avisoDeNotificacion(aviso),
       };
     });
   }

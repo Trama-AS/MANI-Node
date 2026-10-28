@@ -42,6 +42,7 @@ async function cancelOwnRequest(req, res, next) {
       user: req.user,
       solicitudId: req.params.id,
       body: req.body || {},
+      correlationId: req.correlationId || null,
     });
     res.status(200).json({ solicitud, cancelada, correlationId: req.correlationId || 'none' });
   } catch (err) {

@@ -274,7 +274,7 @@ test('SCRUM-877: con aliado asignado le deja la notificación SOLICITUD_CANCELAD
   const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
   assert.equal(evento.params[3], 'El cliente canceló la solicitud.');
   const aviso = sentencias.find((s) => s.sql.startsWith('INSERT INTO notificacion'));
-  assert.match(aviso.sql, /'SOLICITUD_CANCELADA', 'IN_APP'/);
+  assert.match(aviso.sql, /'SOLICITUD_CANCELADA', 'PUSH'/);
   assert.match(aviso.sql, /a\.tenant_id = \$1/);
   assert.deepEqual(aviso.params, [TENANT, 'aliado-1', JSON.stringify({ requestId: SOL_CANCELAR })]);
 });
