@@ -1,5 +1,6 @@
 const IAliadoCategoriaRepository = require('../../domain/ports/IAliadoCategoriaRepository');
 const { DomainError } = require('../../domain/errors/DomainError');
+const { runInTenantContext } = require('../db/runInTenantContext');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -17,7 +18,7 @@ const UNAVAILABLE = () => new DomainError('MANI-CAT-422C: categoría no disponib
  *  3. exige que todas las categorías existan, estén ACTIVO y sean del tenant;
  *  4. borra las que salen, inserta las nuevas y devuelve el conjunto final.
  *
- * Si cualquier paso falla se hace ROLLBACK: el aliado nunca queda sin categorías
+ * Corre en runInTenantContext con el tenant, usuario y rol del JWT (SCRUM-1380). Si cualquier paso falla se hace ROLLBACK: el aliado nunca queda sin categorías
  * por un insert fallido (observación de QA en MANI-Node#18). El resto de
  * operaciones (create, findByAliadoId, deleteByAliadoId) se delegan sin cambios
  * al repositorio base, para no alterar el flujo de registro.
@@ -43,7 +44,7 @@ class TransactionalAliadoCategoriaRepository extends IAliadoCategoriaRepository 
     return this.delegate.deleteByAliadoId(tenantId, aliadoId);
   }
 
-  async setAliadoCategorias(tenantId, aliadoId, categoriaIds) {
+  async setAliadoCategorias(tenantId, aliadoId, categoriaIds, ctx = {}) {
     const ids = [...new Set(categoriaIds || [])];
     if (ids.length === 0) {
       throw new DomainError('MANI-CAT-422V: selecciona al menos una categoría', 'MANI-CAT-422V', 422);
@@ -56,65 +57,50 @@ class TransactionalAliadoCategoriaRepository extends IAliadoCategoriaRepository 
       throw UNAVAILABLE();
     }
 
-    const pool = this.pgPoolFactory.getPool();
-    if (!pool) {
-      throw new DomainError('DATABASE_URL no está configurada', 'INTERNAL_ERROR', 500);
-    }
-
-    const client = await pool.connect();
-    let releaseError;
+    // Dentro de runInTenantContext (ADR-0032): sin el tenant en la sesión de la base, la RLS de la 0007 oculta la fila
+    // del aliado al rol mani_core_svc y toda declaración respondería 403.
     try {
-      await client.query('BEGIN');
+      return await runInTenantContext(this.pgPoolFactory, { tenantId, userId: ctx.userId, role: ctx.role || 'ALLY' }, async (client) => {
+        const owner = await client.query(
+          `SELECT a.id
+             FROM aliado a
+             JOIN usuario u ON u.id = a.usuario_id AND u.tenant_id = a.tenant_id
+            WHERE a.id = $1 AND a.tenant_id = $2 AND u.estado = 'ACTIVO' AND u.rol = 'ALIADO'
+              FOR UPDATE OF a`,
+          [aliadoId, tenantId]
+        );
+        if (owner.rowCount === 0) throw FORBIDDEN();
 
-      const owner = await client.query(
-        `SELECT a.id
-           FROM aliado a
-           JOIN usuario u ON u.id = a.usuario_id AND u.tenant_id = a.tenant_id
-          WHERE a.id = $1 AND a.tenant_id = $2 AND u.estado = 'ACTIVO' AND u.rol = 'ALIADO'
-            FOR UPDATE OF a`,
-        [aliadoId, tenantId]
-      );
-      if (owner.rowCount === 0) throw FORBIDDEN();
+        const valid = await client.query(
+          `SELECT count(*)::int AS total
+             FROM categoria_servicio
+            WHERE id = ANY($1::uuid[]) AND tenant_id = $2 AND estado = 'ACTIVO'`,
+          [ids, tenantId]
+        );
+        if (valid.rows[0].total !== ids.length) throw UNAVAILABLE();
 
-      const valid = await client.query(
-        `SELECT count(*)::int AS total
-           FROM categoria_servicio
-          WHERE id = ANY($1::uuid[]) AND tenant_id = $2 AND estado = 'ACTIVO'`,
-        [ids, tenantId]
-      );
-      if (valid.rows[0].total !== ids.length) throw UNAVAILABLE();
+        await client.query(
+          `DELETE FROM aliado_categoria
+            WHERE aliado_id = $1 AND tenant_id = $2 AND categoria_id <> ALL($3::uuid[])`,
+          [aliadoId, tenantId, ids]
+        );
+        await client.query(
+          `INSERT INTO aliado_categoria (tenant_id, aliado_id, categoria_id)
+           SELECT $2, $1, x FROM unnest($3::uuid[]) AS x
+           ON CONFLICT (aliado_id, categoria_id) DO NOTHING`,
+          [aliadoId, tenantId, ids]
+        );
 
-      await client.query(
-        `DELETE FROM aliado_categoria
-          WHERE aliado_id = $1 AND tenant_id = $2 AND categoria_id <> ALL($3::uuid[])`,
-        [aliadoId, tenantId, ids]
-      );
-      await client.query(
-        `INSERT INTO aliado_categoria (tenant_id, aliado_id, categoria_id)
-         SELECT $2, $1, x FROM unnest($3::uuid[]) AS x
-         ON CONFLICT (aliado_id, categoria_id) DO NOTHING`,
-        [aliadoId, tenantId, ids]
-      );
-
-      const result = await client.query(
-        `SELECT categoria_id FROM aliado_categoria
-          WHERE aliado_id = $1 AND tenant_id = $2
-          ORDER BY categoria_id`,
-        [aliadoId, tenantId]
-      );
-
-      await client.query('COMMIT');
-      return result.rows.map((row) => row.categoria_id);
+        const result = await client.query(
+          `SELECT categoria_id FROM aliado_categoria
+            WHERE aliado_id = $1 AND tenant_id = $2
+            ORDER BY categoria_id`,
+          [aliadoId, tenantId]
+        );
+        return result.rows.map((row) => row.categoria_id);
+      });
     } catch (err) {
-      try {
-        await client.query('ROLLBACK');
-      } catch (rollbackErr) {
-        // Conexión en estado desconocido: se descarta del pool en lugar de reutilizarla.
-        releaseError = rollbackErr;
-      }
       throw this.mapError(err);
-    } finally {
-      client.release(releaseError);
     }
   }
 

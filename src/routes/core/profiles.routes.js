@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const multer = require('multer');
+const { authenticate } = require('../../middlewares/auth.middleware');
 const profilesController = require('../../controllers/profiles.controller');
 
 // Dominio Perfiles: perfil propio y categorías que declara el aliado.
@@ -25,5 +26,9 @@ router.get('/profiles/me/categories', profilesController.getAllyCategories);
 router.get('/profiles/me/categories/available', profilesController.listAvailableAllyCategories);
 router.put('/profiles/me/categories', profilesController.declareAllyCategories);
 router.post('/profiles/me/categories', profilesController.declareAllyCategories);
+
+// SCRUM-1380: cobertura del aliado (reemplaza las RPC obtener_mi_cobertura y declarar_cobertura de Supabase).
+router.get('/profiles/me/coverage', authenticate, profilesController.getAllyCoverage);
+router.put('/profiles/me/coverage', authenticate, profilesController.declareAllyCoverage);
 
 module.exports = router;

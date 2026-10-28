@@ -38,6 +38,9 @@ const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProf
 const UpdateOwnProfileUseCase = require('./application/useCases/profiles/UpdateOwnProfileUseCase');
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
+const PgCoberturaRepository = require('./infrastructure/repositories/PgCoberturaRepository');
+const GetAllyCoverageUseCase = require('./application/useCases/profiles/GetAllyCoverageUseCase');
+const DeclareAllyCoverageUseCase = require('./application/useCases/profiles/DeclareAllyCoverageUseCase');
 const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const ListCategoriesForTenantUseCase = require('./application/useCases/catalog/ListCategoriesForTenantUseCase');
@@ -403,6 +406,11 @@ class Container {
       additionRepository: this.additionRepository,
       notificador: this.notificarEventoServicioUseCase,
     });
+
+    // Cobertura del aliado (SCRUM-1380): sin DATABASE_URL responde 503, como el resto de repositorios pg.
+    this.coberturaRepository = new PgCoberturaRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.getAllyCoverageUseCase = new GetAllyCoverageUseCase({ coberturaRepository: this.coberturaRepository });
+    this.declareAllyCoverageUseCase = new DeclareAllyCoverageUseCase({ coberturaRepository: this.coberturaRepository });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,

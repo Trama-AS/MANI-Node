@@ -54,7 +54,7 @@ class DeclareAllyCategoriesUseCase {
     }
 
     const aliadoId = aliado.id || aliado.usuarioId || userId;
-    const saved = await this.aliadoCategoriaRepository.setAliadoCategorias(tenantId, aliadoId, cleanIds);
+    const saved = await this.aliadoCategoriaRepository.setAliadoCategorias(tenantId, aliadoId, cleanIds, { userId, role });
     return saved;
   }
 }

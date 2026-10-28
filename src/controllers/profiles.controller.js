@@ -168,8 +168,32 @@ async function listAvailableAllyCategories(req, res, next) {
   }
 }
 
+// SCRUM-1380: cobertura del aliado. Tenant, usuario y rol salen de `authenticate`; nunca del cuerpo.
+async function getAllyCoverage(req, res, next) {
+  try {
+    const result = await container.getAllyCoverageUseCase.execute({ user: req.user });
+    res.status(200).json({ ...result, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function declareAllyCoverage(req, res, next) {
+  try {
+    const result = await container.declareAllyCoverageUseCase.execute({
+      user: req.user,
+      zoneIds: req.body?.zoneIds ?? req.body?.zonaIds,
+    });
+    res.status(200).json({ ...result, correlationId: req.correlationId || 'none' });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getOwnProfile,
+  getAllyCoverage,
+  declareAllyCoverage,
   updateOwnProfile,
   getAllyCategories,
   declareAllyCategories,
