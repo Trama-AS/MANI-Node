@@ -35,6 +35,60 @@ async function porClave(client, ctx, solicitudId, clave) {
   return rows.length ? toMessage(rows[0], ctx) : null;
 }
 
+function toConsulta(row) {
+  return {
+    id: row.id,
+    solicitudId: row.solicitud_id,
+    actor: row.actor_id ? { id: row.actor_id, rol: row.actor_rol } : undefined,
+    motivo: row.motivo,
+    quejaRef: row.queja_ref,
+    mensajesVistos: row.mensajes_vistos,
+    creadoEn: row.created_at,
+  };
+}
+
+/**
+ * Lee el hilo ya autorizado: con `despuesDe`, solo lo posterior a ese mensaje; sin él, los últimos `limite`, del más
+ * antiguo al más reciente. La compara el cursor en SQL: pasar created_at por JavaScript recorta los microsegundos.
+ */
+async function leerHilo(client, ctx, datos) {
+  if (datos.despuesDe) {
+    // La comparación se hace en SQL: pasar created_at por JavaScript recorta los microsegundos y devolvería otra
+    // vez el mensaje del cursor en cada consulta.
+    const { rows } = await client.query(
+      `SELECT ${COLUMNAS} FROM mensaje m JOIN usuario u ON u.id = m.remitente_id
+       JOIN mensaje cursor ON cursor.id = $3 AND cursor.solicitud_id = m.solicitud_id AND cursor.tenant_id = m.tenant_id
+       WHERE m.solicitud_id = $1 AND m.tenant_id = $2 AND (m.created_at, m.id) > (cursor.created_at, cursor.id)
+       ORDER BY m.created_at, m.id
+       LIMIT $4`,
+      [datos.solicitudId, ctx.tenantId, datos.despuesDe, datos.limite]
+    );
+    if (rows.length === 0) {
+      const existe = await client.query('SELECT 1 FROM mensaje WHERE id = $1 AND solicitud_id = $2 AND tenant_id = $3', [
+        datos.despuesDe,
+        datos.solicitudId,
+        ctx.tenantId,
+      ]);
+      if (existe.rows.length === 0) {
+        throw new ValidationError('MANI-MSG-400: despuesDe no es un mensaje de este hilo', 'MANI-MSG-400');
+      }
+    }
+    return { mensajes: rows.map((r) => toMessage(r, ctx)) };
+  }
+
+  // Primera carga: los últimos mensajes, devueltos del más antiguo al más reciente.
+  const { rows } = await client.query(
+    `SELECT * FROM (
+       SELECT ${COLUMNAS} FROM mensaje m JOIN usuario u ON u.id = m.remitente_id
+       WHERE m.solicitud_id = $1 AND m.tenant_id = $2
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT $3
+     ) ultimos ORDER BY created_at, id`,
+    [datos.solicitudId, ctx.tenantId, datos.limite]
+  );
+  return { mensajes: rows.map((r) => toMessage(r, ctx)) };
+}
+
 /**
  * Mensajes del servicio sobre `pg`, dentro de transacciones con withTenantContext (ADR-0032). Toda consulta filtra por
  * el tenant del JWT además de RLS, y el hilo solo se abre si la sesión es el cliente dueño o el aliado asignado.
@@ -90,42 +144,69 @@ class PgMessageRepository extends IMessageRepository {
   async listar(ctx, datos) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       await solicitudVisible(client, ctx, datos.solicitudId, noEncontrado);
+      return leerHilo(client, ctx, datos);
+    });
+  }
 
-      if (datos.despuesDe) {
-        // La comparación se hace en SQL: pasar created_at por JavaScript recorta los microsegundos y devolvería otra
-        // vez el mensaje del cursor en cada consulta.
-        const { rows } = await client.query(
-          `SELECT ${COLUMNAS} FROM mensaje m JOIN usuario u ON u.id = m.remitente_id
-           JOIN mensaje cursor ON cursor.id = $3 AND cursor.solicitud_id = m.solicitud_id AND cursor.tenant_id = m.tenant_id
-           WHERE m.solicitud_id = $1 AND m.tenant_id = $2 AND (m.created_at, m.id) > (cursor.created_at, cursor.id)
-           ORDER BY m.created_at, m.id
-           LIMIT $4`,
-          [datos.solicitudId, ctx.tenantId, datos.despuesDe, datos.limite]
-        );
-        if (rows.length === 0) {
-          const existe = await client.query('SELECT 1 FROM mensaje WHERE id = $1 AND solicitud_id = $2 AND tenant_id = $3', [
-            datos.despuesDe,
-            datos.solicitudId,
-            ctx.tenantId,
-          ]);
-          if (existe.rows.length === 0) {
-            throw new ValidationError('MANI-MSG-400: despuesDe no es un mensaje de este hilo', 'MANI-MSG-400');
-          }
-        }
-        return { mensajes: rows.map((r) => toMessage(r, ctx)) };
-      }
+  async consultarConversacion(ctx, datos) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const { rows: solicitud } = await client.query('SELECT id FROM solicitud WHERE id = $1 AND tenant_id = $2', [
+        datos.solicitudId,
+        ctx.tenantId,
+      ]);
+      if (solicitud.length === 0) throw noEncontrado();
 
-      // Primera carga: los últimos mensajes, devueltos del más antiguo al más reciente.
+      const { mensajes } = await leerHilo(client, ctx, datos);
+
+      // Auditoría en la misma transacción: si no se puede registrar, la conversación no se devuelve.
       const { rows } = await client.query(
-        `SELECT * FROM (
-           SELECT ${COLUMNAS} FROM mensaje m JOIN usuario u ON u.id = m.remitente_id
-           WHERE m.solicitud_id = $1 AND m.tenant_id = $2
-           ORDER BY m.created_at DESC, m.id DESC
-           LIMIT $3
-         ) ultimos ORDER BY created_at, id`,
-        [datos.solicitudId, ctx.tenantId, datos.limite]
+        `INSERT INTO consulta_conversacion (tenant_id, solicitud_id, actor_id, actor_rol, motivo, queja_ref, mensajes_vistos, correlation_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, solicitud_id, motivo, queja_ref, mensajes_vistos, created_at`,
+        [
+          ctx.tenantId,
+          datos.solicitudId,
+          ctx.userId,
+          ctx.role,
+          datos.motivo,
+          datos.quejaRef,
+          mensajes.length,
+          datos.correlationId || null,
+        ]
       );
-      return { mensajes: rows.map((r) => toMessage(r, ctx)) };
+      return { consulta: toConsulta(rows[0]), mensajes };
+    });
+  }
+
+  async listarConsultas(ctx, datos) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const params = [ctx.tenantId, datos.limite];
+      let filtroCursor = '';
+      if (datos.despuesDe) {
+        const { rows } = await client.query('SELECT 1 FROM consulta_conversacion WHERE id = $1 AND tenant_id = $2', [
+          datos.despuesDe,
+          ctx.tenantId,
+        ]);
+        if (rows.length === 0) {
+          throw new ValidationError('MANI-MSG-400: despuesDe no es una consulta de este tenant', 'MANI-MSG-400');
+        }
+        params.push(datos.despuesDe);
+        filtroCursor = `AND (c.created_at, c.id) > (SELECT k.created_at, k.id FROM consulta_conversacion k WHERE k.id = $${params.length})`;
+      }
+      let filtroSolicitud = '';
+      if (datos.solicitudId) {
+        params.push(datos.solicitudId);
+        filtroSolicitud = `AND c.solicitud_id = $${params.length}`;
+      }
+      const { rows } = await client.query(
+        `SELECT c.id, c.solicitud_id, c.actor_id, c.actor_rol, c.motivo, c.queja_ref, c.mensajes_vistos, c.created_at
+         FROM consulta_conversacion c
+         WHERE c.tenant_id = $1 ${filtroCursor} ${filtroSolicitud}
+         ORDER BY c.created_at, c.id
+         LIMIT $2`,
+        params
+      );
+      return { consultas: rows.map(toConsulta) };
     });
   }
 }

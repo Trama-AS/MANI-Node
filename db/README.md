@@ -38,8 +38,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0018`** | [`0018_solicitud_huella_idempotencia.sql`](migrations/0018_solicitud_huella_idempotencia.sql) | `SCRUM-1405` | Columna `huella_idempotencia` en `solicitud`: sha256 de los datos y fotos de la creación. Si la misma `clave_idempotencia` llega con otra huella, Core responde `409 MANI-SOL-409K` en vez de devolver la fila previa (HU-M05-09 C2). Las filas anteriores quedan sin huella y se tratan como coincidencia. |
 | **`0019`** | [`0019_frontera_asignacion_6a.sql`](migrations/0019_frontera_asignacion_6a.sql) | `SCRUM-1403` | Decisión 6A: se revoca `UPDATE` sobre `solicitud` a `mani_dispatch_svc` y se elimina `solicitud_aceptar_aliado` (Core registra la asignación con `POST /solicitudes/{id}/asignacion`). Nueva política `solicitud_rechazo_lectura_despacho` para que Dispatch lea los rechazos al orquestar con el token del cliente o admin. Índice único `ux_notificacion_oferta_despacho`: una oferta por aliado y solicitud; **antes del índice borra las ofertas duplicadas** y conserva la más antigua. |
 | **`0020`** | [`0020_transaccion_evento.sql`](migrations/0020_transaccion_evento.sql) | `SCRUM-889` | Tabla `transaccion_evento`, el registro inmutable de transacciones: actor y rol del JWT, hora de la base y correlación, escrito en la misma transacción que el pago. Un evento por pago y tipo; disparador que rechaza UPDATE, DELETE y TRUNCATE; el rol de servicio solo tiene SELECT e INSERT. RLS por tenant. |
+| **`0021`** | [`0021_consulta_conversacion.sql`](migrations/0021_consulta_conversacion.sql) | `SCRUM-883` | Tabla `consulta_conversacion`: auditoría inmutable de cada vez que un administrador abre una conversación para atender una queja (quién, qué servicio, motivo, referencia de la queja, cuántos mensajes vio, correlación). Se escribe en la misma transacción que la lectura. Disparador contra UPDATE, DELETE y TRUNCATE; el rol de servicio solo tiene SELECT e INSERT. RLS por tenant. |
 
-La siguiente migración libre es la **`0021`**.
+La siguiente migración libre es la **`0022`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
