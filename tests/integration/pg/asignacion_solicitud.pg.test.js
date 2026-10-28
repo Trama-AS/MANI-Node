@@ -221,7 +221,7 @@ test('PG frontera 6A (0019): Dispatch no puede escribir solicitud y lee rechazos
   const { pool, dispatch } = entorno(t);
   const s = await sembrar(pool);
   const ana = await aliado(pool, s);
-  await pool.query('INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id) VALUES ($1, $2, $3)', [s.tenant, s.solicitud, ana.id]);
+  await pool.query("INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo) VALUES ($1, $2, $3, 'FUERA_DE_ZONA')", [s.tenant, s.solicitud, ana.id]);
 
   await assert.rejects(
     () => runInTenantContext(dispatch, ana.ctx, (c) =>
