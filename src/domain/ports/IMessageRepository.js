@@ -22,6 +22,20 @@ class IMessageRepository {
   async listar(_ctx, _datos) {
     throw new Error('Método listar() no implementado en IMessageRepository');
   }
+
+  /**
+   * El administrador abre la conversación de un servicio para atender una queja (SCRUM-883). Lee el hilo y registra la
+   * consulta de forma inmutable en la misma transacción.
+   * @returns {Promise<{ consulta: object, mensajes: object[] }>}
+   */
+  async consultarConversacion(_ctx, _datos) {
+    throw new Error('Método consultarConversacion() no implementado en IMessageRepository');
+  }
+
+  /** Consultas de conversaciones del tenant, de la más antigua a la más reciente, con cursor. */
+  async listarConsultas(_ctx, _datos) {
+    throw new Error('Método listarConsultas() no implementado en IMessageRepository');
+  }
 }
 
 module.exports = IMessageRepository;

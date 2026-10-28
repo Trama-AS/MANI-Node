@@ -10,4 +10,9 @@ const router = Router();
 router.post('/solicitudes/:id/mensajes', authenticate, messagesController.sendMessage);
 router.get('/solicitudes/:id/mensajes', authenticate, messagesController.listMessages);
 
+// HU-M09-04 (SCRUM-883): el administrador del tenant abre la conversación para atender una queja; cada consulta
+// queda auditada de forma inmutable y se puede listar.
+router.post('/solicitudes/:id/conversacion/consultas', authenticate, messagesController.reviewConversation);
+router.get('/auditoria/consultas-conversacion', authenticate, messagesController.listConversationReviews);
+
 module.exports = router;
