@@ -3,6 +3,7 @@ const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/e
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { clienteActivoDeSesion } = require('./sesionActores');
 const { registrarEventoTransaccion } = require('./transaccionEvento');
+const { ADICIONES_ACEPTADAS_SQL } = require('./totalVigente');
 
 const UNIQUE_VIOLATION = '23505';
 const MONEDA = 'COP';
@@ -57,8 +58,10 @@ class PgPaymentRepository extends IPaymentRepository {
         if (previo.rows.length > 0) return { existente: toPayment(previo.rows[0]) };
       }
 
+      // El monto es el total vigente (SCRUM-872): la cotización aceptada más sus adiciones aceptadas.
       const fila = await client.query(
-        `SELECT cot.estado, cot.solicitud_id, (cot.valor_mano_obra + cot.valor_materiales)::numeric(12,2) AS monto
+        `SELECT cot.estado, cot.solicitud_id,
+                (cot.valor_mano_obra + cot.valor_materiales + ${ADICIONES_ACEPTADAS_SQL})::numeric(12,2) AS monto
          FROM cotizacion cot
          JOIN solicitud s ON s.id = cot.solicitud_id AND s.tenant_id = cot.tenant_id
          WHERE cot.id = $1 AND cot.tenant_id = $2 AND s.cliente_id = $3`,

@@ -40,8 +40,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0020`** | [`0020_transaccion_evento.sql`](migrations/0020_transaccion_evento.sql) | `SCRUM-889` | Tabla `transaccion_evento`, el registro inmutable de transacciones: actor y rol del JWT, hora de la base y correlación, escrito en la misma transacción que el pago. Un evento por pago y tipo; disparador que rechaza UPDATE, DELETE y TRUNCATE; el rol de servicio solo tiene SELECT e INSERT. RLS por tenant. |
 | **`0021`** | [`0021_consulta_conversacion.sql`](migrations/0021_consulta_conversacion.sql) | `SCRUM-883` | Tabla `consulta_conversacion`: auditoría inmutable de cada vez que un administrador abre una conversación para atender una queja (quién, qué servicio, motivo, referencia de la queja, cuántos mensajes vio, correlación). Se escribe en la misma transacción que la lectura. Disparador contra UPDATE, DELETE y TRUNCATE; el rol de servicio solo tiene SELECT e INSERT. RLS por tenant. |
 | **`0022`** | [`0022_notificacion_clave_evento.sql`](migrations/0022_notificacion_clave_evento.sql) | `SCRUM-882` | `notificacion.clave_evento` e índice único `(tenant_id, usuario_id, tipo, clave_evento)`: una notificación por evento y destinatario, así reintentar el evento (p. ej. reenviar un mensaje con la misma clave) no crea otra notificación ni otro push. Solo aplica a filas con clave; las ofertas de despacho conservan su índice de la 0019. |
+| **`0023`** | [`0023_adicion_servicio.sql`](migrations/0023_adicion_servicio.sql) | `SCRUM-872` | Tabla `adicion_servicio` con `tenant_id` y RLS: adición por imprevisto que pide el aliado asignado durante la ejecución (RF-34). Una sola adición `PENDIENTE` por solicitud (índice único parcial) y `CHECK` con las reglas del contrato (motivo de 10 a 500 caracteres, importes no negativos con al menos uno mayor que cero). El total vigente del servicio (cotización aceptada + adiciones aceptadas) es el que cobra el pago de la `0015`. |
 
-La siguiente migración libre es la **`0023`**.
+La siguiente migración libre es la **`0024`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
