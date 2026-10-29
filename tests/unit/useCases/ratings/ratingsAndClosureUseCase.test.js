@@ -328,3 +328,91 @@ test('PgRatingsRepository: flujo completo en memoria de 874 -> 875 -> 1418 (cier
   assert.equal(trasAliado.reputacionAliado.calificacionPromedio, 5);
   assert.equal(trasAliado.reputacionAliado.totalCalificaciones, 1);
 });
+
+test('RatingsAndClosureUseCase: validaciones de dominio para politica, historial y filtros', async () => {
+  const uc = new RatingsAndClosureUseCase({
+    ratingsRepository: {
+      obtenerPoliticaCancelacion: async () => ({}),
+      configurarPoliticaCancelacion: async () => ({}),
+      listarHistorialCliente: async () => [],
+      listarHistorialAliado: async () => [],
+      obtenerTrabajoAliado: async () => ({}),
+      obtenerReputacionAliado: async () => ({}),
+      listarReputacionAliados: async () => [],
+      consultarCalificacionesYCierre: async () => ({}),
+      cerrarSolicitud: async () => ({}),
+    },
+  });
+
+  // activa debe ser booleano
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: 'si' } }),
+    (e) => e.statusCode === 422
+  );
+
+  // ventanaGratuitaMinutos fuera de rango
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: true, ventanaGratuitaMinutos: -1 } }),
+    (e) => e.statusCode === 422
+  );
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: true, ventanaGratuitaMinutos: 2000 } }),
+    (e) => e.statusCode === 422
+  );
+
+  // tipoCobro inválido
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: true, tipoCobro: 'OTRO' } }),
+    (e) => e.statusCode === 422
+  );
+
+  // valor negativo
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: true, valor: -10 } }),
+    (e) => e.statusCode === 422
+  );
+
+  // estadosGravables inválidos o vacíos
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: true, estadosGravables: [] } }),
+    (e) => e.statusCode === 422
+  );
+  await assert.rejects(
+    () => uc.configurarPoliticaCancelacion({ user: sesionAdmin, body: { activa: true, estadosGravables: ['ESTADO_INEXISTENTE'] } }),
+    (e) => e.statusCode === 422
+  );
+
+  // listarHistorialCliente con estado inválido
+  await assert.rejects(
+    () => uc.listarHistorialCliente({ user: sesionCliente, query: { estado: 'INVALIDO' } }),
+    (e) => e.statusCode === 400
+  );
+
+  // listarHistorialAliado con estado inválido
+  await assert.rejects(
+    () => uc.listarHistorialAliado({ user: sesionAliado, query: { estado: 'INVALIDO' } }),
+    (e) => e.statusCode === 400
+  );
+
+  // obtenerReputacionAliado con UUID inválido
+  await assert.rejects(
+    () => uc.obtenerReputacionAliado({ user: sesionCliente, aliadoId: 'no-es-uuid' }),
+    (e) => e.statusCode === 400
+  );
+
+  // obtenerTrabajoAliado con UUID inválido
+  await assert.rejects(
+    () => uc.obtenerTrabajoAliado({ user: sesionAliado, solicitudId: 'no-es-uuid' }),
+    (e) => e.statusCode === 400
+  );
+
+  // cerrarSolicitud con UUID inválido o rol no permitido
+  await assert.rejects(
+    () => uc.cerrarSolicitud({ user: sesionCliente, solicitudId: 'no-es-uuid' }),
+    (e) => e.statusCode === 400
+  );
+  await assert.rejects(
+    () => uc.cerrarSolicitud({ user: { tenantId: TENANT_A, userId: CLIENTE_USER, role: 'ANON' }, solicitudId: SOLICITUD_ID }),
+    (e) => e.statusCode === 403
+  );
+});

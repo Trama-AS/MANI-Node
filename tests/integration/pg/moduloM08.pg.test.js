@@ -67,4 +67,40 @@ test('PG Módulo M-08: flujo completo contra PostgreSQL real', opts, async (t) =
   const histAli = await repo.listarHistorialAliado(ctxAli, {});
   assert.equal(histAli.length, 1);
   assert.equal(histAli[0].estado, 'CERRADA');
+
+  const detalleAli = await repo.obtenerTrabajoAliado(ctxAli, solicitud);
+  assert.equal(detalleAli.id, solicitud);
+
+  const califs = await repo.consultarCalificacionesYCierre(ctxCli, solicitud);
+  assert.equal(califs.cierre.cierreCompleto, true);
+
+  const repLista = await repo.listarReputacionAliados(ctxCli, {});
+  assert.ok(repLista.length >= 1);
+
+  const repAli = await repo.obtenerReputacionAliado(ctxCli, aliado);
+  assert.equal(repAli.aliadoId, aliado);
+
+  const ctxAdmin = { tenantId: tenant, userId: usuarioCli, role: 'ADMIN' };
+  const polDef = await repo.obtenerPoliticaCancelacion(ctxAdmin);
+  assert.equal(polDef.configurada, false);
+
+  const polSet = await repo.configurarPoliticaCancelacion(ctxAdmin, {
+    activa: true,
+    ventanaGratuitaMinutos: 30,
+    tipoCobro: 'MONTO_FIJO',
+    valor: 45000,
+    estadosGravables: ['ASIGNADA', 'COTIZANDO', 'ACEPTADA'],
+  });
+  assert.equal(polSet.configurada, true);
+  assert.equal(polSet.valor, 45000);
+
+  const polGet = await repo.obtenerPoliticaCancelacion(ctxAdmin);
+  assert.equal(polGet.configurada, true);
+  assert.equal(polGet.valor, 45000);
+
+  const prev = await repo.previsualizarCancelacion(ctxCli, solicitud);
+  assert.equal(prev.solicitudId, solicitud);
+
+  const cierre = await repo.cerrarSolicitud(ctxCli, solicitud);
+  assert.equal(cierre.cierreCompleto, true);
 });
