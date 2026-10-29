@@ -4,17 +4,85 @@ const config = require('../../config');
 const { claimRoleToDomain } = require('./claimRoleMap');
 const JwtVerifier = require('./JwtVerifier');
 
+/**
+ * Fecha límite oficial de retiro de HS256: 2026-11-15 (Cierre Sprint 5).
+ * A partir de esa fecha, todos los clientes deben autenticar exclusivamente con ES256 vía JWKS (ADR-0031 §1).
+ */
+const HS256_RETIREMENT_DATE = '2026-11-15';
+
+function isNonEmptyString(val) {
+  return typeof val === 'string' && val.trim().length > 0;
+}
+
 class TokenService extends ITokenService {
   /**
-   * @param {{ jwtSecret?: string, jwks?: object, supabaseUrl?: string, issuer?: string }} [deps]
-   *   `jwks` e `issuer` son inyectables para pruebas (doble con `getSigningKey`);
+   * @param {{ jwtSecret?: string, jwks?: object, supabaseUrl?: string, issuer?: string, verifier?: object }} [deps]
+   *   `jwks`, `issuer` y `verifier` son inyectables para pruebas (doble con `getSigningKey`);
    *   si no se pasan y hay `supabaseUrl`, se derivan del proyecto de Supabase.
    *   La política de firma es la de JwtVerifier, la misma de validate-token
-   *   (ADR-0031 §1, SCRUM-1362).
+   *   (ADR-0031 §1, SCRUM-1362, SCRUM-1457).
    */
-  constructor({ jwtSecret = config.supabaseJwtSecret, jwks, supabaseUrl = config.supabaseUrl, issuer } = {}) {
+  constructor({ jwtSecret = config.supabaseJwtSecret, jwks, supabaseUrl = config.supabaseUrl, issuer, verifier } = {}) {
     super();
-    this.verifier = new JwtVerifier({ jwtSecret, jwks, supabaseUrl, issuer });
+    this.verifier = verifier || new JwtVerifier({ jwtSecret, jwks, supabaseUrl, issuer });
+  }
+
+  /**
+   * Valida un token para el API Gateway (/auth/validate-token) delegando en JwtVerifier (TEC-10 / SCRUM-1457).
+   * Los claims se extraen EXCLUSIVAMENTE de `app_metadata` (Custom Access Token Hook, CFG-12, ADR-0031 §2)
+   * sin respaldo a la raíz del token.
+   *
+   * @param {string} authHeader
+   * @returns {Promise<{ valid: true, userId: string, tenantId: string, role: string }>}
+   */
+  async validateToken(authHeader) {
+    if (!authHeader || typeof authHeader !== 'string') {
+      const err = new Error('Encabezado Authorization requerido');
+      err.code = 'UNAUTHORIZED';
+      throw err;
+    }
+
+    const parts = authHeader.trim().split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      const err = new Error('Formato de token inválido. Debe ser: Bearer <token>');
+      err.code = 'UNAUTHORIZED';
+      throw err;
+    }
+
+    let decoded;
+    try {
+      decoded = await this.verifier.verify(parts[1]);
+    } catch (verifyErr) {
+      const code = verifyErr.name === 'JwtVerificationError' ? verifyErr.code : 'INVALID_TOKEN';
+      const message = verifyErr.name === 'JwtVerificationError' ? verifyErr.message : 'Token de autenticación inválido';
+      const err = new Error(message);
+      err.code = code;
+      throw err;
+    }
+
+    const appMetadata = decoded.app_metadata && typeof decoded.app_metadata === 'object' ? decoded.app_metadata : {};
+    const tenantId = appMetadata.tenant_id;
+    const userRole = appMetadata.user_role;
+    const userId = decoded.sub;
+
+    if (!isNonEmptyString(tenantId)) {
+      const err = new Error('Token de autenticación no contiene el claim obligatorio app_metadata.tenant_id');
+      err.code = 'MISSING_TENANT_CLAIM';
+      throw err;
+    }
+
+    if (!isNonEmptyString(userId) || !isNonEmptyString(userRole)) {
+      const err = new Error('Token de autenticación no contiene los claims obligatorios sub y app_metadata.user_role');
+      err.code = 'INVALID_TOKEN';
+      throw err;
+    }
+
+    return {
+      valid: true,
+      userId,
+      tenantId,
+      role: userRole,
+    };
   }
 
   /**
@@ -67,3 +135,4 @@ class TokenService extends ITokenService {
 }
 
 module.exports = TokenService;
+module.exports.HS256_RETIREMENT_DATE = HS256_RETIREMENT_DATE;
