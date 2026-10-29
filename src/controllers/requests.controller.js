@@ -35,16 +35,20 @@ async function getOwnRequest(req, res, next) {
   }
 }
 
-// US-04.5.1 (SCRUM-877): cancelar antes de la ejecución. Repetirla es idempotente: 200 en ambos casos.
+// US-04.5.1 (SCRUM-877) y US-04.5.2 (SCRUM-878): cancelar antes de la ejecución. Repetirla es idempotente: 200 en ambos casos.
 async function cancelOwnRequest(req, res, next) {
   try {
-    const { solicitud, cancelada } = await container.cancelServiceRequestUseCase.execute({
+    const { solicitud, cancelada, penalizacion } = await container.cancelServiceRequestUseCase.execute({
       user: req.user,
       solicitudId: req.params.id,
       body: req.body || {},
       correlationId: req.correlationId || null,
     });
-    res.status(200).json({ solicitud, cancelada, correlationId: req.correlationId || 'none' });
+    const respuesta = { solicitud, cancelada, correlationId: req.correlationId || 'none' };
+    if (penalizacion !== undefined) {
+      respuesta.penalizacion = penalizacion;
+    }
+    res.status(200).json(respuesta);
   } catch (err) {
     next(err);
   }

@@ -127,6 +127,8 @@ const PgAdditionRepository = require('./infrastructure/repositories/PgAdditionRe
 const RequestAdditionUseCase = require('./application/useCases/additions/RequestAdditionUseCase');
 const ListAdditionsUseCase = require('./application/useCases/additions/ListAdditionsUseCase');
 const RespondAdditionUseCase = require('./application/useCases/additions/RespondAdditionUseCase');
+const PgRatingsRepository = require('./infrastructure/repositories/PgRatingsRepository');
+const RatingsAndClosureUseCase = require('./application/useCases/ratings/RatingsAndClosureUseCase');
 
 const config = require('./config');
 
@@ -404,6 +406,14 @@ class Container {
     this.listAdditionsUseCase = new ListAdditionsUseCase({ additionRepository: this.additionRepository });
     this.respondAdditionUseCase = new RespondAdditionUseCase({
       additionRepository: this.additionRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    // Módulo M-08: Calificación bidireccional, cierre condicionado, reputación agregada, penalización por
+    // cancelación tardía e historial (SCRUM-1418, SCRUM-874, SCRUM-875, SCRUM-876, SCRUM-878, SCRUM-879, SCRUM-880).
+    // Sin DATABASE_URL responde 503 (T2).
+    this.ratingsRepository = new PgRatingsRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.ratingsAndClosureUseCase = new RatingsAndClosureUseCase({
+      ratingsRepository: this.ratingsRepository,
       notificador: this.notificarEventoServicioUseCase,
     });
 
