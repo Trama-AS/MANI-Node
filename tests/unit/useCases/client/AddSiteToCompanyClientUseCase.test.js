@@ -37,6 +37,7 @@ describe('AddSiteToCompanyClientUseCase & GetCompanyClientSitesUseCase (RF-08 / 
       direccion: 'Avenida La Esperanza # 68-30',
       zonaId: 'zona-bogota-occidente',
       reglas: { parqueadero: true },
+      userRole: 'ADMIN',
       correlationId: 'test-add-site-001',
     });
 
@@ -48,6 +49,7 @@ describe('AddSiteToCompanyClientUseCase & GetCompanyClientSitesUseCase (RF-08 / 
     const { client: fetchedClient, sites: allSites } = await getSitesUseCase.execute({
       clienteId: client.id,
       tenantId: 'tenant-trama-1',
+      userRole: 'ADMIN',
     });
 
     assert.strictEqual(fetchedClient.id, client.id);

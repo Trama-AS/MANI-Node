@@ -2,7 +2,17 @@ const crypto = require('crypto');
 const CompanyClient = require('../../domain/entities/CompanyClient');
 const Site = require('../../domain/entities/Site');
 const ICompanyClientRepository = require('../../domain/ports/ICompanyClientRepository');
-const { DomainError } = require('../../domain/errors/DomainError');
+const { DomainError, ValidationError } = require('../../domain/errors/DomainError');
+
+// Códigos de PostgreSQL de una zona inexistente (FK) o con formato inválido: son datos del cliente, no fallos del servicio.
+const PG_ZONA_INVALIDA = new Set(['23503', '22P02']);
+
+function traducirZonaInvalida(err) {
+  if (PG_ZONA_INVALIDA.has(err.code)) {
+    return new ValidationError('zonaId no corresponde a una zona del catálogo (RF-09)', 'VALIDATION_ERROR');
+  }
+  return err;
+}
 
 /**
  * Adaptador de Infraestructura: Repositorio PostgreSQL / Supabase para Cliente Empresa y Sitios (RF-08 / RF-09).
@@ -144,6 +154,20 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     return rows.length > 0 ? this._rowToClient(rows[0]) : null;
   }
 
+  async findByUsuarioId(usuarioId, tenantId) {
+    const pool = this._getPool();
+    const { rows } = await pool.query(
+      `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
+       FROM cliente c
+       JOIN usuario u ON u.id = c.usuario_id
+       WHERE c.usuario_id = $1 AND c.tenant_id = $2 AND c.tipo IN ('PERSONA_JURIDICA', 'EMPRESA')
+       LIMIT 1`,
+      [usuarioId, tenantId]
+    );
+
+    return rows.length > 0 ? this._rowToClient(rows[0]) : null;
+  }
+
   async findByNitAndTenant(nit, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
@@ -177,21 +201,25 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     const siteId = site.id || crypto.randomUUID();
     const reglasJson = site.reglas ? JSON.stringify(site.reglas) : null;
 
-    await pool.query(
-      `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-      [
-        siteId,
-        tenantId,
-        clienteId,
-        site.zonaId,
-        site.direccion,
-        site.nombre,
-        reglasJson,
-        site.contactoNombre ?? null,
-        site.contactoTelefono ?? null,
-      ]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [
+          siteId,
+          tenantId,
+          clienteId,
+          site.zonaId,
+          site.direccion,
+          site.nombre,
+          reglasJson,
+          site.contactoNombre ?? null,
+          site.contactoTelefono ?? null,
+        ]
+      );
+    } catch (err) {
+      throw traducirZonaInvalida(err);
+    }
 
     return new Site({
       id: siteId,
@@ -217,6 +245,42 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     );
 
     return rows.map((r) => this._rowToSite(r));
+  }
+
+  async findSiteById(clienteId, siteId, tenantId) {
+    const pool = this._getPool();
+    const { rows } = await pool.query(
+      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at
+       FROM sitio
+       WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3`,
+      [siteId, clienteId, tenantId]
+    );
+    return rows.length > 0 ? this._rowToSite(rows[0]) : null;
+  }
+
+  async updateSite(clienteId, tenantId, site) {
+    const pool = this._getPool();
+    try {
+      const { rows } = await pool.query(
+        `UPDATE sitio
+         SET nombre = $4, direccion = $5, zona_id = $6, contacto_nombre = $7, contacto_telefono = $8
+         WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3
+         RETURNING id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at`,
+        [
+          site.id,
+          clienteId,
+          tenantId,
+          site.nombre,
+          site.direccion,
+          site.zonaId,
+          site.contactoNombre ?? null,
+          site.contactoTelefono ?? null,
+        ]
+      );
+      return rows.length > 0 ? this._rowToSite(rows[0]) : null;
+    } catch (err) {
+      throw traducirZonaInvalida(err);
+    }
   }
 
   _rowToClient(row) {

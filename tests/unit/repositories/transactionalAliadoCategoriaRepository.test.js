@@ -13,10 +13,16 @@ const CAT_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
  */
 function makePool(script = {}) {
   const calls = [];
+  const contexts = [];
   const released = [];
   const client = {
     async query(sql, params) {
       const text = sql.replace(/\s+/g, ' ').trim();
+      // SELECT app.set_context(tenant, usuario, rol) lo emite runInTenantContext (ADR-0032) y se registra aparte.
+      if (text.startsWith('SELECT app.set_context')) {
+        contexts.push(params);
+        return { rows: [], rowCount: 0 };
+      }
       calls.push({ sql: text, params });
       for (const [fragment, response] of Object.entries(script)) {
         if (text.includes(fragment)) {
@@ -30,7 +36,7 @@ function makePool(script = {}) {
       released.push(err || null);
     },
   };
-  return { pool: { connect: async () => client }, calls, released };
+  return { pool: { connect: async () => client }, calls, contexts, released };
 }
 
 function makeRepo(pool, delegate = {}) {
@@ -47,10 +53,14 @@ const happyScript = (finalIds) => ({
 });
 
 test('reemplaza el conjunto dentro de una transacción: BEGIN, bloqueo, validación, delete, insert, COMMIT', async () => {
-  const { pool, calls, released } = makePool(happyScript([CAT_A, CAT_B]));
+  const { pool, calls, contexts, released } = makePool(happyScript([CAT_A, CAT_B]));
   const repo = makeRepo(pool);
+  const USUARIO = '33333333-3333-4333-8333-333333333333';
 
-  const result = await repo.setAliadoCategorias(TENANT, ALIADO, [CAT_A, CAT_B]);
+  const result = await repo.setAliadoCategorias(TENANT, ALIADO, [CAT_A, CAT_B], { userId: USUARIO, role: 'ALLY' });
+
+  // El guardado corre con el tenant, el usuario y el rol del JWT (rol en vocabulario del claim).
+  assert.deepEqual(contexts, [[TENANT, USUARIO, 'aliado']]);
 
   assert.deepEqual(result, [CAT_A, CAT_B]);
   const verbs = calls.map((c) => c.sql.split(' ')[0]);

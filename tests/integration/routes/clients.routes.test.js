@@ -46,13 +46,13 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
         {
           nombre: 'Sede Administrativa Salitre',
           direccion: 'Avenida El Dorado # 69-76, Torre 3',
-          zonaId: 'zona-bogota-salitre',
+          zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
           reglas: { tipoAcceso: 'peatonal_oficinas', requiereCarnet: true },
         },
         {
           nombre: 'Centro Logístico Fontibón',
           direccion: 'Carrera 100 # 24-55',
-          zonaId: 'zona-bogota-occidente',
+          zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14',
           reglas: { tipoAcceso: 'muelle_pesado', requiereEpi: true },
         },
       ],
@@ -120,7 +120,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       razonSocial: 'Empresa Para Dup NIT S.A.S.',
       nit: '900888111-9',
       email: 'original@dup-nit.com',
-      sitios: [{ direccion: 'Calle 1 # 2-3', zonaId: 'zona-1' }],
+      sitios: [{ direccion: 'Calle 1 # 2-3', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' }],
     };
 
     const res1 = await request(app)
@@ -164,7 +164,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
     const addSiteRes = await request(app)
       .post('/api/v1/clients/any-id/sites')
       .set('Authorization', `Bearer ${allyToken}`)
-      .send({ direccion: 'Calle 10 # 20-30', zonaId: 'zona-1' });
+      .send({ direccion: 'Calle 10 # 20-30', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' });
     assert.strictEqual(addSiteRes.status, 403);
 
     // 3. Intentar consultar sedes como aliado
@@ -190,7 +190,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
           {
             nombre: 'Hotel Parque 93',
             direccion: 'Calle 93 # 12-40',
-            zonaId: 'zona-bogota-norte',
+            zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
           },
         ],
       });
@@ -212,7 +212,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       .send({
         nombre: 'Sitio Infiltrado',
         direccion: 'Calle Falsa 123',
-        zonaId: 'zona-1',
+        zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
       });
 
     assert.strictEqual(crossTenantPost.status, 404);
@@ -224,7 +224,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       .send({
         nombre: 'Hotel Calle 100',
         direccion: 'Calle 100 # 8A-49',
-        zonaId: 'zona-bogota-norte',
+        zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
         reglas: { recepcion24h: true },
       });
 
@@ -267,7 +267,7 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
           {
             nombre: 'Sede Principal',
             direccion: 'Carrera 7 # 72-10',
-            zonaId: 'zona-bogota-centro',
+            zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12',
           },
         ],
       });
@@ -289,9 +289,172 @@ describe('Clients Presentation Layer - HTTP Endpoints (RF-08 / RF-09)', () => {
       .send({
         nombre: 'Sede Infiltrada',
         direccion: 'Calle Intruso 456',
-        zonaId: 'zona-bogota-centro',
+        zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12',
       });
 
     assert.strictEqual(postRes.status, 403);
+  });
+
+  describe('PATCH /api/v1/clients/:id/sites/:siteId (SCRUM-1387 / CONS-16)', () => {
+    const adminA = signToken({ tenantId: 'trama-demo', userId: 'admin-edicion-a' });
+    const adminB = signToken({ tenantId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', userId: 'admin-edicion-b' });
+
+    async function crearEmpresa(nit, email) {
+      const res = await request(app)
+        .post('/api/v1/clients/company')
+        .set('Authorization', `Bearer ${adminA}`)
+        .send({
+          razonSocial: `Empresa ${nit} S.A.S.`,
+          nit,
+          email,
+          sitios: [
+            { nombre: 'Sede Norte', direccion: 'Calle 140 # 10-20', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' },
+            { nombre: 'Sede Sur', direccion: 'Avenida 1 de Mayo # 40-10', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14' },
+          ],
+        });
+      assert.strictEqual(res.status, 201);
+      return { clienteId: res.body.client.id, sitios: res.body.sitios };
+    }
+
+    it('C1: edita una de las sedes y el cambio se ve al volver a consultar; la otra queda igual', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700001-1', 'edicion1@empresa.com');
+
+      const res = await request(app)
+        .patch(`/api/v1/clients/${clienteId}/sites/${sitios[0].id}`)
+        .set('Authorization', `Bearer ${adminA}`)
+        .send({ nombre: 'Sede Norte Renovada', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15', contactoNombre: 'Laura Gómez' });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.sitio.id, sitios[0].id);
+      assert.strictEqual(res.body.sitio.nombre, 'Sede Norte Renovada');
+      assert.strictEqual(res.body.sitio.direccion, 'Calle 140 # 10-20');
+      assert.ok(res.body.correlationId);
+
+      const lista = await request(app)
+        .get(`/api/v1/clients/${clienteId}/sites`)
+        .set('Authorization', `Bearer ${adminA}`);
+      assert.strictEqual(lista.status, 200);
+      assert.strictEqual(lista.body.totalSitios, 2);
+      const [norte, sur] = lista.body.sitios;
+      assert.strictEqual(norte.nombre, 'Sede Norte Renovada');
+      assert.strictEqual(norte.zonaId, 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15');
+      assert.strictEqual(norte.contactoNombre, 'Laura Gómez');
+      assert.strictEqual(sur.nombre, 'Sede Sur');
+    });
+
+    it('C2: sin zona o con un campo inválido responde 400 y la sede no cambia', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700002-2', 'edicion2@empresa.com');
+      const ruta = `/api/v1/clients/${clienteId}/sites/${sitios[0].id}`;
+
+      for (const cuerpo of [{ zonaId: '' }, { direccion: 'x' }, { reglas: {} }, { tenantId: 'otro' }, {}]) {
+        const res = await request(app).patch(ruta).set('Authorization', `Bearer ${adminA}`).send(cuerpo);
+        assert.strictEqual(res.status, 400, JSON.stringify(cuerpo));
+        assert.strictEqual(res.body.code, 'VALIDATION_ERROR');
+      }
+
+      const lista = await request(app)
+        .get(`/api/v1/clients/${clienteId}/sites`)
+        .set('Authorization', `Bearer ${adminA}`);
+      assert.strictEqual(lista.body.sitios[0].zonaId, 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13');
+      assert.strictEqual(lista.body.sitios[0].direccion, 'Calle 140 # 10-20');
+    });
+
+    it('C3: el admin de otro tenant recibe 404 y la sede no cambia', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700003-3', 'edicion3@empresa.com');
+
+      const res = await request(app)
+        .patch(`/api/v1/clients/${clienteId}/sites/${sitios[0].id}`)
+        .set('Authorization', `Bearer ${adminB}`)
+        .send({ nombre: 'Infiltrada' });
+
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.sitio, undefined);
+      const lista = await request(app)
+        .get(`/api/v1/clients/${clienteId}/sites`)
+        .set('Authorization', `Bearer ${adminA}`);
+      assert.strictEqual(lista.body.sitios[0].nombre, 'Sede Norte');
+    });
+
+    it('C3: la sede de otra empresa del mismo tenant no se edita por la ruta de esta empresa (404)', async () => {
+      const empresa1 = await crearEmpresa('900700004-4', 'edicion4@empresa.com');
+      const empresa2 = await crearEmpresa('900700005-5', 'edicion5@empresa.com');
+
+      const res = await request(app)
+        .patch(`/api/v1/clients/${empresa1.clienteId}/sites/${empresa2.sitios[0].id}`)
+        .set('Authorization', `Bearer ${adminA}`)
+        .send({ nombre: 'Cruzada' });
+
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.code, 'SITE_NOT_FOUND');
+    });
+
+    it('C4: otro cliente del mismo tenant recibe 403 y un aliado también', async () => {
+      const { clienteId, sitios } = await crearEmpresa('900700006-6', 'edicion6@empresa.com');
+      const ruta = `/api/v1/clients/${clienteId}/sites/${sitios[0].id}`;
+
+      const otroCliente = signToken({ tenantId: 'trama-demo', userId: 'cliente-ajeno-edicion', role: 'cliente' });
+      const aliado = signToken({ tenantId: 'trama-demo', userId: 'aliado-edicion', role: 'aliado' });
+
+      const resCliente = await request(app).patch(ruta).set('Authorization', `Bearer ${otroCliente}`).send({ nombre: 'X' });
+      assert.strictEqual(resCliente.status, 403);
+      const resAliado = await request(app).patch(ruta).set('Authorization', `Bearer ${aliado}`).send({ nombre: 'X' });
+      assert.strictEqual(resAliado.status, 403);
+      assert.strictEqual(resAliado.body.code, 'FORBIDDEN');
+    });
+
+    it('sin token responde 401', async () => {
+      const res = await request(app).patch('/api/v1/clients/c/sites/s').send({ nombre: 'X' });
+      assert.strictEqual(res.status, 401);
+    });
+  });
+
+  describe('Alias /clients/me/sites (SCRUM-1387)', () => {
+    const container = require('../../../src/container');
+
+    it('el cliente empresa lista, agrega y edita sus sedes con su JWT, sin conocer su id', async () => {
+      const admin = signToken({ tenantId: 'trama-demo', userId: 'admin-alias-me' });
+      const creada = await request(app)
+        .post('/api/v1/clients/company')
+        .set('Authorization', `Bearer ${admin}`)
+        .send({
+          razonSocial: 'Empresa Alias Me S.A.S.',
+          nit: '900700010-1',
+          email: 'aliasme@empresa.com',
+          sitios: [{ nombre: 'Sede Inicial', direccion: 'Calle 72 # 10-07', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' }],
+        });
+      assert.strictEqual(creada.status, 201);
+      const cliente = await container.companyClientRepository.findById(creada.body.client.id, 'trama-demo');
+      const dueno = signToken({ tenantId: 'trama-demo', userId: cliente.usuarioId, role: 'cliente' });
+
+      const alta = await request(app)
+        .post('/api/v1/clients/me/sites')
+        .set('Authorization', `Bearer ${dueno}`)
+        .send({ nombre: 'Sede Dos', direccion: 'Carrera 15 # 93-60', zonaId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13' });
+      assert.strictEqual(alta.status, 201);
+      assert.strictEqual(alta.body.sitio.clienteId, cliente.id);
+
+      const edicion = await request(app)
+        .patch(`/api/v1/clients/me/sites/${alta.body.sitio.id}`)
+        .set('Authorization', `Bearer ${dueno}`)
+        .send({ nombre: 'Sede Dos Renombrada' });
+      assert.strictEqual(edicion.status, 200);
+
+      const lista = await request(app).get('/api/v1/clients/me/sites').set('Authorization', `Bearer ${dueno}`);
+      assert.strictEqual(lista.status, 200);
+      assert.strictEqual(lista.body.clienteId, cliente.id);
+      assert.deepStrictEqual(
+        lista.body.sitios.map((s) => s.nombre),
+        ['Sede Inicial', 'Sede Dos Renombrada']
+      );
+    });
+
+    it('un cliente sin empresa registrada recibe 404 con /clients/me/sites', async () => {
+      const otro = signToken({ tenantId: 'trama-demo', userId: 'cliente-sin-empresa', role: 'cliente' });
+
+      const res = await request(app).get('/api/v1/clients/me/sites').set('Authorization', `Bearer ${otro}`);
+
+      assert.strictEqual(res.status, 404);
+      assert.strictEqual(res.body.code, 'CLIENT_NOT_FOUND');
+    });
   });
 });

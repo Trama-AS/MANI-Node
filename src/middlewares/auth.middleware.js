@@ -6,6 +6,7 @@ async function authenticate(req, res, next) {
   if (!authHeader) {
     return res.status(401).json({
       error: 'Encabezado Authorization requerido',
+      code: 'UNAUTHORIZED',
       correlationId: req.correlationId || 'none',
     });
   }
@@ -16,8 +17,10 @@ async function authenticate(req, res, next) {
     req.tenantId = session.tenantId;
     next();
   } catch (err) {
+    // Mismo formato que el errorHandler: { error, code, correlationId } (T5).
     return res.status(err.statusCode || 401).json({
       error: err.message,
+      code: err.code || 'UNAUTHORIZED',
       correlationId: req.correlationId || 'none',
     });
   }

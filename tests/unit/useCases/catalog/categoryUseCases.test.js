@@ -333,22 +333,22 @@ test('ListCategoriesForTenantUseCase con onlyActive=true excluye las desactivada
 test('SetCategoryStatusUseCase activa y desactiva una categoría del tenant (flujo operativo)', async () => {
   const catalogRepository = new InMemoryCatalogRepository();
   const created = await catalogRepository.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
-  const useCase = new SetCategoryStatusUseCase({ catalogRepository });
+  const useCase = new SetCategoryStatusUseCase({ catalogRepository, auditLogger: () => {} });
 
-  const deactivated = await useCase.execute({ tenantId: 't1', categoryId: created.id, active: false });
+  const deactivated = await useCase.execute({ tenantId: 't1', categoryId: created.id, active: false, userId: 'admin-1' });
   assert.equal(deactivated.active, false);
 
-  const reactivated = await useCase.execute({ tenantId: 't1', categoryId: created.id, active: true });
+  const reactivated = await useCase.execute({ tenantId: 't1', categoryId: created.id, active: true, userId: 'admin-1' });
   assert.equal(reactivated.active, true);
 });
 
 test('SetCategoryStatusUseCase lanza CATEGORY_NOT_FOUND si la categoría es de otro tenant', async () => {
   const catalogRepository = new InMemoryCatalogRepository();
   const created = await catalogRepository.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
-  const useCase = new SetCategoryStatusUseCase({ catalogRepository });
+  const useCase = new SetCategoryStatusUseCase({ catalogRepository, auditLogger: () => {} });
 
   await assert.rejects(
-    () => useCase.execute({ tenantId: 't2', categoryId: created.id, active: false }),
+    () => useCase.execute({ tenantId: 't2', categoryId: created.id, active: false, userId: 'admin-1' }),
     (err) => {
       assert.equal(err.code, 'CATEGORY_NOT_FOUND');
       return true;
@@ -368,6 +368,128 @@ test('SetCategoryStatusUseCase rechaza si active no es booleano', async () => {
       return true;
     }
   );
+});
+
+// --- SCRUM-1391 (HU-M04-02): auditoría T10 y servicios en curso ---
+
+test('SetCategoryStatusUseCase registra quién, cuándo, la decisión y el correlationId al desactivar y al activar (T10)', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  const created = await catalogRepository.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const auditoria = [];
+  const useCase = new SetCategoryStatusUseCase({
+    catalogRepository,
+    auditLogger: (entry) => auditoria.push(entry),
+    now: () => new Date('2026-10-26T13:00:00.000Z'),
+  });
+
+  await useCase.execute({ tenantId: 't1', categoryId: created.id, active: false, userId: 'admin-1', correlationId: 'corr-1' });
+  await useCase.execute({ tenantId: 't1', categoryId: created.id, active: true, userId: 'admin-2', correlationId: 'corr-2' });
+
+  assert.deepEqual(auditoria, [
+    {
+      event: 'US-03.1.2.cambiar_estado_categoria',
+      tenant_id: 't1',
+      categoria_id: created.id,
+      decision: 'DESACTIVAR',
+      estado_resultante: 'INACTIVO',
+      realizado_por: 'admin-1',
+      fecha: '2026-10-26T13:00:00.000Z',
+      correlation_id: 'corr-1',
+    },
+    {
+      event: 'US-03.1.2.cambiar_estado_categoria',
+      tenant_id: 't1',
+      categoria_id: created.id,
+      decision: 'ACTIVAR',
+      estado_resultante: 'ACTIVO',
+      realizado_por: 'admin-2',
+      fecha: '2026-10-26T13:00:00.000Z',
+      correlation_id: 'corr-2',
+    },
+  ]);
+});
+
+test('SetCategoryStatusUseCase sin correlationId audita con "none" y por omisión escribe la auditoría como JSON en consola', async (t) => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  const created = await catalogRepository.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const info = t.mock.method(console, 'info', () => {});
+  const useCase = new SetCategoryStatusUseCase({ catalogRepository });
+
+  await useCase.execute({ tenantId: 't1', categoryId: created.id, active: false, userId: 'admin-1' });
+
+  assert.equal(info.mock.callCount(), 1);
+  const entry = JSON.parse(info.mock.calls[0].arguments[0]);
+  assert.equal(entry.decision, 'DESACTIVAR');
+  assert.equal(entry.correlation_id, 'none');
+  assert.ok(!Number.isNaN(Date.parse(entry.fecha)));
+});
+
+test('SetCategoryStatusUseCase sin usuario en la sesión responde 401 y no cambia el estado ni audita', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  const created = await catalogRepository.create('t1', { name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const auditoria = [];
+  const useCase = new SetCategoryStatusUseCase({ catalogRepository, auditLogger: (entry) => auditoria.push(entry) });
+
+  for (const userId of [undefined, '', 42]) {
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 't1', categoryId: created.id, active: false, userId }),
+      (err) => {
+        assert.equal(err.statusCode, 401);
+        return true;
+      }
+    );
+  }
+
+  const intacta = await catalogRepository.findById('t1', created.id);
+  assert.equal(intacta.active, true);
+  assert.equal(auditoria.length, 0);
+});
+
+test('SetCategoryStatusUseCase no audita si la categoría no existe en el tenant', async () => {
+  const auditoria = [];
+  const useCase = new SetCategoryStatusUseCase({
+    catalogRepository: new InMemoryCatalogRepository(),
+    auditLogger: (entry) => auditoria.push(entry),
+  });
+
+  await assert.rejects(() => useCase.execute({ tenantId: 't1', categoryId: 'no-existe', active: false, userId: 'admin-1' }));
+  assert.equal(auditoria.length, 0);
+});
+
+test('SetCategoryStatusUseCase solo cambia el estado de la categoría: no toca solicitudes ni servicios en curso (SCRUM-858 C3)', async () => {
+  const llamadas = [];
+  const catalogRepository = new Proxy(
+    {},
+    {
+      get: (_objetivo, metodo) => async (...args) => {
+        llamadas.push(metodo);
+        if (metodo === 'setActive') {
+          return { toJSON: () => ({ id: args[1], active: args[2] }) };
+        }
+        throw new Error(`No debería llamarse ${String(metodo)}`);
+      },
+    }
+  );
+  const useCase = new SetCategoryStatusUseCase({ catalogRepository, auditLogger: () => {} });
+
+  const resultado = await useCase.execute({ tenantId: 't1', categoryId: 'cat-1', active: false, userId: 'admin-1' });
+
+  assert.deepEqual(llamadas, ['setActive']);
+  assert.deepEqual(resultado, { id: 'cat-1', active: false });
+});
+
+test('SetCategoryStatusUseCase exige repositorio, tenantId y categoryId antes de tocar la base', async () => {
+  assert.throws(() => new SetCategoryStatusUseCase({}), /catalogRepository es requerido/);
+  const useCase = new SetCategoryStatusUseCase({ catalogRepository: new InMemoryCatalogRepository(), auditLogger: () => {} });
+
+  for (const entrada of [
+    { categoryId: 'c', active: true, userId: 'admin-1' },
+    { tenantId: 't1', active: true, userId: 'admin-1' },
+    { tenantId: 7, categoryId: 'c', active: true, userId: 'admin-1' },
+  ]) {
+    await assert.rejects(() => useCase.execute(entrada), (err) => err.code === 'VALIDATION_ERROR');
+  }
+  await assert.rejects(() => useCase.execute(), (err) => err.code === 'VALIDATION_ERROR');
 });
 
 // --- Filas históricas y reglas: en US-03.1.1-M6 las reglas las decide Rules, no Core ---

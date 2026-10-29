@@ -55,7 +55,7 @@ test('crea sitio, solicitud PENDIENTE, fotos y evento en una transacción con el
   assert.deepEqual(sentencias[1].params, [TENANT, USER, 'cliente']);
   const insercion = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud ('));
   assert.match(insercion.sql, /'PENDIENTE'/);
-  assert.deepEqual(insercion.params, [TENANT, 'cliente-1', 'sitio-1', 'cat', 'zona', datosBase.descripcion, null]);
+  assert.deepEqual(insercion.params, [TENANT, 'cliente-1', 'sitio-1', 'cat', 'zona', datosBase.descripcion, null, null]);
   const foto = sentencias.find((s) => s.sql.startsWith('INSERT INTO solicitud_foto'));
   assert.deepEqual(foto.params, [TENANT, 'sol-1', 't/u/a.png', 1]);
   const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
@@ -101,6 +101,50 @@ test('carrera de idempotencia: un unique_violation vuelve al savepoint y devuelv
   assert.equal(sentencias.at(-1).sql, 'COMMIT');
 });
 
+test('la misma clave con otra huella responde 409 MANI-SOL-409K y no inserta (HU-M05-09 C2)', async () => {
+  const resp = { ...exito(), 'clave_idempotencia = $2': { rows: [{ id: 'sol-previa', huella_idempotencia: 'h-1' }] } };
+  const { factory, sentencias } = fakeFactory(resp);
+
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory })
+      .crear(ctx, { ...datosBase, claveIdempotencia: 'k', huellaIdempotencia: 'h-2' }),
+    (err) => err.statusCode === 409 && err.code === 'MANI-SOL-409K'
+  );
+  assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT')));
+  assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
+});
+
+test('la misma clave con la misma huella, o una fila previa sin huella, es un reintento', async () => {
+  for (const huellaPrevia of ['h-1', null]) {
+    const resp = { ...exito(), 'clave_idempotencia = $2': { rows: [{ id: 'sol-previa', huella_idempotencia: huellaPrevia }] } };
+    const { factory } = fakeFactory(resp);
+
+    const r = await new PgServiceRequestRepository({ pgPoolFactory: factory })
+      .crear(ctx, { ...datosBase, claveIdempotencia: 'k', huellaIdempotencia: 'h-1' });
+
+    assert.equal(r.creada, false);
+  }
+});
+
+test('carrera de idempotencia con otra huella: la ganadora no se devuelve y responde 409K', async () => {
+  let consultasClave = 0;
+  const resp = {
+    ...exito(),
+    'clave_idempotencia = $2': () => {
+      consultasClave += 1;
+      return { rows: consultasClave === 1 ? [] : [{ id: 'sol-ganadora', huella_idempotencia: 'h-otra' }] };
+    },
+    'INSERT INTO solicitud (': () => { const e = new Error('duplicate key'); e.code = '23505'; throw e; },
+  };
+  const { factory } = fakeFactory(resp);
+
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory })
+      .crear(ctx, { ...datosBase, claveIdempotencia: 'k', huellaIdempotencia: 'h-mia' }),
+    (err) => err.code === 'MANI-SOL-409K'
+  );
+});
+
 for (const [name, quitar, codigo, status] of [
   ['cliente inactivo o inexistente', 'FROM cliente c JOIN usuario u', 'MANI-SOL-403C', 403],
   ['categoría no disponible', 'FROM categoria_servicio WHERE id', 'MANI-SOL-422C', 422],
@@ -116,6 +160,16 @@ for (const [name, quitar, codigo, status] of [
     assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT')));
   });
 }
+
+test('la categoría solo se acepta si está ACTIVO y es del tenant: una desactivada rechaza la solicitud nueva (SCRUM-858 C2 / SCRUM-1391)', async () => {
+  const { factory, sentencias } = fakeFactory(exito());
+
+  await new PgServiceRequestRepository({ pgPoolFactory: factory }).crear(ctx, datosBase);
+
+  const consulta = sentencias.find((s) => s.sql.includes('FROM categoria_servicio WHERE id'));
+  assert.match(consulta.sql, /tenant_id = \$2 AND estado = 'ACTIVO'/);
+  assert.deepEqual(consulta.params, ['cat', TENANT]);
+});
 
 test('un sitio que no es del cliente responde 422 MANI-SOL-422S', async () => {
   const { factory } = fakeFactory(exito());
@@ -137,4 +191,136 @@ test('otros errores de la base se propagan y revierten', async () => {
 test('sin DATABASE_URL falla cerrado con 503 y exige pgPoolFactory', async () => {
   await assert.rejects(() => new PgServiceRequestRepository({ pgPoolFactory: { getPool: () => null } }).crear(ctx, datosBase), (e) => e.statusCode === 503);
   assert.throws(() => new PgServiceRequestRepository({}), /pgPoolFactory/);
+});
+
+// HU-M07-04 (SCRUM-871): seguimiento del cliente.
+const filaSeguimiento = {
+  id: 'sol-1', estado: 'ASIGNADA', categoria: 'Plomería', zona: 'Chapinero', zona_nivel: 'LOCALIDAD', zona_padre: 'Bogotá',
+  created_at: new Date('2026-10-19T00:00:00Z'), updated_at: new Date('2026-10-20T00:00:00Z'),
+};
+
+test('SCRUM-871: lista solo las solicitudes del usuario del token en su tenant, dentro del contexto de tenant', async () => {
+  const { factory, sentencias } = fakeFactory({ 'JOIN cliente cl': { rows: [filaSeguimiento] } });
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).listarDelCliente(ctx);
+
+  const consulta = sentencias.find((s) => s.sql.includes('JOIN cliente cl'));
+  assert.match(consulta.sql, /WHERE cl\.usuario_id = \$1 AND s\.tenant_id = \$2/);
+  assert.match(consulta.sql, /cl\.tenant_id = s\.tenant_id/);
+  assert.match(consulta.sql, /ORDER BY s\.updated_at DESC, s\.id LIMIT 50/);
+  assert.deepEqual(consulta.params, [USER, TENANT]);
+  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+  assert.deepEqual(r, [{
+    id: 'sol-1',
+    estado: 'ASIGNADA',
+    categoria: 'Plomería',
+    zonaDeclarada: { nombre: 'Chapinero', nivel: 'LOCALIDAD', zonaPadre: 'Bogotá' },
+    creadaEn: filaSeguimiento.created_at,
+    actualizadaEn: filaSeguimiento.updated_at,
+  }]);
+});
+
+test('SCRUM-871: obtiene una solicitud filtrando por id, usuario y tenant; ajena o inexistente da null', async () => {
+  const conFila = fakeFactory({ 'JOIN cliente cl': { rows: [filaSeguimiento] } });
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: conFila.factory }).obtenerDelCliente(ctx, 'sol-1');
+
+  const consulta = conFila.sentencias.find((s) => s.sql.includes('JOIN cliente cl'));
+  assert.match(consulta.sql, /AND s\.id = \$3$/);
+  assert.deepEqual(consulta.params, [USER, TENANT, 'sol-1']);
+  assert.equal(r.zonaDeclarada.nombre, 'Chapinero');
+
+  const vacia = fakeFactory({ 'JOIN cliente cl': { rows: [] } });
+  assert.equal(await new PgServiceRequestRepository({ pgPoolFactory: vacia.factory }).obtenerDelCliente(ctx, 'otra'), null);
+});
+
+test('SCRUM-871: el seguimiento sin DATABASE_URL falla cerrado con 503', async () => {
+  const repo = new PgServiceRequestRepository({ pgPoolFactory: { getPool: () => null } });
+  await assert.rejects(() => repo.listarDelCliente(ctx), (e) => e.statusCode === 503);
+  await assert.rejects(() => repo.obtenerDelCliente(ctx, 'sol-1'), (e) => e.statusCode === 503);
+});
+
+// US-04.5.1 (SCRUM-877): cancelación antes de la ejecución.
+const SOL_CANCELAR = 'sol-1';
+const cancelacion = (estado, aliadoId = null) => ({
+  'FOR UPDATE OF s': { rows: [{ estado, aliado_id: aliadoId }] },
+  'JOIN cliente cl': { rows: [{ ...filaSeguimiento, estado: 'CANCELADA' }] },
+});
+
+test('SCRUM-877: cancela una PENDIENTE bloqueando la fila del cliente y deja el evento con el motivo, sin notificar', async () => {
+  const { factory, sentencias } = fakeFactory(cancelacion('PENDIENTE'));
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR, motivo: 'Ya no lo necesito' });
+
+  assert.equal(r.cancelada, true);
+  assert.equal(r.solicitud.estado, 'CANCELADA');
+  const bloqueo = sentencias.find((s) => s.sql.includes('FOR UPDATE OF s'));
+  assert.match(bloqueo.sql, /WHERE cl\.usuario_id = \$1 AND s\.tenant_id = \$2 AND s\.id = \$3/);
+  assert.deepEqual(bloqueo.params, [USER, TENANT, SOL_CANCELAR]);
+  const cambio = sentencias.find((s) => s.sql.startsWith('UPDATE solicitud'));
+  assert.match(cambio.sql, /estado = 'CANCELADA'/);
+  assert.deepEqual(cambio.params, [SOL_CANCELAR, TENANT]);
+  const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
+  assert.match(evento.sql, /'SOLICITUD_CANCELADA'/);
+  assert.deepEqual(evento.params, [TENANT, SOL_CANCELAR, USER, 'Ya no lo necesito']);
+  assert.ok(!sentencias.some((s) => s.sql.startsWith('INSERT INTO notificacion')));
+  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+});
+
+test('SCRUM-877: con aliado asignado le deja la notificación SOLICITUD_CANCELADA en su bandeja', async () => {
+  const { factory, sentencias } = fakeFactory(cancelacion('ASIGNADA', 'aliado-1'));
+
+  await new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR, motivo: null });
+
+  const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
+  assert.equal(evento.params[3], 'El cliente canceló la solicitud.');
+  const aviso = sentencias.find((s) => s.sql.startsWith('INSERT INTO notificacion'));
+  assert.match(aviso.sql, /'SOLICITUD_CANCELADA', 'PUSH'/);
+  assert.match(aviso.sql, /a\.tenant_id = \$1/);
+  assert.deepEqual(aviso.params, [TENANT, 'aliado-1', JSON.stringify({ requestId: SOL_CANCELAR })]);
+});
+
+test('SCRUM-877: se cancela desde cualquier estado anterior a la ejecución', async () => {
+  for (const estado of ['PENDIENTE', 'ASIGNADA', 'COTIZANDO', 'ACEPTADA', 'RECHAZADA']) {
+    const { factory } = fakeFactory(cancelacion(estado));
+    const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR });
+    assert.equal(r.cancelada, true, estado);
+  }
+});
+
+test('SCRUM-877: en ejecución o cerrada responde 409 MANI-SOL-409C y revierte sin escribir', async () => {
+  for (const estado of ['EN_EJECUCION', 'FINALIZADA']) {
+    const { factory, sentencias } = fakeFactory(cancelacion(estado));
+    await assert.rejects(
+      () => new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR }),
+      (e) => e.statusCode === 409 && e.code === 'MANI-SOL-409C'
+    );
+    assert.ok(!sentencias.some((s) => /^(UPDATE|INSERT)/.test(s.sql)));
+    assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
+  }
+});
+
+test('SCRUM-877: cancelar otra vez es idempotente: devuelve la solicitud sin repetir evento ni aviso', async () => {
+  const { factory, sentencias } = fakeFactory(cancelacion('CANCELADA', 'aliado-1'));
+
+  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR });
+
+  assert.equal(r.cancelada, false);
+  assert.equal(r.solicitud.estado, 'CANCELADA');
+  assert.ok(!sentencias.some((s) => /^(UPDATE|INSERT)/.test(s.sql)));
+  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+});
+
+test('SCRUM-877: una solicitud ajena, de otro tenant o inexistente responde 404 MANI-SOL-404', async () => {
+  const { factory, sentencias } = fakeFactory({ 'FOR UPDATE OF s': { rows: [] } });
+
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: 'ajena' }),
+    (e) => e.statusCode === 404 && e.code === 'MANI-SOL-404'
+  );
+  assert.ok(!sentencias.some((s) => /^(UPDATE|INSERT)/.test(s.sql)));
+});
+
+test('SCRUM-877: la cancelación sin DATABASE_URL falla cerrado con 503', async () => {
+  const repo = new PgServiceRequestRepository({ pgPoolFactory: { getPool: () => null } });
+  await assert.rejects(() => repo.cancelar(ctx, { solicitudId: SOL_CANCELAR }), (e) => e.statusCode === 503);
 });

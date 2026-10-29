@@ -1,3 +1,5 @@
+const { INSECURE_DEV_SECRET } = require('./jwtSecret');
+
 const ENVIRONMENTS = {
   development: 'DEV',
   qa: 'QA',
@@ -35,6 +37,12 @@ class ConfigurationError extends Error {
   }
 }
 
+// Entero positivo desde una variable; un valor ausente, vacío o inválido usa el de por omisión.
+function positiveIntFromEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name], 10);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
 function normalizeEnvironment(rawEnv) {
   const value = (rawEnv || 'development').trim().toLowerCase();
   if (!ENVIRONMENTS[value]) {
@@ -69,11 +77,26 @@ const config = {
   // Conexión directa a PostgreSQL (pg). Solo para operaciones que necesitan una
   // transacción real, como el reemplazo atómico de categorías del aliado (SCRUM-1071).
   databaseUrl: process.env.DATABASE_URL,
-  supabaseJwtSecret:
-    process.env.SUPABASE_JWT_SECRET || (allowInsecureDevSecret ? 'dev-jwt-secret-insecure-32chars!!' : ''),
+  // El respaldo de desarrollo es el MISMO que usa config/jwtSecret.js, que es
+  // con el que /auth/validate-token verifica para el Gateway. Cuando eran dos
+  // valores distintos, el Gateway aceptaba el token y el middleware
+  // `authenticate` de Core lo rechazaba después: toda ruta autenticada quedaba
+  // rota en local si no se fijaba SUPABASE_JWT_SECRET.
+  supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET || (allowInsecureDevSecret ? INSECURE_DEV_SECRET : ''),
   gatewayUrl: process.env.GATEWAY_URL,
   rulesServiceUrl: process.env.RULES_SERVICE_URL,
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
+  // Proveedor de notificaciones push (HU-M09-06). Hoy solo existe `mock`; otro valor detiene el arranque.
+  pushProvider: process.env.PUSH_PROVIDER || 'mock',
+  // Proveedor de pagos (HU-M11-01). Hoy solo existe `mock` (sandbox sin dinero real); otro valor detiene el arranque.
+  paymentProvider: process.env.PAYMENT_PROVIDER || 'mock',
+  // Tiempo máximo de espera de cada proveedor externo (SCRUM-1240). Las credenciales de un proveedor real también
+  // se leen aquí, desde process.env, y nunca se registran ni se devuelven.
+  pushProviderTimeoutMs: positiveIntFromEnv('PUSH_PROVIDER_TIMEOUT_MS', 5000),
+  paymentProviderTimeoutMs: positiveIntFromEnv('PAYMENT_PROVIDER_TIMEOUT_MS', 10000),
+  // Página de Flutter que recibe al usuario desde el correo de recuperación (HU-M02-10). Debe estar en la lista de
+  // redirecciones permitidas del proyecto de Supabase; sin ella el proveedor usa su Site URL.
+  passwordRecoveryRedirectUrl: process.env.PASSWORD_RECOVERY_REDIRECT_URL,
 };
 
 // Valida que las variables requeridas por el ambiente actual estén presentes.

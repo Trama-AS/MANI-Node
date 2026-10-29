@@ -5,6 +5,7 @@ const ListEligibleAlliesUseCase = require('../../../../src/application/useCases/
 const GetSolicitudContextUseCase = require('../../../../src/application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('../../../../src/application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('../../../../src/application/useCases/dispatch/ListNotificationsUseCase');
+const MockPushProvider = require('../../../../src/infrastructure/push/MockPushProvider');
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER_TENANT = '22222222-2222-4222-8222-222222222222';
@@ -16,6 +17,7 @@ const ALLY = '66666666-6666-4666-8666-666666666666';
 const client = { userId: 'u1', tenantId: TENANT, role: 'CLIENT' };
 const admin = { userId: 'u2', tenantId: TENANT, role: 'ADMIN' };
 const ally = { userId: 'u3', tenantId: TENANT, role: 'ALLY' };
+const ALLY_2 = '77777777-7777-4777-8777-777777777777';
 
 // ---- elegibilidad ----
 
@@ -23,8 +25,8 @@ function eligibleUseCase() {
   const calls = [];
   const useCase = new ListEligibleAlliesUseCase({
     elegibilidadRepository: {
-      findEligible: async (criteria) => {
-        calls.push(criteria);
+      findEligible: async (ctx, criteria) => {
+        calls.push({ ctx, ...criteria });
         return { allies: [], totalCount: 0 };
       },
     },
@@ -38,11 +40,12 @@ test('elegibilidad: el tenant sale de la sesión y aplica valores por omisión d
   await useCase.execute({ session: client, query: { categoriaId: CATEGORIA, zonaId: ZONA } });
 
   assert.deepEqual(calls[0], {
-    tenantId: TENANT, categoriaId: CATEGORIA, zonaId: ZONA, requestId: undefined, tipo: undefined, page: 1, pageSize: 20,
+    ctx: { tenantId: TENANT, userId: 'u1', role: 'CLIENT' },
+    categoriaId: CATEGORIA, zonaId: ZONA, excludeAllyIds: [], tipo: null, page: 1, pageSize: 20,
   });
 });
 
-test('elegibilidad: normaliza el tipo y propaga requestId y paginación', async () => {
+test('elegibilidad: normaliza el tipo y la paginación; requestId se acepta pero ya no filtra', async () => {
   const { useCase, calls } = eligibleUseCase();
 
   await useCase.execute({
@@ -51,9 +54,28 @@ test('elegibilidad: normaliza el tipo y propaga requestId y paginación', async 
   });
 
   assert.equal(calls[0].tipo, 'PERSONA_JURIDICA');
-  assert.equal(calls[0].requestId, SOLICITUD);
+  assert.equal(calls[0].requestId, undefined, 'los rechazos los resuelve Dispatch (excludeAllyIds)');
   assert.equal(calls[0].page, 2);
   assert.equal(calls[0].pageSize, 5);
+});
+
+test('elegibilidad: excludeAllyIds llega como lista separada por comas, sin duplicados', async () => {
+  const { useCase, calls } = eligibleUseCase();
+
+  await useCase.execute({
+    session: client,
+    query: { categoriaId: CATEGORIA, zonaId: ZONA, excludeAllyIds: ` ${ALLY}, ${ALLY_2.toUpperCase()},${ALLY} ` },
+  });
+
+  assert.deepEqual(calls[0].excludeAllyIds, [ALLY, ALLY_2]);
+});
+
+test('elegibilidad: un tipo vacío equivale a no filtrar por tipo (HU-M05-04 C2)', async () => {
+  const { useCase, calls } = eligibleUseCase();
+
+  await useCase.execute({ session: client, query: { categoriaId: CATEGORIA, zonaId: ZONA, tipo: '  ' } });
+
+  assert.equal(calls[0].tipo, null);
 });
 
 test('elegibilidad: acepta el tipo EMPLEADO_DIRECTO (SCRUM-862)', async () => {
@@ -91,6 +113,11 @@ for (const [name, query] of [
   ['page cero', { categoriaId: CATEGORIA, zonaId: ZONA, page: '0' }],
   ['pageSize mayor al máximo', { categoriaId: CATEGORIA, zonaId: ZONA, pageSize: '101' }],
   ['pageSize no numérico', { categoriaId: CATEGORIA, zonaId: ZONA, pageSize: 'abc' }],
+  ['excludeAllyIds con un id no UUID', { categoriaId: CATEGORIA, zonaId: ZONA, excludeAllyIds: `${ALLY},x` }],
+  [
+    'excludeAllyIds con más de 100 ids',
+    { categoriaId: CATEGORIA, zonaId: ZONA, excludeAllyIds: Array.from({ length: 101 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`).join(',') },
+  ],
 ]) {
   test(`elegibilidad: ${name} responde 400`, async () => {
     const { useCase, calls } = eligibleUseCase();
@@ -106,44 +133,70 @@ test('elegibilidad: exige el repositorio', () => {
 
 // ---- contexto de solicitud ----
 
-test('contexto: devuelve la solicitud del tenant de la sesión', async () => {
+const USUARIO_CLIENTE = '88888888-8888-4888-8888-888888888888';
+const USUARIO_ALIADO = '99999999-9999-4999-8999-999999999999';
+const clienteConId = { userId: USUARIO_CLIENTE, tenantId: TENANT, role: 'CLIENT' };
+const aliadoConId = { userId: USUARIO_ALIADO, tenantId: TENANT, role: 'ALLY' };
+
+test('contexto: el repositorio recibe tenant, usuario y rol de la sesión', async () => {
   const seen = [];
   const useCase = new GetSolicitudContextUseCase({
     solicitudContextRepository: {
-      findContext: async (tenantId, id) => {
-        seen.push([tenantId, id]);
-        return { id, tenantId, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PUBLICADA' };
+      findContext: async (ctx, id) => {
+        seen.push([ctx, id]);
+        return { id, tenantId: ctx.tenantId, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PENDIENTE', esMia: false };
       },
     },
   });
 
-  const context = await useCase.execute({ session: client, solicitudId: SOLICITUD });
+  const context = await useCase.execute({ session: clienteConId, solicitudId: SOLICITUD });
 
-  assert.deepEqual(seen, [[TENANT, SOLICITUD]]);
+  assert.deepEqual(seen, [[{ tenantId: TENANT, userId: USUARIO_CLIENTE, role: 'CLIENT' }, SOLICITUD]]);
   assert.equal(context.zonaId, ZONA);
 });
 
-test('contexto: solicitud inexistente o de otro tenant responde 404', async () => {
-  const useCase = new GetSolicitudContextUseCase({ solicitudContextRepository: { findContext: async () => null } });
+test('contexto: un aliado (con oferta o asignado) también lo consulta; el repositorio decide si la ve', async () => {
+  const seen = [];
+  const useCase = new GetSolicitudContextUseCase({
+    solicitudContextRepository: { findContext: async (ctx) => { seen.push(ctx.role); return { id: SOLICITUD, esMia: true }; } },
+  });
 
-  await assert.rejects(() => useCase.execute({ session: client, solicitudId: SOLICITUD }), (err) => err.statusCode === 404);
+  const context = await useCase.execute({ session: aliadoConId, solicitudId: SOLICITUD });
+
+  assert.deepEqual(seen, ['ALLY']);
+  assert.equal(context.esMia, true);
 });
 
-test('contexto: id inválido responde 400 y un aliado 403', async () => {
+test('contexto: inexistente, de otro tenant o ajena responde 404 (HU-M05-03 C2/C3)', async () => {
   const useCase = new GetSolicitudContextUseCase({ solicitudContextRepository: { findContext: async () => null } });
 
-  await assert.rejects(() => useCase.execute({ session: client, solicitudId: 'x' }), (err) => err.statusCode === 400);
-  await assert.rejects(() => useCase.execute({ session: ally, solicitudId: SOLICITUD }), (err) => err.statusCode === 403);
+  await assert.rejects(() => useCase.execute({ session: clienteConId, solicitudId: SOLICITUD }), (err) => err.statusCode === 404);
+});
+
+test('contexto: id inválido 400; sesión sin usuario UUID, sin tenant o con otro rol 403', async () => {
+  const useCase = new GetSolicitudContextUseCase({ solicitudContextRepository: { findContext: async () => null } });
+
+  await assert.rejects(() => useCase.execute({ session: clienteConId, solicitudId: 'x' }), (err) => err.statusCode === 400);
+  await assert.rejects(() => useCase.execute({ session: client, solicitudId: SOLICITUD }), (err) => err.statusCode === 403);
+  await assert.rejects(
+    () => useCase.execute({ session: { ...clienteConId, tenantId: undefined }, solicitudId: SOLICITUD }),
+    (err) => err.statusCode === 403
+  );
+  await assert.rejects(
+    () => useCase.execute({ session: { ...clienteConId, role: 'PLATFORM_ADMIN' }, solicitudId: SOLICITUD }),
+    (err) => err.statusCode === 403
+  );
 });
 
 // ---- publicar notificación ----
 
-function publishUseCase(result = { id: 'n1' }) {
+function publishUseCase(result = { id: 'n1', usuarioId: 'u-ally', nueva: true }, pushProvider = new MockPushProvider({ idFactory: () => 'x' })) {
   const calls = [];
   const useCase = new PublishNotificationUseCase({
-    notificacionRepository: { createForAlly: async (n) => { calls.push(n); return result; } },
+    notificacionRepository: { createForAlly: async (ctx, n) => { calls.push({ ...n, tenantId: ctx.tenantId }); return result; } },
+    pushProvider,
   });
-  return { useCase, calls };
+  return { useCase, calls, pushProvider };
 }
 
 const validBody = () => ({
@@ -155,9 +208,60 @@ test('publicar: crea la notificación con el tenant de la sesión', async () => 
 
   const created = await useCase.execute({ session: client, body: validBody() });
 
-  assert.deepEqual(created, { id: 'n1' });
+  assert.deepEqual(created, {
+    id: 'n1',
+    nueva: true,
+    entrega: { proveedor: 'mock', estado: 'SIMULADA', simulada: true, mensajeId: 'mock-x' },
+  });
   assert.equal(calls[0].tenantId, TENANT);
   assert.equal(calls[0].allyId, ALLY);
+});
+
+test('publicar: entrega por el proveedor push al usuario del aliado después de persistir (HU-M09-06)', async () => {
+  const { useCase, pushProvider } = publishUseCase();
+
+  await useCase.execute({ session: client, body: validBody() });
+
+  const [sent] = pushProvider.sentTo(TENANT, 'u-ally');
+  assert.equal(sent.notificacionId, 'n1');
+  assert.equal(sent.tipo, 'OFERTA_DESPACHO');
+  assert.deepEqual(sent.payload, validBody().payload);
+});
+
+test('publicar: si el proveedor push falla, la notificación queda persistida y la entrega se informa FALLIDA', async () => {
+  let intentos = 0;
+  const failing = {
+    name: 'mock',
+    simulated: true,
+    send: async () => {
+      intentos += 1;
+      throw new Error('proveedor caído');
+    },
+  };
+  const { useCase, calls } = publishUseCase(undefined, failing);
+
+  const created = await useCase.execute({ session: client, body: validBody() });
+
+  assert.equal(calls.length, 1);
+  // SCRUM-1240: un fallo pasajero se reintenta dos veces (tres intentos) antes de informar FALLIDA.
+  assert.equal(intentos, 3);
+  assert.deepEqual(created, { id: 'n1', nueva: true, entrega: { proveedor: 'mock', estado: 'FALLIDA', simulada: true } });
+});
+
+test('publicar: una oferta que ya existía (reintento de la orquestación) no repite el push', async () => {
+  const { useCase, pushProvider } = publishUseCase({ id: 'n1', usuarioId: 'u-ally', nueva: false });
+
+  const created = await useCase.execute({ session: client, body: validBody() });
+
+  assert.deepEqual(created, { id: 'n1', nueva: false, entrega: null });
+  assert.deepEqual(pushProvider.sentTo(TENANT, 'u-ally'), []);
+});
+
+test('publicar: un aliado inexistente no llega al proveedor push', async () => {
+  const { useCase, pushProvider } = publishUseCase(null);
+
+  await assert.rejects(() => useCase.execute({ session: client, body: validBody() }), (err) => err.statusCode === 404);
+  assert.equal(pushProvider.sent.length, 0);
 });
 
 test('publicar: un tenant distinto en el cuerpo es cross-tenant (403) y no escribe', async () => {
@@ -175,7 +279,7 @@ test('publicar: el mismo tenant en el cuerpo se acepta', async () => {
 
   const created = await useCase.execute({ session: client, body: { ...validBody(), tenantId: TENANT } });
 
-  assert.deepEqual(created, { id: 'n1' });
+  assert.equal(created.id, 'n1');
   assert.equal(calls.length, 1);
 });
 
@@ -212,6 +316,7 @@ for (const [name, mutate] of [
 
 test('publicar: exige el repositorio', () => {
   assert.throws(() => new PublishNotificationUseCase({}), /notificacionRepository/);
+  assert.throws(() => new PublishNotificationUseCase({ notificacionRepository: {} }), /pushProvider/);
 });
 
 // ---- listar notificaciones ----
@@ -233,7 +338,7 @@ test('listar: devuelve los payloads con timestamp de envío cuando falta', async
 
   const offers = await useCase.execute({ session: admin, query: { requestId: SOLICITUD } });
 
-  assert.deepEqual(seen, [[TENANT, SOLICITUD, 'OFERTA_DESPACHO']]);
+  assert.deepEqual(seen, [[{ tenantId: TENANT, userId: 'u2', role: 'ADMIN' }, SOLICITUD, 'OFERTA_DESPACHO']]);
   assert.equal(offers[0].timestamp, '2026-10-18T10:00:00.000Z');
   assert.equal(offers[1].timestamp, 'propio');
 });

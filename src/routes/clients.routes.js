@@ -10,5 +10,6 @@ router.use(authenticate);
 router.post('/company', clientsController.registerCompany);
 router.post('/:id/sites', clientsController.addSite);
 router.get('/:id/sites', clientsController.getSites);
+router.patch('/:id/sites/:siteId', clientsController.updateSite);
 
 module.exports = router;
