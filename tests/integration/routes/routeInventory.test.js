@@ -85,9 +85,9 @@ const RUTAS_PREVIAS = [
   'POST /api/v1/clients/:id/sites [addSite]',
   'GET /api/v1/clients/:id/sites [getSites]',
   'PATCH /api/v1/clients/:id/sites/:siteId [updateSite]',
-  'POST /api/v1/allies/employees [authenticate,<anonymous>,registerDirectEmployee]',
-  'POST /api/v1/allies/direct-employees [authenticate,<anonymous>,registerDirectEmployee]',
-  'POST /api/v1/admin/employees [authenticate,<anonymous>,registerDirectEmployee]',
+  'POST /api/v1/allies/employees [authenticate,<anonymous>,recibirDocumento,registerDirectEmployee]',
+  'POST /api/v1/allies/direct-employees [authenticate,<anonymous>,recibirDocumento,registerDirectEmployee]',
+  'POST /api/v1/admin/employees [authenticate,<anonymous>,recibirDocumento,registerDirectEmployee]',
   '_ALL /auth/validate-token [<anonymous>]',
   'POST /auth/dev-token [<anonymous>]',
   'POST /auth/register/ally [multerMiddleware,registerAllyNaturalPerson]',
@@ -163,9 +163,9 @@ const RUTAS_PREVIAS = [
   'POST /clients/:id/sites [addSite]',
   'GET /clients/:id/sites [getSites]',
   'PATCH /clients/:id/sites/:siteId [updateSite]',
-  'POST /allies/employees [authenticate,<anonymous>,registerDirectEmployee]',
-  'POST /allies/direct-employees [authenticate,<anonymous>,registerDirectEmployee]',
-  'POST /admin/employees [authenticate,<anonymous>,registerDirectEmployee]',
+  'POST /allies/employees [authenticate,<anonymous>,recibirDocumento,registerDirectEmployee]',
+  'POST /allies/direct-employees [authenticate,<anonymous>,recibirDocumento,registerDirectEmployee]',
+  'POST /admin/employees [authenticate,<anonymous>,recibirDocumento,registerDirectEmployee]',
 ];
 
 // Express 4 compila el prefijo de router.use() a una regex como /^\/api\/v1\/?(?=\/|$)/i.

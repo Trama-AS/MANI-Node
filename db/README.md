@@ -43,8 +43,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0023`** | [`0023_adicion_servicio.sql`](migrations/0023_adicion_servicio.sql) | `SCRUM-872` | Tabla `adicion_servicio` con `tenant_id` y RLS: adición por imprevisto que pide el aliado asignado durante la ejecución (RF-34). Una sola adición `PENDIENTE` por solicitud (índice único parcial) y `CHECK` con las reglas del contrato (motivo de 10 a 500 caracteres, importes no negativos con al menos uno mayor que cero). El total vigente del servicio (cotización aceptada + adiciones aceptadas) es el que cobra el pago de la `0015`. |
 | **`0024`** | [`0024_cobertura_aliado_unica.sql`](migrations/0024_cobertura_aliado_unica.sql) | `SCRUM-1380` | `cobertura_aliado`: elimina duplicados previos y crea el índice único `(aliado_id, zona_id)` (la declaración reemplaza el conjunto con `ON CONFLICT DO NOTHING`), índice `(tenant_id, zona_id)` y disparador que exige aliado del mismo tenant. La tabla ya tenía `tenant_id`, RLS y GRANT desde la `0007`. |
 | **`0025`** | [`0025_solicitud_rechazo_motivo_obligatorio.sql`](migrations/0025_solicitud_rechazo_motivo_obligatorio.sql) | `SCRUM-1617` | `solicitud_rechazo`: columna `detalle` (texto de «Otro», 3 a 280 caracteres) y dos `CHECK` `NOT VALID` para filas nuevas: el motivo es obligatorio y «Otro» exige detalle (los demás motivos no lo llevan). Los rechazos previos con motivo NULL se conservan sin inventarles uno. Decisión del PO del 27-oct-2026. |
+| **`0026`** | [`0026_documento_kyc_alta_admin_empleado_directo.sql`](migrations/0026_documento_kyc_alta_admin_empleado_directo.sql) | `SCRUM-1376` | `documento_kyc`: política de INSERT para el administrador del tenant, limitada a su tenant y a aliados `EMPLEADO_DIRECTO`, para subir la copia del documento de identidad del empleado (RF-05). La tabla ya tenía `tenant_id`, RLS y GRANT desde la `0007`. |
 
-La siguiente migración libre es la **`0025`**.
+La siguiente migración libre es la **`0027`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
