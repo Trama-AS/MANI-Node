@@ -52,7 +52,7 @@ test('elegibilidad: corre con el contexto del tenant, una sola consulta, y mapea
   });
 
   assert.deepEqual(result, {
-    allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO' }],
+    allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO', calificacionPromedio: null, totalCalificaciones: 0, etiquetaCalificacion: 'Sin valorar' }],
     totalCount: 3,
   });
   assert.deepEqual(contextoFijado(sentencias), [TENANT, USER, 'cliente']);

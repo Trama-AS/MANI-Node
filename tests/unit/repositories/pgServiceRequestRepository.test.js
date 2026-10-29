@@ -258,7 +258,7 @@ test('SCRUM-877: cancela una PENDIENTE bloqueando la fila del cliente y deja el 
   assert.deepEqual(bloqueo.params, [USER, TENANT, SOL_CANCELAR]);
   const cambio = sentencias.find((s) => s.sql.startsWith('UPDATE solicitud'));
   assert.match(cambio.sql, /estado = 'CANCELADA'/);
-  assert.deepEqual(cambio.params, [SOL_CANCELAR, TENANT]);
+  assert.deepEqual(cambio.params, [SOL_CANCELAR, TENANT, false, 0, 'SIN_POLITICA_VIGENTE']);
   const evento = sentencias.find((s) => s.sql.startsWith('INSERT INTO evento_servicio'));
   assert.match(evento.sql, /'SOLICITUD_CANCELADA'/);
   assert.deepEqual(evento.params, [TENANT, SOL_CANCELAR, USER, 'Ya no lo necesito']);
