@@ -102,5 +102,5 @@ test('PG Módulo M-08: flujo completo contra PostgreSQL real', opts, async (t) =
   assert.equal(prev.solicitudId, solicitud);
 
   const cierre = await repo.cerrarSolicitud(ctxCli, solicitud);
-  assert.equal(cierre.cierreCompleto, true);
+  assert.equal(cierre.cierre.cierreCompleto, true);
 });
