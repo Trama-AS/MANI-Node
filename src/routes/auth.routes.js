@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const authController = require('../controllers/auth.controller');
 const { authenticate } = require('../middlewares/auth.middleware');
 const { resolveJwtSecret, isDevTokenEnabled } = require('../config/jwtSecret');
-const JwtVerifier = require('../infrastructure/security/JwtVerifier');
+const TokenService = require('../infrastructure/security/TokenService');
 
 // Whitelist de documentos KYC que acepta el contrato (docs/openapi/core.yaml)
 const ALLOWED_DOCUMENT_FIELDS = ['cedula_ciudadania', 'rut_certificado'];
@@ -53,7 +53,15 @@ function reject(res, status, error, message, correlationId) {
  */
 function createAuthRouter(env = process.env, deps = {}) {
   const jwtSecret = resolveJwtSecret(env);
-  const jwtVerifier = deps.jwtVerifier || new JwtVerifier({ jwtSecret, supabaseUrl: env.SUPABASE_URL });
+  const tokenService =
+    deps.tokenService ||
+    new TokenService({
+      jwtSecret,
+      supabaseUrl: env.SUPABASE_URL,
+      jwks: deps.jwks,
+      issuer: deps.issuer,
+      verifier: deps.jwtVerifier,
+    });
   const router = Router();
 
   /**
@@ -70,58 +78,27 @@ function createAuthRouter(env = process.env, deps = {}) {
     const authHeader = req.headers.authorization;
     const correlationId = req.headers['x-correlation-id'] || 'none';
 
-    if (!authHeader) {
-      return reject(res, 401, 'UNAUTHORIZED', 'Encabezado Authorization requerido', correlationId);
-    }
-
-    const parts = authHeader.trim().split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      return reject(res, 401, 'UNAUTHORIZED', 'Formato de token inválido. Debe ser: Bearer <token>', correlationId);
-    }
-
-    let decoded;
     try {
-      decoded = await jwtVerifier.verify(parts[1]);
-    } catch (verifyErr) {
-      // JwtVerificationError trae TOKEN_EXPIRED | INVALID_SIGNATURE | INVALID_TOKEN;
-      // cualquier otro fallo inesperado también se rechaza (falla cerrado).
-      const code = verifyErr.name === 'JwtVerificationError' ? verifyErr.code : 'INVALID_TOKEN';
-      const message = verifyErr.name === 'JwtVerificationError' ? verifyErr.message : 'Token de autenticación inválido';
+      const validated = await tokenService.validateToken(authHeader);
+
+      // Inyectar claims validados en los encabezados de respuesta
+      // para que NGINX los capture con auth_request_set y los propague
+      res.setHeader('X-Tenant-Id', validated.tenantId);
+      res.setHeader('X-User-Role', validated.role);
+      res.setHeader('X-User-Id', validated.userId);
+
+      return res.status(200).json({
+        valid: true,
+        userId: validated.userId,
+        tenantId: validated.tenantId,
+        role: validated.role,
+        correlationId,
+      });
+    } catch (err) {
+      const code = err.code || 'INVALID_TOKEN';
+      const message = err.message || 'Token de autenticación inválido';
       return reject(res, 401, code, message, correlationId);
     }
-
-    const appMetadata = decoded.app_metadata && typeof decoded.app_metadata === 'object' ? decoded.app_metadata : {};
-    const tenantId = appMetadata.tenant_id;
-    const userRole = appMetadata.user_role;
-    const userId = decoded.sub;
-
-    // CFG-22: Una petición sin tenant válido se rechaza en el Gateway
-    if (!isNonEmptyString(tenantId)) {
-      return reject(
-        res,
-        401,
-        'MISSING_TENANT_CLAIM',
-        'Token de autenticación no contiene el claim obligatorio app_metadata.tenant_id',
-        correlationId
-      );
-    }
-    if (!isNonEmptyString(userId) || !isNonEmptyString(userRole)) {
-      return reject(
-        res,
-        401,
-        'INVALID_TOKEN',
-        'Token de autenticación no contiene los claims obligatorios sub y app_metadata.user_role',
-        correlationId
-      );
-    }
-
-    // Inyectar claims validados en los encabezados de respuesta
-    // para que NGINX los capture con auth_request_set y los propague
-    res.setHeader('X-Tenant-Id', tenantId);
-    res.setHeader('X-User-Role', userRole);
-    res.setHeader('X-User-Id', userId);
-
-    return res.status(200).json({ valid: true, userId, tenantId, role: userRole, correlationId });
   });
 
   /**
