@@ -64,6 +64,9 @@ for (const [caso, body, file] of [
   ['evidencia como URL', { observacion: 'Foto', fotoUrl: 'http://x/y.png' }, null],
   ['evidencia que no es imagen', { observacion: 'Foto' }, { ...foto, mimetype: 'application/pdf' }],
   ['clave que no es UUID', { observacion: 'Foto', claveIdempotencia: 'abc' }, null],
+  ['hora de captura que no es fecha', { observacion: 'Foto', ocurridoEn: 'ayer' }, null],
+  ['hora de captura sin zona horaria', { observacion: 'Foto', ocurridoEn: '2026-10-28T10:15:00' }, null],
+  ['hora de captura imposible', { observacion: 'Foto', ocurridoEn: '2026-13-40T10:15:00Z' }, null],
 ]) {
   test(`C2: ${caso} → 400 MANI-EVT-400 sin subir ni registrar`, async () => {
     const { calls, uc } = dobles();
@@ -75,6 +78,20 @@ for (const [caso, body, file] of [
     assert.equal(calls.subidas.length, 0);
   });
 }
+
+test('SCRUM-873: la hora de captura llega al repositorio como fecha; sin ella va null y Core pone la del servidor', async () => {
+  const { calls, uc } = dobles();
+  await uc.registrar({
+    user: aliado,
+    solicitudId: SOLICITUD,
+    body: { observacion: 'Sin señal', claveIdempotencia: CLAVE, ocurridoEn: ' 2026-10-28T10:15:30.120-05:00 ' },
+  });
+  await uc.registrar({ user: aliado, solicitudId: SOLICITUD, body: { observacion: 'En línea', ocurridoEn: '' } });
+
+  assert.ok(calls.registrar[0].datos.ocurridoEn instanceof Date);
+  assert.equal(calls.registrar[0].datos.ocurridoEn.toISOString(), '2026-10-28T15:15:30.120Z');
+  assert.equal(calls.registrar[1].datos.ocurridoEn, null);
+});
 
 test('si el registro falla, la foto subida se borra y el error se propaga', async () => {
   const { calls, uc } = dobles({ falla: new ConflictError('MANI-EVT-409E: x', 'MANI-EVT-409E') });
