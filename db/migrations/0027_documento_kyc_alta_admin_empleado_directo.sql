@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0026 (Core Node) — Alta de la copia del documento de identidad del empleado directo (SCRUM-1376)
+-- Migración 0027 (Core Node) — Alta de la copia del documento de identidad del empleado directo (SCRUM-1376)
 -- =====================================================================
 -- Decisión del PO (26-oct-2026, RF-05): el administrador del tenant registra al empleado directo y sube la copia de su
 -- documento de identidad. La política `documento_kyc_alta` (0007) solo deja insertar al propio aliado
@@ -25,5 +25,5 @@ CREATE POLICY documento_kyc_alta_admin_empleado_directo ON documento_kyc
     );
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0026', 'SCRUM-1376 documento_kyc: alta de la copia del documento por el administrador solo para EMPLEADO_DIRECTO')
+VALUES ('0027', 'SCRUM-1376 documento_kyc: alta de la copia del documento por el administrador solo para EMPLEADO_DIRECTO')
 ON CONFLICT (version) DO NOTHING;
