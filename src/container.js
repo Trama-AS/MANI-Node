@@ -100,6 +100,8 @@ const { createPaymentProvider } = require('./infrastructure/payments/createPayme
 const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
 const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
 const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgDirectEmployeeRepository = require('./infrastructure/repositories/PgDirectEmployeeRepository');
+const ComposedDirectEmployeeRepository = require('./infrastructure/repositories/ComposedDirectEmployeeRepository');
 const PgTransactionAuditRepository = require('./infrastructure/repositories/PgTransactionAuditRepository');
 const TransactionAuditUseCase = require('./application/useCases/audit/TransactionAuditUseCase');
 const PgMessageRepository = require('./infrastructure/repositories/PgMessageRepository');
@@ -517,12 +519,22 @@ class Container {
       documentoKycRepository: this.documentoKycRepository,
     });
 
+    // Con DATABASE_URL el registro del empleado directo es una transacción real bajo RLS como mani_core_svc (SCRUM-1376).
+    this.directEmployeeRepository = this.pgPoolFactory.isConfigured()
+      ? new PgDirectEmployeeRepository({ pgPoolFactory: this.pgPoolFactory })
+      : new ComposedDirectEmployeeRepository({
+          usuarioRepository: this.usuarioRepository,
+          aliadoRepository: this.aliadoRepository,
+          aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+          documentoKycRepository: this.documentoKycRepository,
+        });
     this.registerDirectEmployeeUseCase = new RegisterDirectEmployeeUseCase({
       tenantRepository: this.tenantRepository,
       catalogRepository: this.catalogRepository,
       usuarioRepository: this.usuarioRepository,
       aliadoRepository: this.aliadoRepository,
-      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      directEmployeeRepository: this.directEmployeeRepository,
+      fileStorageService: this.fileStorageService,
       authIdentityService: this.authIdentityService,
     });
 

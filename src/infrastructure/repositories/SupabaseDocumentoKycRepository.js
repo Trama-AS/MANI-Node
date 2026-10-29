@@ -19,7 +19,7 @@ class SupabaseDocumentoKycRepository extends IDocumentoKycRepository {
       aliado_id: aliadoId,
       tipo_documento: d.tipoDocumento,
       ruta_storage: d.rutaStorage,
-      estado: 'PENDIENTE',
+      estado: d.estado || 'PENDIENTE',
     }));
 
     const { data, error } = await client.from('documento_kyc').insert(rows).select();

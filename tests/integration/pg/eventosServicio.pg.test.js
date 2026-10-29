@@ -92,3 +92,64 @@ test('PG eventos: fuera de la ejecución no se registra (C2)', opts, async (t) =
   const n = await pool.query('SELECT count(*)::int AS n FROM evento_servicio WHERE solicitud_id = $1', [s.solicitud]);
   assert.equal(n.rows[0].n, 0);
 });
+
+// SCRUM-873: marca de inicio o fin con una hora dada, como la deja SCRUM-868.
+async function marcar(pool, s, tipo, hora) {
+  await pool.query(
+    'INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, timestamp) VALUES ($1, $2, $3, $4, $5)',
+    [s.tenant, s.solicitud, s.usuarioAliado, tipo, hora]
+  );
+}
+
+test('PG eventos sin conexión: la hora de captura es la oficial y debe caer dentro de la ejecución (SCRUM-873)', opts, async (t) => {
+  const factory = new PgPoolFactory({ databaseUrl: url });
+  t.after(() => factory.close());
+  const pool = factory.getPool();
+  const repo = new PgServiceEventRepository({ pgPoolFactory: factory });
+  const minutos = (n) => new Date(Date.now() + n * 60 * 1000);
+  const datos = (s, extra) => ({ solicitudId: s.solicitud, tipo: 'EJECUCION_AVANCE', observacion: 'Sin señal', evidenciaRuta: null, claveIdempotencia: null, ...extra });
+
+  // En ejecución: se guarda la hora de captura y la bitácora se ordena por ella, no por la llegada.
+  const s = await seed(pool);
+  const aliado = { tenantId: s.tenant, userId: s.usuarioAliado, role: 'ALLY' };
+  await marcar(pool, s, 'INICIO_EJECUCION', minutos(-120));
+  await repo.registrar(aliado, datos(s, { observacion: 'En línea' }));
+  const tomado = minutos(-90);
+  const offline = await repo.registrar(aliado, datos(s, { observacion: 'Tomado sin señal', ocurridoEn: tomado, claveIdempotencia: uuid() }));
+  assert.equal(offline.evento.ocurridoEn.getTime(), tomado.getTime());
+  assert.ok(offline.evento.registradoEn > tomado);
+  const lista = await repo.listar({ tenantId: s.tenant, userId: s.usuarioCliente, role: 'CLIENT' }, s.solicitud);
+  assert.deepEqual(lista.map((e) => e.descripcion ?? e.tipo).slice(-2), ['Tomado sin señal', 'En línea']);
+  // Los eventos sin hora de captura muestran la de registro.
+  assert.ok(lista.every((e) => e.ocurridoEn instanceof Date));
+
+  // Antes del inicio o en el futuro no entra.
+  await assert.rejects(repo.registrar(aliado, datos(s, { ocurridoEn: minutos(-180) })), { code: 'MANI-EVT-409T' });
+  await assert.rejects(repo.registrar(aliado, datos(s, { ocurridoEn: minutos(30) })), { code: 'MANI-EVT-400F' });
+  // Dentro de la tolerancia del reloj del teléfono sí entra.
+  await repo.registrar(aliado, datos(s, { ocurridoEn: minutos(2) }));
+
+  // Finalizado: entra lo tomado entre inicio y fin aunque llegue después; lo tomado tras el fin no.
+  const f = await seed(pool, 'FINALIZADA');
+  const aliadoF = { tenantId: f.tenant, userId: f.usuarioAliado, role: 'ALLY' };
+  await marcar(pool, f, 'INICIO_EJECUCION', minutos(-120));
+  await marcar(pool, f, 'FIN_EJECUCION', minutos(-60));
+  const tarde = await repo.registrar(aliadoF, datos(f, { ocurridoEn: minutos(-70), claveIdempotencia: uuid() }));
+  assert.equal(tarde.creado, true);
+  await assert.rejects(repo.registrar(aliadoF, datos(f, { ocurridoEn: minutos(-30) })), { code: 'MANI-EVT-409T' });
+  // Sin hora de captura sigue la regla de la 869: solo en ejecución.
+  await assert.rejects(repo.registrar(aliadoF, datos(f)), { code: 'MANI-EVT-409E' });
+
+  // Cancelado: nunca, aunque la hora caiga dentro de lo que se alcanzó a ejecutar.
+  const c = await seed(pool, 'CANCELADA');
+  await marcar(pool, c, 'INICIO_EJECUCION', minutos(-120));
+  await assert.rejects(
+    repo.registrar({ tenantId: c.tenant, userId: c.usuarioAliado, role: 'ALLY' }, datos(c, { ocurridoEn: minutos(-100) })),
+    { code: 'MANI-EVT-409E' }
+  );
+  const n = await pool.query(
+    "SELECT count(*)::int AS n FROM evento_servicio WHERE solicitud_id = ANY($1) AND tipo_evento LIKE 'EJECUCION_%'",
+    [[f.solicitud, c.solicitud]]
+  );
+  assert.equal(n.rows[0].n, 1);
+});

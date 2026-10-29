@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0026 (Core Node) — Módulo M-08: Calificación bidireccional,
+-- Migración 0028 (Core Node) — Módulo M-08: Calificación bidireccional,
 -- cierre condicionado e historial / penalización por cancelación tardía
 -- (SCRUM-1418, SCRUM-874, SCRUM-875, SCRUM-876, SCRUM-878, SCRUM-879, SCRUM-880)
 -- =====================================================================
@@ -105,5 +105,5 @@ BEGIN
 END $$;
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0026', 'SCRUM-1418/874/875/876/878/879/880 modulo M-08 calificacion bidireccional, cierre condicionado, penalizacion cancelacion tardia e historial')
+VALUES ('0028', 'SCRUM-1418/874/875/876/878/879/880 modulo M-08 calificacion bidireccional, cierre condicionado, penalizacion cancelacion tardia e historial')
 ON CONFLICT (version) DO NOTHING;
