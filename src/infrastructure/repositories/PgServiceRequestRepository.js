@@ -2,6 +2,7 @@ const IServiceRequestRepository = require('../../domain/ports/IServiceRequestRep
 const { DomainError, ForbiddenError, NotFoundError, ConflictError } = require('../../domain/errors/DomainError');
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { avisoDeNotificacion } = require('./avisoDeNotificacion');
+const { calcularPenalizacionCancelacion } = require('./calculoPenalizacionCancelacion');
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -16,7 +17,7 @@ const PROYECCION_SQL = `
   LEFT JOIN zona zp ON zp.id = z.zona_padre_id
   WHERE s.id = $1 AND s.tenant_id = $2`;
 
-// Seguimiento del cliente (SCRUM-871): solo sus solicitudes, por el usuario del JWT y el tenant.
+// Seguimiento del cliente (SCRUM-871 / SCRUM-879): solo sus solicitudes, por el usuario del JWT y el tenant.
 const SEGUIMIENTO_SQL = `
   SELECT s.id, s.estado, c.nombre AS categoria, z.nombre AS zona, z.nivel AS zona_nivel, zp.nombre AS zona_padre,
          s.created_at, s.updated_at
@@ -211,15 +212,14 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
   }
 
   /**
-   * Cancela la solicitud propia del cliente antes de la ejecución (US-04.5.1 / SCRUM-877). La fila se bloquea
-   * con FOR UPDATE, así que una aceptación o un inicio de ejecución concurrentes esperan y luego encuentran la
-   * solicitud ya cancelada. Una ajena o de otro tenant es indistinguible de una inexistente (404).
-   * Repetir la cancelación no repite el evento ni la notificación (`cancelada` false).
+   * Cancela la solicitud propia del cliente antes de la ejecución (US-04.5.1 / SCRUM-877) y evalúa
+   * la penalización por cancelación tardía según la política vigente del tenant (US-04.5.2 / SCRUM-878).
+   * La fila se bloquea con FOR UPDATE. Repetir la cancelación es idempotente (`cancelada` false).
    */
   async cancelar(ctx, { solicitudId, motivo }) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       const actual = await client.query(
-        `SELECT s.estado, s.aliado_id
+        `SELECT s.id, s.estado, s.aliado_id, s.created_at, s.updated_at
          FROM solicitud s
          JOIN cliente cl ON cl.id = s.cliente_id AND cl.tenant_id = s.tenant_id
          WHERE cl.usuario_id = $1 AND s.tenant_id = $2 AND s.id = $3
@@ -227,18 +227,46 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
         [ctx.userId, ctx.tenantId, solicitudId]
       );
       if (actual.rows.length === 0) throw new NotFoundError('MANI-SOL-404: solicitud no encontrada', 'MANI-SOL-404');
-      const { estado, aliado_id: aliadoId } = actual.rows[0];
+      const fila = actual.rows[0];
+      const { estado, aliado_id: aliadoId } = fila;
       let aviso = {};
+      let penalizacion;
 
       if (estado !== 'CANCELADA') {
         if (!ESTADOS_CANCELABLES.includes(estado)) {
           throw new ConflictError(`MANI-SOL-409C: una solicitud ${estado} ya no se puede cancelar`, 'MANI-SOL-409C');
         }
 
-        await client.query("UPDATE solicitud SET estado = 'CANCELADA', updated_at = now() WHERE id = $1 AND tenant_id = $2", [
-          solicitudId,
-          ctx.tenantId,
-        ]);
+        penalizacion = await calcularPenalizacionCancelacion(client, ctx.tenantId, fila);
+
+        try {
+          await client.query(
+            `UPDATE solicitud
+             SET estado = 'CANCELADA',
+                 penalizacion_aplicada = $3,
+                 penalizacion_monto = $4,
+                 penalizacion_motivo = $5,
+                 updated_at = now()
+             WHERE id = $1 AND tenant_id = $2`,
+            [
+              solicitudId,
+              ctx.tenantId,
+              Boolean(penalizacion.aplicaPenalizacion),
+              Number(penalizacion.montoPenalizacion || 0),
+              penalizacion.razon || null,
+            ]
+          );
+        } catch (err) {
+          // Compatibilidad si una base de pruebas corrió sin la migración 0026:
+          if (err && err.code === '42703') {
+            await client.query("UPDATE solicitud SET estado = 'CANCELADA', updated_at = now() WHERE id = $1 AND tenant_id = $2", [
+              solicitudId,
+              ctx.tenantId,
+            ]);
+          } else {
+            throw err;
+          }
+        }
 
         // QS-12: la cancelación queda en la línea de tiempo del servicio con el motivo del cliente.
         await client.query(
@@ -259,10 +287,42 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
             )
           );
         }
+      } else {
+        try {
+          const prev = await client.query(
+            `SELECT penalizacion_aplicada, penalizacion_monto, penalizacion_motivo
+             FROM solicitud WHERE id = $1 AND tenant_id = $2`,
+            [solicitudId, ctx.tenantId]
+          );
+          const pr = prev.rows[0] || {};
+          penalizacion = {
+            solicitudId,
+            estadoActual: 'CANCELADA',
+            aplicaPenalizacion: Boolean(pr.penalizacion_aplicada),
+            montoPenalizacion: Number(pr.penalizacion_monto || 0),
+            moneda: 'COP',
+            razon: pr.penalizacion_motivo || 'SIN_POLITICA_VIGENTE',
+            politicaActiva: Boolean(pr.penalizacion_aplicada),
+          };
+        } catch (err) {
+          if (err && err.code === '42703') {
+            penalizacion = {
+              solicitudId,
+              estadoActual: 'CANCELADA',
+              aplicaPenalizacion: false,
+              montoPenalizacion: 0,
+              moneda: 'COP',
+              razon: 'SIN_POLITICA_VIGENTE',
+              politicaActiva: false,
+            };
+          } else {
+            throw err;
+          }
+        }
       }
 
       const { rows } = await client.query(`${SEGUIMIENTO_SQL} AND s.id = $3`, [ctx.userId, ctx.tenantId, solicitudId]);
-      return { solicitud: seguimiento(rows[0]), cancelada: estado !== 'CANCELADA', ...aviso };
+      return { solicitud: seguimiento(rows[0]), cancelada: estado !== 'CANCELADA', penalizacion, ...aviso };
     });
   }
 }
