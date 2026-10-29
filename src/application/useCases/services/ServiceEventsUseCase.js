@@ -5,6 +5,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MIMES_IMAGEN = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MIN_OBSERVACION = 3;
 const MAX_OBSERVACION = 2000;
+// SCRUM-873: la hora de captura llega en ISO 8601 con zona horaria, para que no dependa de la del servidor.
+const ISO_CON_ZONA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/;
 // La URL de la evidencia vence pronto: se pide cada vez que el usuario la abre (SCRUM-870).
 const SEGUNDOS_URL_EVIDENCIA = 300;
 
@@ -28,6 +30,16 @@ function solicitudIdValido(valor) {
   return String(valor);
 }
 
+function horaDeCaptura(valor) {
+  if (valor === undefined || valor === null || valor === '') return null;
+  const texto = String(valor).trim();
+  const fecha = new Date(texto);
+  if (!ISO_CON_ZONA.test(texto) || Number.isNaN(fecha.getTime())) {
+    throw invalido('ocurridoEn debe ser una fecha ISO 8601 con zona horaria');
+  }
+  return fecha;
+}
+
 function nombreSeguro(value) {
   return String(value || 'evidencia.jpg')
     .normalize('NFKD')
@@ -36,7 +48,8 @@ function nombreSeguro(value) {
 
 /**
  * US-04.3.2 (SCRUM-869, RF-18): el aliado asignado registra eventos durante la ejecución (tipo, observación y
- * evidencia opcional), y el cliente dueño y ese aliado consultan la secuencia. La hora y el autor los pone Core.
+ * evidencia opcional), y el cliente dueño y ese aliado consultan la secuencia. El autor lo pone Core; la hora también,
+ * salvo la de captura de un evento tomado sin conexión (SCRUM-873), que Core valida contra la ejecución.
  * La evidencia solo entra como archivo: una URL en el cuerpo se rechaza (ADR-0032 §6).
  */
 class ServiceEventsUseCase {
@@ -68,6 +81,7 @@ class ServiceEventsUseCase {
     }
     const clave = body.claveIdempotencia ? String(body.claveIdempotencia) : null;
     if (clave && !UUID_RE.test(clave)) throw invalido('la clave de idempotencia no es un UUID');
+    const ocurridoEn = horaDeCaptura(body.ocurridoEn);
 
     // La foto se sube antes de la transacción; si el registro falla o era un reintento, se borra.
     let evidenciaRuta = null;
@@ -87,6 +101,7 @@ class ServiceEventsUseCase {
         observacion,
         evidenciaRuta,
         claveIdempotencia: clave,
+        ocurridoEn,
       });
       if (!resultado.creado) await this.descartar(evidenciaRuta);
       return resultado;

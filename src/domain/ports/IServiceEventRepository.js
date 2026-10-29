@@ -6,7 +6,8 @@ class IServiceEventRepository {
   /**
    * @param {{ tenantId: string, userId: string, role: string }} _ctx contexto verificado
    * @param {{ solicitudId: string, tipo: string, observacion: string, evidenciaRuta: string|null,
-   *           claveIdempotencia: string|null }} _datos
+   *           claveIdempotencia: string|null, ocurridoEn?: Date|null }} _datos `ocurridoEn` es la hora de
+   *           captura de un evento tomado sin conexión (SCRUM-873); sin ella, Core usa la hora del servidor
    * @returns {Promise<{ evento: object, creado: boolean }>} `creado` es false si la clave ya estaba registrada
    */
   async registrar(_ctx, _datos) {
@@ -16,7 +17,7 @@ class IServiceEventRepository {
   /**
    * @param {{ tenantId: string, userId: string, role: string }} _ctx contexto verificado
    * @param {string} _solicitudId
-   * @returns {Promise<object[]>} eventos de la solicitud del más antiguo al más reciente
+   * @returns {Promise<object[]>} eventos de la solicitud del más antiguo al más reciente por hora de captura
    */
   async listar(_ctx, _solicitudId) {
     throw new Error('Método listar() no implementado en IServiceEventRepository');
