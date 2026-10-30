@@ -9,5 +9,8 @@ const router = Router();
 // podía enumerar todas las empresas; ahora exige autenticación y el permiso explícito PLATFORM_ADMIN, que ningún rol
 // de tenant (ni siquiera admin_tenant) incluye. Cada persona ve el nombre de su propio tenant en GET /profiles/me.
 router.get('/tenants', authenticate, requireRole('PLATFORM_ADMIN'), tenantsController.listTenants);
+// SCRUM-901: habilitar, suspender o inactivar un tenant, con motivo y registro del cambio. Mismo permiso explícito.
+router.patch('/tenants/:id/estado', authenticate, requireRole('PLATFORM_ADMIN'), tenantsController.changeTenantStatus);
+router.get('/tenants/:id/estado/historial', authenticate, requireRole('PLATFORM_ADMIN'), tenantsController.getTenantStatusHistory);
 
 module.exports = router;

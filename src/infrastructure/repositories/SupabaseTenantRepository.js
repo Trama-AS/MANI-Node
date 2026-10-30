@@ -2,7 +2,8 @@ const ITenantRepository = require('../../domain/ports/ITenantRepository');
 const Tenant = require('../../domain/entities/Tenant');
 const { DomainError } = require('../../domain/errors/DomainError');
 
-const ESTADO_FROM_DB = { ACTIVO: 'ACTIVE', INACTIVO: 'INACTIVE' };
+// SUSPENDIDO lo agrega la migración 0031 (SCRUM-901).
+const ESTADO_FROM_DB = { ACTIVO: 'ACTIVE', SUSPENDIDO: 'SUSPENDED', INACTIVO: 'INACTIVE' };
 
 function toDomain(row) {
   if (!row) return null;
