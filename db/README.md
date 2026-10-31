@@ -45,8 +45,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0025`** | [`0025_solicitud_rechazo_motivo_obligatorio.sql`](migrations/0025_solicitud_rechazo_motivo_obligatorio.sql) | `SCRUM-1617` | `solicitud_rechazo`: columna `detalle` (texto de «Otro», 3 a 280 caracteres) y dos `CHECK` `NOT VALID` para filas nuevas: el motivo es obligatorio y «Otro» exige detalle (los demás motivos no lo llevan). Los rechazos previos con motivo NULL se conservan sin inventarles uno. Decisión del PO del 27-oct-2026. |
 | **`0026`** | [`0026_evento_servicio_ocurrido_en.sql`](migrations/0026_evento_servicio_ocurrido_en.sql) | `SCRUM-873` | `evento_servicio`: columna `ocurrido_en TIMESTAMPTZ` para guardar la hora de captura de eventos registrados sin conexión. Se lee con `COALESCE(ocurrido_en, timestamp)`. |
 | **`0027`** | [`0027_documento_kyc_alta_admin_empleado_directo.sql`](migrations/0027_documento_kyc_alta_admin_empleado_directo.sql) | `SCRUM-1376` | `documento_kyc`: política de INSERT para el administrador del tenant, limitada a su tenant y a aliados `EMPLEADO_DIRECTO`, para subir la copia del documento de identidad del empleado (RF-05). La tabla ya tenía `tenant_id`, RLS y GRANT desde la `0007`. |
+| **`0028`** | [`0028_modulo_m08_calificacion_cierre_penalizacion.sql`](migrations/0028_modulo_m08_calificacion_cierre_penalizacion.sql) | `SCRUM-1418` | Módulo M-08: Calificación bidireccional (`calificacion` con índice único y rango 1..5), cierre condicionado a ambas calificaciones (`solicitud.cerrada_at`), trazabilidad de penalización por cancelación tardía en `solicitud` y tabla `politica_cancelacion_tenant` con RLS. |
 
-La siguiente migración libre es la **`0028`**.
+La siguiente migración libre es la **`0029`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
