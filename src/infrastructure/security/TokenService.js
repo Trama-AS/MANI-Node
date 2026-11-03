@@ -3,6 +3,7 @@ const { UnauthorizedError } = require('../../domain/errors/DomainError');
 const config = require('../../config');
 const { claimRoleToDomain } = require('./claimRoleMap');
 const JwtVerifier = require('./JwtVerifier');
+const { recordAuthValidation } = require('../observability/metrics');
 
 /**
  * Fecha límite oficial de retiro de HS256: 2026-11-15 (Cierre Sprint 5).
@@ -37,6 +38,7 @@ class TokenService extends ITokenService {
    */
   async validateToken(authHeader) {
     if (!authHeader || typeof authHeader !== 'string') {
+      recordAuthValidation('failure', 'missing_authorization_header');
       const err = new Error('Encabezado Authorization requerido');
       err.code = 'UNAUTHORIZED';
       throw err;
@@ -44,6 +46,7 @@ class TokenService extends ITokenService {
 
     const parts = authHeader.trim().split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      recordAuthValidation('failure', 'malformed_authorization_header');
       const err = new Error('Formato de token inválido. Debe ser: Bearer <token>');
       err.code = 'UNAUTHORIZED';
       throw err;
@@ -54,6 +57,7 @@ class TokenService extends ITokenService {
       decoded = await this.verifier.verify(parts[1]);
     } catch (verifyErr) {
       const code = verifyErr.name === 'JwtVerificationError' ? verifyErr.code : 'INVALID_TOKEN';
+      recordAuthValidation('failure', String(code).toLowerCase());
       const message = verifyErr.name === 'JwtVerificationError' ? verifyErr.message : 'Token de autenticación inválido';
       const err = new Error(message);
       err.code = code;
@@ -66,16 +70,20 @@ class TokenService extends ITokenService {
     const userId = decoded.sub;
 
     if (!isNonEmptyString(tenantId)) {
+      recordAuthValidation('failure', 'missing_tenant_claim');
       const err = new Error('Token de autenticación no contiene el claim obligatorio app_metadata.tenant_id');
       err.code = 'MISSING_TENANT_CLAIM';
       throw err;
     }
 
     if (!isNonEmptyString(userId) || !isNonEmptyString(userRole)) {
+      recordAuthValidation('failure', 'missing_user_role');
       const err = new Error('Token de autenticación no contiene los claims obligatorios sub y app_metadata.user_role');
       err.code = 'INVALID_TOKEN';
       throw err;
     }
+
+    recordAuthValidation('success', 'ok');
 
     return {
       valid: true,
@@ -100,11 +108,13 @@ class TokenService extends ITokenService {
    */
   async verifyToken(authHeader) {
     if (!authHeader || typeof authHeader !== 'string') {
+      recordAuthValidation('failure', 'missing_authorization_header');
       throw new UnauthorizedError('Encabezado Authorization requerido', 'UNAUTHORIZED');
     }
 
     const parts = authHeader.trim().split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      recordAuthValidation('failure', 'malformed_authorization_header');
       throw new UnauthorizedError('Formato de token inválido. Debe ser: Bearer <token>', 'TOKEN_INVALID');
     }
 
@@ -113,8 +123,10 @@ class TokenService extends ITokenService {
       payload = await this.verifier.verify(parts[1]);
     } catch (err) {
       if (err.code === 'TOKEN_EXPIRED') {
+        recordAuthValidation('failure', 'token_expired');
         throw new UnauthorizedError('El token de autenticación ha expirado', 'TOKEN_EXPIRED');
       }
+      recordAuthValidation('failure', 'token_invalid');
       throw new UnauthorizedError('Firma o contenido del token inválido', 'TOKEN_INVALID');
     }
 
@@ -124,12 +136,18 @@ class TokenService extends ITokenService {
     const rawRole = appMetadata.user_role || appMetadata.rol;
 
     if (!userId || !tenantId || !rawRole) {
+      if (!tenantId) {
+        recordAuthValidation('failure', 'missing_tenant_claim');
+      } else {
+        recordAuthValidation('failure', 'missing_user_role');
+      }
       throw new UnauthorizedError(
         'Token no contiene los claims obligatorios (sub, app_metadata.tenant_id, app_metadata.user_role)',
         'TOKEN_INVALID'
       );
     }
 
+    recordAuthValidation('success', 'ok');
     return { userId, tenantId, role: claimRoleToDomain(rawRole) };
   }
 }

@@ -1,9 +1,11 @@
 const container = require('../container');
+const { recordAuthValidation } = require('../infrastructure/observability/metrics');
 
 async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
+    recordAuthValidation('failure', 'missing_authorization_header');
     return res.status(401).json({
       error: 'Encabezado Authorization requerido',
       code: 'UNAUTHORIZED',
@@ -64,4 +66,3 @@ function requireRole(...allowedRoles) {
 module.exports = authenticate;
 module.exports.authenticate = authenticate;
 module.exports.requireRole = requireRole;
-
