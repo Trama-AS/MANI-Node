@@ -1,0 +1,26 @@
+groups:
+  - name: mani_auth_monitoring_alerts
+    rules:
+      - alert: HighAuth401Rate
+        expr: (sum(rate(http_requests_total{status_code="401"}[5m])) / sum(rate(http_requests_total[5m]))) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: core-service
+          component: auth
+          hallazgo: R-4
+        annotations:
+          summary: "Tasa elevada de respuestas 401 en autenticacion (> 5%)"
+          description: "La tasa de errores 401 supera el 5% en los ultimos 5 minutos (posible fuerza bruta o expiracion masiva)."
+
+      - alert: IncompleteClaimsAttemptsDetected
+        expr: sum(rate(auth_validations_total{result="failure",reason=~"missing_.*"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: core-service
+          component: auth
+          hallazgo: R-4
+        annotations:
+          summary: "Deteccion de intentos de autenticacion con claims incompletos"
+          description: "Se detectaron tokens con claims obligatorios ausentes (missing_tenant_claim o missing_user_role) en el Gateway/Core."

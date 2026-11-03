@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const healthRoutes = require('./health.routes');
+const metricsRoutes = require('./metrics.routes');
 const coreRoutes = require('./core.routes');
 const authRoutes = require('./auth.routes');
 const sitesRoutes = require('./sites.routes');
@@ -10,6 +11,8 @@ const employeesRoutes = require('./employees.routes');
 const router = Router();
 
 router.use(healthRoutes);
+router.use(metricsRoutes);
+router.use('/api/v1', metricsRoutes);
 router.use('/api/v1', authRoutes);
 router.use('/api/v1', coreRoutes);
 router.use('/api/v1', sitesRoutes);
@@ -27,4 +30,3 @@ router.use('/clients', clientsRoutes);
 router.use('/', employeesRoutes);
 
 module.exports = router;
-
