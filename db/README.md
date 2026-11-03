@@ -46,8 +46,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0026`** | [`0026_evento_servicio_ocurrido_en.sql`](migrations/0026_evento_servicio_ocurrido_en.sql) | `SCRUM-873` | `evento_servicio`: columna `ocurrido_en TIMESTAMPTZ` para guardar la hora de captura de eventos registrados sin conexión. Se lee con `COALESCE(ocurrido_en, timestamp)`. |
 | **`0027`** | [`0027_documento_kyc_alta_admin_empleado_directo.sql`](migrations/0027_documento_kyc_alta_admin_empleado_directo.sql) | `SCRUM-1376` | `documento_kyc`: política de INSERT para el administrador del tenant, limitada a su tenant y a aliados `EMPLEADO_DIRECTO`, para subir la copia del documento de identidad del empleado (RF-05). La tabla ya tenía `tenant_id`, RLS y GRANT desde la `0007`. |
 | **`0028`** | [`0028_modulo_m08_calificacion_cierre_penalizacion.sql`](migrations/0028_modulo_m08_calificacion_cierre_penalizacion.sql) | `SCRUM-1418` | Módulo M-08: Calificación bidireccional (`calificacion` con índice único y rango 1..5), cierre condicionado a ambas calificaciones (`solicitud.cerrada_at`), trazabilidad de penalización por cancelación tardía en `solicitud` y tabla `politica_cancelacion_tenant` con RLS. |
+| **`0029`** | [`0029_retencion_liberacion_liquidacion.sql`](migrations/0029_retencion_liberacion_liquidacion.sql) | `SCRUM-891`, `SCRUM-892`, `SCRUM-893` | Tablas `retencion_fondos` (un pago aprobado retiene su monto en garantía, simulado), `liquidacion` (al liberar se liquida al aliado descontando la comisión; inmutable) y `comision_tenant` (porcentaje 0 a 100 por tenant; sin fila rige el 10 % por defecto). Todas con `tenant_id` y RLS FORCE; `mani_core_svc` solo con SELECT/INSERT/UPDATE (retención y comisión) o SELECT/INSERT (liquidación). |
 
-La siguiente migración libre es la **`0029`**.
+La siguiente migración libre es la **`0030`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 

@@ -35,4 +35,41 @@ async function getReceipt(req, res, next) {
   }
 }
 
-module.exports = { createPayment, getPayment, getReceipt };
+// SCRUM-891 a 894: retención en garantía, cobros del aliado y comisión por tenant (todo simulado).
+async function getRetention(req, res, next) {
+  try {
+    const retencion = await container.fundsUseCase.retencion({ user: req.user, pagoId: req.params.id });
+    res.json({ retencion, correlationId: correlationOf(req) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listAllyCollections(req, res, next) {
+  try {
+    const resultado = await container.fundsUseCase.cobrosDelAliado({ user: req.user });
+    res.json({ ...resultado, correlationId: correlationOf(req) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getCommission(req, res, next) {
+  try {
+    const comision = await container.fundsUseCase.obtenerComision({ user: req.user });
+    res.json({ comision, correlationId: correlationOf(req) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function setCommission(req, res, next) {
+  try {
+    const comision = await container.fundsUseCase.fijarComision({ user: req.user, body: req.body || {} });
+    res.json({ comision, correlationId: correlationOf(req) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createPayment, getPayment, getReceipt, getRetention, listAllyCollections, getCommission, setCommission };
