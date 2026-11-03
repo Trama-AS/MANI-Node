@@ -48,7 +48,7 @@ const eligibleFake = (calls) => ({
       findEligible: async (ctx, criteria) => {
         calls.push({ ...criteria, ctx });
         return {
-          allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO' }],
+          allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO', zonasCobertura: 3 }],
           totalCount: 1,
         };
       },
@@ -81,6 +81,7 @@ test('GET /allies/eligible usa el tenant del token y no el de la cabecera X-Tena
   assert.equal(res.status, 200);
   assert.equal(res.body.totalCount, 1);
   assert.equal(res.body.allies[0].nombreRazonSocial, 'Ana');
+  assert.equal(res.body.allies[0].zonasCobertura, 3, 'el controlador no filtra el campo que Dispatch pasa a Rules');
   assert.equal(calls[0].ctx.tenantId, TENANT);
   assert.equal(calls[0].tipo, 'PERSONA_NATURAL');
 }));
