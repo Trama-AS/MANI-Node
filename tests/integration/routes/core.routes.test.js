@@ -287,16 +287,20 @@ test('PUT /api/v1/profiles/me/categories con categoría inactiva responde 422 (M
   assert.equal(res.body.code, 'MANI-CAT-422C');
 });
 
+// SCRUM-1392: los identificadores que se declaran son UUID de
+// `categoria_servicio.id`. Antes esta prueba usaba 'cat-1'/'cat-2', que existen
+// solo como fixture del repositorio en memoria y PostgreSQL rechazaría; se usan
+// los UUID del catálogo, que son los que la pantalla del aliado envía de verdad.
 test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exitosamente', async () => {
   const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
 
   const res = await request(app)
     .put('/api/v1/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categories: ['cat-1', 'cat-2'] });
+    .send({ categories: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19'] });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.categories, ['cat-1', 'cat-2']);
+  assert.deepEqual(res.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 
   // Verifica que GET posterior retorne las nuevas categorías
   const getRes = await request(app)
@@ -304,7 +308,7 @@ test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exit
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(getRes.status, 200);
-  assert.deepEqual(getRes.body.categories, ['cat-1', 'cat-2']);
+  assert.deepEqual(getRes.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 });
 
 test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () => {
@@ -313,10 +317,10 @@ test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () 
   const res = await request(app)
     .post('/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categoriaIds: ['cat-2', 'cat-3'] });
+    .send({ categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20'] });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.categories, ['cat-2', 'cat-3']);
+  assert.deepEqual(res.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20']);
 });
 
 test('PATCH /api/v1/profiles/me actualiza datos propios y persiste los cambios en GET /api/v1/profiles/me (SCRUM-854)', async () => {
