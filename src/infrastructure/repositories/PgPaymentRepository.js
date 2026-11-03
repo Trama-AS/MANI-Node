@@ -3,6 +3,7 @@ const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/e
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { clienteActivoDeSesion } = require('./sesionActores');
 const { registrarEventoTransaccion } = require('./transaccionEvento');
+const { retenerPago } = require('./fondosEnGarantia');
 const { ADICIONES_ACEPTADAS_SQL } = require('./totalVigente');
 
 const UNIQUE_VIOLATION = '23505';
@@ -119,6 +120,8 @@ class PgPaymentRepository extends IPaymentRepository {
           moneda: pago.moneda,
           correlationId: datos.correlationId,
         });
+        // SCRUM-891: un pago aprobado retiene su monto en garantía, en la misma transacción.
+        await retenerPago(client, ctx, pago);
         return { pago, creado: true };
       });
     } catch (err) {
