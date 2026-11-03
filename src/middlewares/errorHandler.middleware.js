@@ -17,12 +17,23 @@ function errorHandler(err, req, res, _next) {
   // por VALIDATION_ERROR en vez de dejarlo pasar.
   const isMulterError = err.name === 'MulterError';
   const statusCode = err.statusCode || (isMulterError ? 400 : 500);
-  const code = isMulterError ? 'VALIDATION_ERROR' : err.code;
+
+  // T9 (fallo cerrado, sin detalle interno): un 5xx no revela por qué falló.
+  // Los errores de dominio traen statusCode y mensaje propios, pensados para
+  // el cliente; lo que llega sin statusCode es una falla no prevista —por
+  // ejemplo un SQLSTATE de PostgreSQL, cuyo texto nombra tablas, columnas y
+  // tipos— y su mensaje no puede salir en la respuesta. El error completo
+  // queda en el console.error de arriba, que es donde hay que leerlo.
+  const isServerError = statusCode >= 500;
+  const code = isMulterError ? 'VALIDATION_ERROR' : (isServerError ? 'INTERNAL_ERROR' : err.code);
+  const message = isServerError
+    ? 'Error interno del servidor'
+    : (err.message || 'Error interno del servidor');
 
   res.status(statusCode).json({
-    error: err.message || 'Error interno del servidor',
+    error: message,
     code,
-    ...(Array.isArray(err.violations) && { violations: err.violations }),
+    ...(!isServerError && Array.isArray(err.violations) && { violations: err.violations }),
     correlationId: req.correlationId || 'none',
   });
 }

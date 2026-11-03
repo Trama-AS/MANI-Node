@@ -1,4 +1,5 @@
 const { ValidationError, NotFoundError, UnauthorizedError } = require('../../../domain/errors/DomainError');
+const requireCategoryUuid = require('./requireCategoryUuid');
 
 /**
  * Flujo operativo de la categoría (US-03.1.1-M2.1): activar/desactivar sin
@@ -31,6 +32,7 @@ class SetCategoryStatusUseCase {
     if (!categoryId || typeof categoryId !== 'string') {
       throw new ValidationError('categoryId es requerido');
     }
+    requireCategoryUuid(categoryId);
     if (typeof active !== 'boolean') {
       throw new ValidationError('active es requerido y debe ser booleano');
     }

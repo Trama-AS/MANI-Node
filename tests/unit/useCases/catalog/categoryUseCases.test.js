@@ -9,6 +9,11 @@ const InMemoryCatalogRepository = require('../../../../src/infrastructure/reposi
 const RuleEvaluationResult = require('../../../../src/domain/entities/RuleEvaluationResult');
 const { DomainError } = require('../../../../src/domain/errors/DomainError');
 
+// El identificador de categoria es un UUID en la base: las pruebas usan uno
+// real para que el doble en memoria no sea mas permisivo que PostgreSQL.
+const CAT_UUID = '11111111-1111-4111-8111-111111111111';
+const HIST_UUID = '22222222-2222-4222-8222-222222222222';
+
 // Doble del Rules Service: aprueba normalizando como Rules, o devuelve las
 // violaciones indicadas. Registra cada llamada para verificar la delegación.
 function fakeRules({ violations = [] } = {}) {
@@ -195,7 +200,7 @@ test('GetCategoryUseCase lanza CATEGORY_NOT_FOUND para una categoría global (no
   const useCase = new GetCategoryUseCase({ catalogRepository });
 
   await assert.rejects(
-    () => useCase.execute({ tenantId: 't1', categoryId: 'cat-1' }),
+    () => useCase.execute({ tenantId: 't1', categoryId: '00000000-0000-4000-8000-000000000001' }),
     (err) => {
       assert.equal(err.code, 'CATEGORY_NOT_FOUND');
       return true;
@@ -452,7 +457,7 @@ test('SetCategoryStatusUseCase no audita si la categoría no existe en el tenant
     auditLogger: (entry) => auditoria.push(entry),
   });
 
-  await assert.rejects(() => useCase.execute({ tenantId: 't1', categoryId: 'no-existe', active: false, userId: 'admin-1' }));
+  await assert.rejects(() => useCase.execute({ tenantId: 't1', categoryId: '00000000-0000-4000-8000-000000000002', active: false, userId: 'admin-1' }));
   assert.equal(auditoria.length, 0);
 });
 
@@ -472,10 +477,10 @@ test('SetCategoryStatusUseCase solo cambia el estado de la categoría: no toca s
   );
   const useCase = new SetCategoryStatusUseCase({ catalogRepository, auditLogger: () => {} });
 
-  const resultado = await useCase.execute({ tenantId: 't1', categoryId: 'cat-1', active: false, userId: 'admin-1' });
+  const resultado = await useCase.execute({ tenantId: 't1', categoryId: CAT_UUID, active: false, userId: 'admin-1' });
 
   assert.deepEqual(llamadas, ['setActive']);
-  assert.deepEqual(resultado, { id: 'cat-1', active: false });
+  assert.deepEqual(resultado, { id: CAT_UUID, active: false });
 });
 
 test('SetCategoryStatusUseCase exige repositorio, tenantId y categoryId antes de tocar la base', async () => {
@@ -498,11 +503,11 @@ test('UpdateCategoryUseCase edita una categoría histórica fuera de reglas: Cor
   const Category = require('../../../../src/domain/entities/Category');
   const catalogRepository = new InMemoryCatalogRepository();
   // Fila histórica: nombre de 2 caracteres y sin flujo operativo (seed QA).
-  catalogRepository.categories.push(new Category({ id: 'hist-1', name: 'AB', tenantId: 't1', flujoOperativo: null }));
+  catalogRepository.categories.push(new Category({ id: HIST_UUID, name: 'AB', tenantId: 't1', flujoOperativo: null }));
   const rules = fakeRules();
   const useCase = new UpdateCategoryUseCase({ catalogRepository, ruleEvaluationService: rules });
 
-  const result = await useCase.execute({ tenantId: 't1', categoryId: 'hist-1', flujoOperativo: 'cotizacion_previa', role: 'ADMIN' });
+  const result = await useCase.execute({ tenantId: 't1', categoryId: HIST_UUID, flujoOperativo: 'cotizacion_previa', role: 'ADMIN' });
 
   assert.equal(result.name, 'AB');
   assert.equal(result.flujoOperativo, 'COTIZACION_PREVIA');
@@ -517,4 +522,80 @@ test('CreateCategoryUseCase no aplica reglas locales de nombre: el veredicto es 
   const created = await useCase.execute({ tenantId: 't1', name: '  A   B ', flujoOperativo: 'TARIFA_ESTANDAR', role: 'ADMIN' });
 
   assert.equal(created.name, 'A B');
+});
+
+// --- Id que no es UUID: 400 del contrato, no 500 (SCRUM-1391 C2, QA 31-oct) ---
+//
+// QA encontró que `abc` como id respondía 500 INTERNAL_ERROR con el texto de
+// PostgreSQL («invalid input syntax for type uuid»), contra T9. El formato se
+// valida antes de consultar, como ya hace el catálogo de zonas con
+// MANI-ZON-400.
+
+test('GetCategoryUseCase rechaza con MANI-CAT-400 un id que no es UUID, sin consultar el repositorio', async () => {
+  const consultas = [];
+  const useCase = new GetCategoryUseCase({
+    catalogRepository: {
+      async findById(...args) {
+        consultas.push(args);
+        throw new Error('no debería consultarse con un id inválido');
+      },
+    },
+  });
+
+  for (const categoryId of ['abc', '', '  ', 'cat-1', '11111111-1111-4111-8111', 'ZZZZZZZZ-1111-4111-8111-111111111111']) {
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 't1', categoryId }),
+      (err) => {
+        assert.equal(err.statusCode, 400);
+        assert.ok(['MANI-CAT-400', 'VALIDATION_ERROR'].includes(err.code));
+        assert.ok(!/invalid input syntax|uuid_in|22P02/i.test(err.message), `no filtra el motor: ${err.message}`);
+        return true;
+      }
+    );
+  }
+  assert.deepEqual(consultas, []);
+});
+
+test('SetCategoryStatusUseCase rechaza con MANI-CAT-400 un id que no es UUID y no audita nada', async () => {
+  const auditoria = [];
+  const useCase = new SetCategoryStatusUseCase({
+    catalogRepository: {
+      async setActive() {
+        throw new Error('no debería consultarse con un id inválido');
+      },
+    },
+    auditLogger: (entry) => auditoria.push(entry),
+  });
+
+  for (const categoryId of ['abc', 'cat-1']) {
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 't1', categoryId, active: false, userId: 'admin-1' }),
+      (err) => err.statusCode === 400 && err.code === 'MANI-CAT-400'
+    );
+  }
+  assert.equal(auditoria.length, 0);
+});
+
+test('UpdateCategoryUseCase rechaza con MANI-CAT-400 un id que no es UUID, sin preguntar a Rules', async () => {
+  const rules = fakeRules();
+  const useCase = new UpdateCategoryUseCase({
+    catalogRepository: {
+      async findById() {
+        throw new Error('no debería consultarse con un id inválido');
+      },
+    },
+    ruleEvaluationService: rules,
+  });
+
+  await assert.rejects(
+    () => useCase.execute({ tenantId: 't1', categoryId: 'abc', name: 'Peinados', role: 'ADMIN' }),
+    (err) => err.statusCode === 400 && err.code === 'MANI-CAT-400'
+  );
+  assert.equal(rules.calls.length, 0);
+});
+
+test('requireCategoryUuid acepta el UUID con espacios alrededor y lo devuelve recortado', () => {
+  const requireCategoryUuid = require('../../../../src/application/useCases/catalog/requireCategoryUuid');
+  assert.equal(requireCategoryUuid(`  ${CAT_UUID}  `), CAT_UUID);
+  assert.ok(DomainError);
 });
