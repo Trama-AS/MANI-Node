@@ -2,9 +2,13 @@ const IZoneRepository = require('../../domain/ports/IZoneRepository');
 const Zone = require('../../domain/entities/Zone');
 
 // Fixture de DEV/test sin Supabase. Reproduce los UUID y la jerarquía del
-// seed local (MANI-APIGateway/database/init/02-seed.sql) y añade un BARRIO y
-// una zona inactiva para poder ejercitar C2 (lo inactivo no es seleccionable)
-// sin depender de la base.
+// seed local (MANI-APIGateway/database/init/02-seed.sql) y añade dos BARRIO,
+// cada uno bajo una localidad distinta, y una zona inactiva para poder
+// ejercitar C2 (lo inactivo no es seleccionable) sin depender de la base.
+//
+// Los barrios NO están todavía en el seed de la base: el de QA lo lleva
+// SCRUM-1463 (TEC-16) y hay que pedirlos ahí. Este fixture adelanta el nivel
+// para DEV, no documenta filas que existan en QA.
 const FIXTURES = [
   { id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12', name: 'Bogotá D.C.', level: 'CIUDAD', parentId: null, active: true },
   {
@@ -26,6 +30,15 @@ const FIXTURES = [
     name: 'Chicó Norte',
     level: 'BARRIO',
     parentId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13',
+    active: true,
+  },
+  // Segundo barrio, bajo otra localidad (SCRUM-1395): con uno solo no se nota
+  // si el árbol los agrupa por su localidad o los mezcla.
+  {
+    id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a17',
+    name: 'Santa Bárbara',
+    level: 'BARRIO',
+    parentId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14',
     active: true,
   },
   {

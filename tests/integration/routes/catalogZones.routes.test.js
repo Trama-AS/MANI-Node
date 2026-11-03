@@ -9,6 +9,8 @@ const config = require('../../../src/config');
 const CIUDAD = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12';
 const CHAPINERO = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13';
 const CHICO_NORTE = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15';
+// Segundo barrio del fixture, bajo Usaquén (SCRUM-1395).
+const SANTA_BARBARA = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a17';
 const INACTIVA = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a16';
 const DESCONOCIDA = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd3809ff';
 
@@ -83,7 +85,8 @@ describe('Catálogo jerárquico de zonas - HTTP (HU-M04-04, REST-01)', () => {
       .set('Authorization', `Bearer ${token}`);
 
     assert.strictEqual(res.status, 200);
-    assert.deepStrictEqual(res.body.zones.map((z) => z.id), [CHICO_NORTE]);
+    // Los dos barrios del fixture, ordenados por nombre dentro del nivel.
+    assert.deepStrictEqual(res.body.zones.map((z) => z.id), [CHICO_NORTE, SANTA_BARBARA]);
   });
 
   // --- C2: escenarios negativos ---
