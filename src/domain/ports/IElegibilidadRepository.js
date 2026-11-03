@@ -9,7 +9,7 @@ class IElegibilidadRepository {
    * @param {{ tenantId: string, userId?: string, role: string }} _ctx Contexto verificado de la sesión.
    * @param {{ categoriaId: string, zonaId: string, excludeAllyIds?: string[],
    *           tipo?: string, page: number, pageSize: number }} _criteria
-   * @returns {Promise<{ allies: Array<{ id: string, nombreRazonSocial: string, tipo: string, estadoVerificacion: string }>, totalCount: number }>}
+   * @returns {Promise<{ allies: Array<{ id: string, nombreRazonSocial: string, tipo: string, estadoVerificacion: string, zonasCobertura: number }>, totalCount: number }>}
    */
   async findEligible(_ctx, _criteria) {
     throw new Error('Método findEligible() no implementado en IElegibilidadRepository');
