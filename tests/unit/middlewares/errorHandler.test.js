@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { errorHandler } = require('../../../src/middlewares/errorHandler.middleware');
 const {
+  DomainError,
   ValidationError,
   NotFoundError,
   RuleViolationError,
@@ -88,4 +89,21 @@ test('errorHandler responde con correlationId none cuando la petición no lo tra
   const res = fakeRes();
   errorHandler(new ValidationError('dato inválido'), {}, res, () => {});
   assert.equal(res.body.correlationId, 'none');
+});
+
+// Un 503 o un 504 de dominio sí conservan su mensaje: están escritos para el
+// cliente y hay pruebas de contrato que los afirman (Rules no disponible,
+// timeout del proveedor). Lo que decide no es el código HTTP, sino si el
+// error estaba previsto.
+test('errorHandler conserva el mensaje de un 503 y un 504 de dominio', () => {
+  for (const [err, status] of [
+    [new DomainError('El servicio de reglas no está disponible', 'RULES_SERVICE_UNAVAILABLE', 503), 503],
+    [new DomainError('El proveedor no respondió a tiempo', 'PROVIDER_TIMEOUT', 504), 504],
+  ]) {
+    const res = fakeRes();
+    errorHandler(err, req, res, () => {});
+    assert.equal(res.statusCode, status);
+    assert.equal(res.body.error, err.message);
+    assert.equal(res.body.code, err.code);
+  }
 });

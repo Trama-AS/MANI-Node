@@ -18,22 +18,24 @@ function errorHandler(err, req, res, _next) {
   const isMulterError = err.name === 'MulterError';
   const statusCode = err.statusCode || (isMulterError ? 400 : 500);
 
-  // T9 (fallo cerrado, sin detalle interno): un 5xx no revela por qué falló.
-  // Los errores de dominio traen statusCode y mensaje propios, pensados para
-  // el cliente; lo que llega sin statusCode es una falla no prevista —por
+  // T9 (fallo cerrado, sin detalle interno). Lo que decide si el mensaje sale
+  // no es el código HTTP, sino si el error estaba previsto: un error de
+  // dominio fija su statusCode y su mensaje está escrito para el cliente,
+  // incluso cuando es 503 (Rules no disponible) o 504 (timeout del
+  // proveedor). Lo que llega sin statusCode es una falla no prevista —por
   // ejemplo un SQLSTATE de PostgreSQL, cuyo texto nombra tablas, columnas y
-  // tipos— y su mensaje no puede salir en la respuesta. El error completo
+  // tipos— y ese mensaje no puede salir en la respuesta. El error completo
   // queda en el console.error de arriba, que es donde hay que leerlo.
-  const isServerError = statusCode >= 500;
-  const code = isMulterError ? 'VALIDATION_ERROR' : (isServerError ? 'INTERNAL_ERROR' : err.code);
-  const message = isServerError
+  const isUnexpected = !Number.isInteger(err.statusCode) && !isMulterError;
+  const code = isMulterError ? 'VALIDATION_ERROR' : (isUnexpected ? 'INTERNAL_ERROR' : err.code);
+  const message = isUnexpected
     ? 'Error interno del servidor'
     : (err.message || 'Error interno del servidor');
 
   res.status(statusCode).json({
     error: message,
     code,
-    ...(!isServerError && Array.isArray(err.violations) && { violations: err.violations }),
+    ...(!isUnexpected && Array.isArray(err.violations) && { violations: err.violations }),
     correlationId: req.correlationId || 'none',
   });
 }

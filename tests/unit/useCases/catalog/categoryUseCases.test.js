@@ -40,13 +40,14 @@ function fakeRules({ violations = [] } = {}) {
 
 test('CreateCategoryUseCase crea una categoría activa asociada al tenant, con su flujoOperativo', async () => {
   const catalogRepository = new InMemoryCatalogRepository();
-  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules() });
+  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules(), auditLogger: () => {} });
 
   const result = await useCase.execute({
     tenantId: 't1',
     name: 'Peinados',
     description: 'Para eventos',
     flujoOperativo: 'TARIFA_ESTANDAR',
+    userId: 'admin-1',
   });
 
   assert.equal(result.tenantId, 't1');
@@ -56,7 +57,7 @@ test('CreateCategoryUseCase crea una categoría activa asociada al tenant, con s
 });
 
 test('CreateCategoryUseCase rechaza sin tenantId, sin name o sin flujoOperativo', async () => {
-  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository(), ruleEvaluationService: fakeRules() });
+  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository(), ruleEvaluationService: fakeRules(), auditLogger: () => {} });
 
   await assert.rejects(
     () => useCase.execute({ name: 'x', flujoOperativo: 'TARIFA_ESTANDAR' }),
@@ -83,13 +84,14 @@ test('CreateCategoryUseCase rechaza sin tenantId, sin name o sin flujoOperativo'
 
 test('CreateCategoryUseCase delega en Rules (CREATE, tenant, rol, correlación) y persiste los valores normalizados', async () => {
   const rules = fakeRules();
-  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository(), ruleEvaluationService: rules });
+  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository(), ruleEvaluationService: rules, auditLogger: () => {} });
 
   const result = await useCase.execute({
     tenantId: 't1',
     name: '  Peinados   de Novia ',
     flujoOperativo: 'tarifa_estandar',
     role: 'ADMIN',
+    userId: 'admin-1',
     correlationId: 'corr-1',
   });
 
@@ -109,10 +111,10 @@ test('CreateCategoryUseCase delega en Rules (CREATE, tenant, rol, correlación) 
 test('CreateCategoryUseCase lanza RuleViolationError (400) con las violaciones de Rules y no persiste', async () => {
   const catalogRepository = new InMemoryCatalogRepository();
   const violations = [{ code: 'MANI-CAT-422F', field: 'flujoOperativo', message: 'flujo operativo inválido (INVALIDO)' }];
-  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules({ violations }) });
+  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules({ violations }), auditLogger: () => {} });
 
   await assert.rejects(
-    () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'INVALIDO' }),
+    () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'INVALIDO', userId: 'admin-1' }),
     (err) => {
       assert.equal(err.code, 'VALIDATION_ERROR');
       assert.equal(err.statusCode, 400);
@@ -126,7 +128,7 @@ test('CreateCategoryUseCase lanza RuleViolationError (400) con las violaciones d
 
 test('CreateCategoryUseCase no consulta a Rules si la petición está mal formada', async () => {
   const rules = fakeRules();
-  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository(), ruleEvaluationService: rules });
+  const useCase = new CreateCategoryUseCase({ catalogRepository: new InMemoryCatalogRepository(), ruleEvaluationService: rules, auditLogger: () => {} });
 
   await assert.rejects(() => useCase.execute({ tenantId: 't1', flujoOperativo: 'TARIFA_ESTANDAR' }));
   assert.equal(rules.calls.length, 0);
@@ -135,6 +137,7 @@ test('CreateCategoryUseCase no consulta a Rules si la petición está mal formad
 test('CreateCategoryUseCase propaga el 503 cuando Rules no está disponible', async () => {
   const useCase = new CreateCategoryUseCase({
     catalogRepository: new InMemoryCatalogRepository(),
+    auditLogger: () => {},
     ruleEvaluationService: {
       async evaluateCategoryRules() {
         throw new DomainError('caído', 'RULES_SERVICE_UNAVAILABLE', 503);
@@ -143,7 +146,7 @@ test('CreateCategoryUseCase propaga el 503 cuando Rules no está disponible', as
   });
 
   await assert.rejects(
-    () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' }),
+    () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR', userId: 'admin-1' }),
     (err) => err.statusCode === 503 && err.code === 'RULES_SERVICE_UNAVAILABLE'
   );
 });
@@ -155,17 +158,143 @@ test('CreateCategoryUseCase y UpdateCategoryUseCase exigen ruleEvaluationService
 
 test('CreateCategoryUseCase lanza ConflictError CATEGORY_NAME_ALREADY_EXISTS si el nombre ya existe en el tenant', async () => {
   const catalogRepository = new InMemoryCatalogRepository();
-  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules() });
-  await useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules(), auditLogger: () => {} });
+  await useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR', userId: 'admin-1' });
 
   await assert.rejects(
-    () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'COTIZACION_PREVIA' }),
+    () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'COTIZACION_PREVIA', userId: 'admin-1' }),
     (err) => {
       assert.equal(err.code, 'CATEGORY_NAME_ALREADY_EXISTS');
       assert.equal(err.statusCode, 409);
       return true;
     }
   );
+});
+
+// --- SCRUM-1390 (HU-M04-01) C1: "audita operación" al crear (T10 / RNF-04) ---
+
+test('CreateCategoryUseCase registra quién, cuándo, qué creó y el correlationId (T10)', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  const auditoria = [];
+  const useCase = new CreateCategoryUseCase({
+    catalogRepository,
+    ruleEvaluationService: fakeRules(),
+    auditLogger: (entry) => auditoria.push(entry),
+    now: () => new Date('2026-11-02T09:00:00.000Z'),
+  });
+
+  const created = await useCase.execute({
+    tenantId: 't1',
+    name: '  Peinados   de Novia ',
+    description: 'Para eventos',
+    flujoOperativo: 'tarifa_estandar',
+    role: 'ADMIN',
+    userId: 'admin-1',
+    correlationId: 'corr-1',
+  });
+
+  // Audita el valor normalizado que quedó guardado, no el que llegó crudo:
+  // la auditoría debe poder compararse con la fila de `categoria_servicio`.
+  assert.deepEqual(auditoria, [
+    {
+      event: 'US-03.1.1.crear_categoria',
+      tenant_id: 't1',
+      categoria_id: created.id,
+      nombre: 'Peinados de Novia',
+      flujo_operativo: 'TARIFA_ESTANDAR',
+      realizado_por: 'admin-1',
+      fecha: '2026-11-02T09:00:00.000Z',
+      correlation_id: 'corr-1',
+    },
+  ]);
+});
+
+test('CreateCategoryUseCase no filtra PII en la auditoría: solo id de tenant, de categoría y de usuario', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  const auditoria = [];
+  const useCase = new CreateCategoryUseCase({
+    catalogRepository,
+    ruleEvaluationService: fakeRules(),
+    auditLogger: (entry) => auditoria.push(entry),
+  });
+
+  await useCase.execute({
+    tenantId: 't1',
+    name: 'Peinados',
+    description: 'Contacto: ana@example.com, 3001234567',
+    flujoOperativo: 'TARIFA_ESTANDAR',
+    userId: 'admin-1',
+  });
+
+  const serializada = JSON.stringify(auditoria[0]);
+  assert.ok(!/@example\.com|3001234567/.test(serializada), `la auditoría arrastra PII: ${serializada}`);
+  assert.deepEqual(Object.keys(auditoria[0]).sort(), [
+    'categoria_id', 'correlation_id', 'event', 'fecha', 'flujo_operativo', 'nombre', 'realizado_por', 'tenant_id',
+  ]);
+});
+
+test('CreateCategoryUseCase sin correlationId audita con "none" y por omisión escribe la auditoría como JSON en consola', async (t) => {
+  const info = t.mock.method(console, 'info', () => {});
+  const useCase = new CreateCategoryUseCase({
+    catalogRepository: new InMemoryCatalogRepository(),
+    ruleEvaluationService: fakeRules(),
+  });
+
+  await useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR', userId: 'admin-1' });
+
+  assert.equal(info.mock.callCount(), 1);
+  const entry = JSON.parse(info.mock.calls[0].arguments[0]);
+  assert.equal(entry.event, 'US-03.1.1.crear_categoria');
+  assert.equal(entry.correlation_id, 'none');
+  assert.ok(!Number.isNaN(Date.parse(entry.fecha)));
+});
+
+test('CreateCategoryUseCase sin usuario en la sesión responde 401, no crea nada y no pregunta a Rules', async () => {
+  const catalogRepository = new InMemoryCatalogRepository();
+  const auditoria = [];
+  const rules = fakeRules();
+  const useCase = new CreateCategoryUseCase({
+    catalogRepository,
+    ruleEvaluationService: rules,
+    auditLogger: (entry) => auditoria.push(entry),
+  });
+
+  for (const userId of [undefined, '', 42]) {
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR', userId }),
+      (err) => {
+        assert.equal(err.statusCode, 401);
+        assert.equal(err.code, 'UNAUTHORIZED');
+        return true;
+      }
+    );
+  }
+
+  assert.deepEqual(await catalogRepository.findAllByTenant('t1'), []);
+  assert.equal(rules.calls.length, 0);
+  assert.equal(auditoria.length, 0);
+});
+
+test('CreateCategoryUseCase no audita una creación que no ocurrió (rechazo de Rules o nombre duplicado)', async () => {
+  const auditoria = [];
+  const rechazada = new CreateCategoryUseCase({
+    catalogRepository: new InMemoryCatalogRepository(),
+    ruleEvaluationService: fakeRules({ violations: [{ code: 'MANI-CAT-422F', field: 'flujoOperativo', message: 'inválido' }] }),
+    auditLogger: (entry) => auditoria.push(entry),
+  });
+  await assert.rejects(() => rechazada.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'X', userId: 'admin-1' }));
+  assert.equal(auditoria.length, 0);
+
+  const catalogRepository = new InMemoryCatalogRepository();
+  const duplicada = new CreateCategoryUseCase({
+    catalogRepository,
+    ruleEvaluationService: fakeRules(),
+    auditLogger: (entry) => auditoria.push(entry),
+  });
+  await duplicada.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR', userId: 'admin-1' });
+  assert.equal(auditoria.length, 1);
+  await assert.rejects(() => duplicada.execute({ tenantId: 't1', name: 'Peinados', flujoOperativo: 'TARIFA_ESTANDAR', userId: 'admin-1' }));
+  assert.equal(auditoria.length, 1);
 });
 
 // --- GetCategoryUseCase ---
@@ -517,9 +646,9 @@ test('UpdateCategoryUseCase edita una categoría histórica fuera de reglas: Cor
 test('CreateCategoryUseCase no aplica reglas locales de nombre: el veredicto es el de Rules', async () => {
   const catalogRepository = new InMemoryCatalogRepository();
   // Rules aprueba un nombre de 2 caracteres (p. ej. override por tenant): Core lo acepta.
-  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules() });
+  const useCase = new CreateCategoryUseCase({ catalogRepository, ruleEvaluationService: fakeRules(), auditLogger: () => {} });
 
-  const created = await useCase.execute({ tenantId: 't1', name: '  A   B ', flujoOperativo: 'TARIFA_ESTANDAR', role: 'ADMIN' });
+  const created = await useCase.execute({ tenantId: 't1', name: '  A   B ', flujoOperativo: 'TARIFA_ESTANDAR', role: 'ADMIN', userId: 'admin-1' });
 
   assert.equal(created.name, 'A B');
 });
