@@ -134,6 +134,23 @@ async function getZone(req, res, next) {
   }
 }
 
+// Geometrías territoriales (HU-M04-07). `zonaIds` llega como lista separada
+// por comas: es una lectura idempotente y cacheable, así que va en la cadena
+// de consulta y no en un cuerpo. El tope de zonas lo impone el caso de uso.
+async function getZoneGeometries(req, res, next) {
+  try {
+    const crudo = req.query.zonaIds ?? '';
+    const zoneIds = String(crudo)
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const result = await container.getZoneGeometriesUseCase.execute({ zoneIds });
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listCategories,
   listCategoriesForTenant,
@@ -144,4 +161,5 @@ module.exports = {
   deactivateCategory,
   listZoneCatalog,
   getZone,
+  getZoneGeometries,
 };

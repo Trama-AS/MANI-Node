@@ -11,6 +11,24 @@ const SELECT_COLUMNS = 'id, nivel, nombre, zona_padre_id, estado';
 // una fila con cualquiera de las dos formas cuente como activa.
 const ACTIVE_STATES = ['ACTIVO', 'ACTIVA'];
 
+// Columnas de `geometria_territorial` (migración 0030). La procedencia y la
+// atribución viajan con el dato porque la licencia de la fuente obliga a
+// acreditarla en la interfaz que muestre los límites.
+const GEOMETRY_COLUMNS = 'zona_id, geometria, fuente, codigo_fuente, licencia, atribucion, fuente_fecha, actualizado_en';
+
+function toGeometry(row) {
+  return {
+    zoneId: row.zona_id,
+    geometry: row.geometria,
+    source: row.fuente,
+    sourceCode: row.codigo_fuente ?? null,
+    licence: row.licencia,
+    attribution: row.atribucion,
+    sourceDate: row.fuente_fecha ?? null,
+    updatedAt: row.actualizado_en,
+  };
+}
+
 function isActiveState(estado) {
   return ACTIVE_STATES.includes(String(estado ?? '').trim().toUpperCase());
 }
@@ -55,6 +73,17 @@ class SupabaseZoneRepository extends IZoneRepository {
     const { data, error } = await client.from('zona').select(SELECT_COLUMNS).eq('id', zoneId).maybeSingle();
     assertNoError(error, 'Error consultando la zona');
     return toDomain(data);
+  }
+
+  async findGeometriesByZoneIds(zoneIds) {
+    if (!Array.isArray(zoneIds) || zoneIds.length === 0) return [];
+    const client = this.supabaseClientFactory.getClient();
+    const { data, error } = await client
+      .from('geometria_territorial')
+      .select(GEOMETRY_COLUMNS)
+      .in('zona_id', zoneIds);
+    assertNoError(error, 'Error consultando las geometrías');
+    return (data ?? []).map(toGeometry);
   }
 }
 
