@@ -384,7 +384,27 @@ test('POST /api/v1/profiles/me/photo permite subir foto en formato soportado y r
     .attach('photo', Buffer.from('fake-pdf'), { filename: 'doc.pdf', contentType: 'application/pdf' });
 
   assert.equal(badRes.status, 400);
-  assert.equal(badRes.body.code, 'MANI-PRF-422');
+  assert.equal(badRes.body.code, 'MANI-PRF-422F');
+});
+
+test('POST /api/v1/profiles/me/photo: JPG pasa, WEBP y más de 5 MB se rechazan con código propio (SCRUM-1628)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const subir = (buffer, filename, contentType) =>
+    request(app).post('/api/v1/profiles/me/photo').set('Authorization', `Bearer ${token}`).attach('photo', buffer, { filename, contentType });
+
+  const jpg = await subir(Buffer.from('fake-jpg-bytes'), 'a.jpg', 'image/jpeg');
+  assert.equal(jpg.status, 200);
+
+  const webp = await subir(Buffer.from('fake-webp'), 'a.webp', 'image/webp');
+  assert.equal(webp.status, 400);
+  assert.equal(webp.body.code, 'MANI-PRF-422F');
+  assert.equal(webp.body.error, 'La foto debe ser JPG o PNG de hasta 5 MB');
+
+  const grande = await subir(Buffer.alloc(5 * 1024 * 1024 + 1, 1), 'grande.png', 'image/png');
+  assert.equal(grande.status, 413);
+  assert.equal(grande.body.code, 'MANI-PRF-413');
+  assert.equal(grande.body.error, 'La foto debe ser JPG o PNG de hasta 5 MB');
+  assert.ok(!/File too large/i.test(grande.body.error));
 });
 
 
