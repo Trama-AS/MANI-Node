@@ -1,6 +1,7 @@
 const { ValidationError } = require('../errors/DomainError');
 
-const VALID_ROLES = ['CLIENT', 'ALLY', 'ADMIN'];
+// PLATFORM_ADMIN: perfil propio del administrador de plataforma (SCRUM-901).
+const VALID_ROLES = ['CLIENT', 'ALLY', 'ADMIN', 'PLATFORM_ADMIN'];
 const VALID_STATUSES = ['VERIFIED', 'PENDING', 'REJECTED'];
 
 class Profile {

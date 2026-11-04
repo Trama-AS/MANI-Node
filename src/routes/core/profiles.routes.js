@@ -18,15 +18,17 @@ const photoMiddleware = uploadPhoto.fields([
   { name: 'foto', maxCount: 1 },
 ]);
 
-router.get('/profiles/me', profilesController.getOwnProfile);
+// `authenticate` resuelve la sesión efectiva (SCRUM-901): el administrador de plataforma que actúa como un usuario
+// ve y edita el perfil de ese usuario. Los controladores ya usaban req.user cuando existía.
+router.get('/profiles/me', authenticate, profilesController.getOwnProfile);
 // SCRUM-854: una ruta por operación sobre el perfil propio. Los datos van por PATCH (JSON) y la foto
 // solo por subida de archivo; no hay ruta por :id porque el caso de uso edita únicamente el perfil propio.
-router.patch('/profiles/me', profilesController.updateOwnProfile);
-router.post('/profiles/me/photo', photoMiddleware, profilesController.updateOwnProfilePhoto);
-router.get('/profiles/me/categories', profilesController.getAllyCategories);
-router.get('/profiles/me/categories/available', profilesController.listAvailableAllyCategories);
-router.put('/profiles/me/categories', profilesController.declareAllyCategories);
-router.post('/profiles/me/categories', profilesController.declareAllyCategories);
+router.patch('/profiles/me', authenticate, profilesController.updateOwnProfile);
+router.post('/profiles/me/photo', authenticate, photoMiddleware, profilesController.updateOwnProfilePhoto);
+router.get('/profiles/me/categories', authenticate, profilesController.getAllyCategories);
+router.get('/profiles/me/categories/available', authenticate, profilesController.listAvailableAllyCategories);
+router.put('/profiles/me/categories', authenticate, profilesController.declareAllyCategories);
+router.post('/profiles/me/categories', authenticate, profilesController.declareAllyCategories);
 
 // SCRUM-1380: cobertura del aliado (reemplaza las RPC obtener_mi_cobertura y declarar_cobertura de Supabase).
 router.get('/profiles/me/coverage', authenticate, profilesController.getAllyCoverage);
