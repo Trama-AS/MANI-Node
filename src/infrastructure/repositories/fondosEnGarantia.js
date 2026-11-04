@@ -1,3 +1,5 @@
+const { registrarPagoEnBitacora } = require('./bitacoraPago');
+
 // Supuesto de la comisión mientras la PO no configure otra: 10 % (SCRUM-893). Se puede cambiar por tenant.
 const COMISION_POR_DEFECTO = 10;
 
@@ -30,10 +32,13 @@ async function retenerPago(client, ctx, pago) {
      FROM cotizacion cot
      WHERE cot.id = $5 AND cot.tenant_id = $1
      ON CONFLICT (pago_id) DO NOTHING
-     RETURNING id`,
+     RETURNING id, solicitud_id`,
     [ctx.tenantId, pago.id, pago.monto, pago.moneda, pago.cotizacionId]
   );
   if (rows.length === 0) return null;
+  // Solo la primera vez que se aprueba el pago (la retención es única por pago): el pago aprobado queda en la
+  // bitácora de la solicitud junto con su retención, en la misma transacción.
+  await registrarPagoEnBitacora(client, ctx, rows[0].solicitud_id);
   return rows[0].id;
 }
 
