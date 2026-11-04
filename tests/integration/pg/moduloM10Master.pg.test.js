@@ -225,6 +225,40 @@ test('885 C3: el tenant B no ve ni edita las tarifas de A; cliente y aliado reci
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tarifa_referencia WHERE tenant_id = $1', [a.id])).rows[0].n, 1);
 });
 
+test('885/886/887 C3: un token expirado, alterado o firmado con otro secreto responde 401 en todos los endpoints y no escribe', opts, async (t) => {
+  const { pool } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  const b = await sembrarTenant(pool);
+  const tarifaA = (await api('post', '/tarifas', a.jwt.admin).send(tarifaBase(a.categoria))).body.tarifa;
+  const claims = (tenant) => ({ sub: a.admin.usuario, app_metadata: { tenant_id: tenant, user_role: 'admin_tenant' } });
+
+  const expirado = `Bearer ${jwt.sign({ ...claims(a.id), exp: Math.floor(Date.now() / 1000) - 60 }, config.supabaseJwtSecret, { algorithm: 'HS256' })}`;
+  // Alterado: el payload se cambia al tenant B conservando la firma del token de A.
+  const [cabecera, , firma] = jwt.sign(claims(a.id), config.supabaseJwtSecret, { algorithm: 'HS256', expiresIn: '1h' }).split('.');
+  const payloadB = Buffer.from(JSON.stringify({ ...claims(b.id), exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
+  const alterado = `Bearer ${cabecera}.${payloadB}.${firma}`;
+  const otroSecreto = `Bearer ${jwt.sign(claims(b.id), 'secreto-que-no-es-el-del-ambiente-0123456789', { algorithm: 'HS256', expiresIn: '1h' })}`;
+
+  const llamadas = [
+    ['get', '/tarifas'],
+    ['post', '/tarifas', tarifaBase(a.categoria, { vigenciaDesde: '2030-01-01' })],
+    ['put', `/tarifas/${tarifaA.id}`, tarifaBase(a.categoria, { valorMax: 900000 })],
+    ['get', `/tarifas/categorias/${a.categoria}/historial`],
+    ['get', `/solicitudes/${a.solicitud}/tarifa-referencia`],
+    ['get', `/reportes/cotizaciones-fuera-de-rango?desde=${hoy()}&hasta=${hoy()}`],
+  ];
+  for (const jwtSesion of [expirado, alterado, otroSecreto]) {
+    for (const [metodo, ruta, body] of llamadas) {
+      const r = await (body ? api(metodo, ruta, jwtSesion).send(body) : api(metodo, ruta, jwtSesion));
+      assert.equal(r.status, 401, `${metodo} ${ruta}`);
+      assert.equal(r.body.tarifas, undefined);
+      assert.equal(r.body.tarifa, undefined);
+    }
+  }
+  const filas = (await pool.query('SELECT count(*)::int AS n FROM tarifa_referencia WHERE tenant_id = ANY($1)', [[a.id, b.id]])).rows[0].n;
+  assert.equal(filas, 1, 'solo la tarifa creada con el token válido');
+});
+
 test('885 T10: una versión es inmutable aun para el rol de servicio y no se borra', opts, async (t) => {
   const { pool, corePool } = await entorno(t);
   const a = await sembrarTenant(pool);
