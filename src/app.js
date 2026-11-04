@@ -1,6 +1,7 @@
 const express = require('express');
 
 const correlationId = require('./middlewares/correlationId.middleware');
+const metricsMiddleware = require('./middlewares/metrics.middleware');
 const { notFoundHandler, errorHandler } = require('./middlewares/errorHandler.middleware');
 const routes = require('./routes');
 
@@ -13,6 +14,7 @@ function createApp() {
   const app = express();
 
   app.use(express.json());
+  app.use(metricsMiddleware);
   app.use(correlationId);
 
   app.use(routes);

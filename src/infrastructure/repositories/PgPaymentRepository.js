@@ -3,6 +3,9 @@ const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/e
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { clienteActivoDeSesion } = require('./sesionActores');
 const { registrarEventoTransaccion } = require('./transaccionEvento');
+const { retenerPago } = require('./fondosEnGarantia');
+const { construirPagoRegistrado } = require('../../domain/events/pagoRegistrado');
+const { escribirEnOutbox } = require('../events/outboxEventos');
 const { ADICIONES_ACEPTADAS_SQL } = require('./totalVigente');
 
 const UNIQUE_VIOLATION = '23505';
@@ -119,6 +122,22 @@ class PgPaymentRepository extends IPaymentRepository {
           moneda: pago.moneda,
           correlationId: datos.correlationId,
         });
+        // SCRUM-891: un pago aprobado retiene su monto en garantía, en la misma transacción.
+        await retenerPago(client, ctx, pago);
+        // SCRUM-889: el evento `PagoRegistrado` va al outbox en la misma transacción (ADR-0029); el relay lo publica.
+        const { rows: agregados } = await client.query(
+          'SELECT solicitud_id, aliado_id FROM cotizacion WHERE id = $1 AND tenant_id = $2',
+          [datos.cotizacionId, ctx.tenantId]
+        );
+        await escribirEnOutbox(
+          client,
+          ctx,
+          construirPagoRegistrado({
+            pago,
+            agregados: { solicitudId: agregados[0].solicitud_id, aliadoId: agregados[0].aliado_id, clienteId: datos.clienteId },
+            correlationId: datos.correlationId,
+          })
+        );
         return { pago, creado: true };
       });
     } catch (err) {

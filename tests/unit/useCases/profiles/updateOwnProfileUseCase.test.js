@@ -122,7 +122,7 @@ test('SCRUM-1028: valida formato de teléfono, dirección no vacía y formato de
       }),
     (err) => {
       assert.equal(err.statusCode, 400);
-      assert.equal(err.code, 'MANI-PRF-422');
+      assert.equal(err.code, 'MANI-PRF-422F');
       return true;
     }
   );
@@ -139,4 +139,66 @@ test('UpdateOwnProfileUseCase: rechaza una URL de foto en el cuerpo sin tocar el
     (err) => err.code === 'MANI-PRF-422'
   );
   assert.equal(called, false);
+});
+
+// SCRUM-1628: la foto es JPG o PNG de hasta 5 MB; WEBP y otros formatos se rechazan con código propio y sin tocar el perfil.
+test('SCRUM-1628 C2: WEBP y otros formatos se rechazan con MANI-PRF-422F y el mensaje del límite', async () => {
+  for (const mimetype of ['image/webp', 'image/gif', 'application/pdf', '']) {
+    const { useCase } = makeUseCase();
+    await assert.rejects(
+      () =>
+        useCase.execute({
+          userId: 'demo-user-1',
+          tenantId: 'trama-demo',
+          photoFile: { originalname: 'a.webp', mimetype, buffer: Buffer.from('x') },
+        }),
+      (err) => {
+        assert.equal(err.code, 'MANI-PRF-422F', mimetype);
+        assert.equal(err.statusCode, 400);
+        assert.equal(err.message, 'La foto debe ser JPG o PNG de hasta 5 MB');
+        return true;
+      }
+    );
+  }
+});
+
+test('SCRUM-1628 C3: una foto de más de 5 MB se rechaza con MANI-PRF-413 y no cambia el perfil; 5 MB exactos pasan', async () => {
+  let escrituras = 0;
+  const base = makeUseCase().useCase;
+  const useCase = new UpdateOwnProfileUseCase({
+    profileRepository: {
+      ...base.profileRepository,
+      updateOwnProfile: async (...args) => {
+        escrituras += 1;
+        return base.profileRepository.updateOwnProfile(...args);
+      },
+    },
+    fileStorageService: base.fileStorageService,
+  });
+  const MB5 = 5 * 1024 * 1024;
+
+  await assert.rejects(
+    () =>
+      useCase.execute({
+        userId: 'demo-user-1',
+        tenantId: 'trama-demo',
+        photoFile: { originalname: 'a.png', mimetype: 'image/png', buffer: Buffer.alloc(MB5 + 1, 1) },
+      }),
+    (err) => {
+      assert.equal(err.code, 'MANI-PRF-413');
+      assert.equal(err.statusCode, 413);
+      assert.equal(err.message, 'La foto debe ser JPG o PNG de hasta 5 MB');
+      return true;
+    }
+  );
+  assert.equal(escrituras, 0);
+
+  for (const mimetype of ['image/png', 'image/jpeg']) {
+    const ok = await useCase.execute({
+      userId: 'demo-user-1',
+      tenantId: 'trama-demo',
+      photoFile: { originalname: 'a.png', mimetype, buffer: Buffer.alloc(MB5, 1) },
+    });
+    assert.match(ok.photoUrl, /^trama-demo\/demo-user-1\/avatar-/, mimetype);
+  }
 });

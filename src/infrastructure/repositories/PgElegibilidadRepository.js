@@ -11,6 +11,7 @@ const { runInTenantContext } = require('../db/runInTenantContext');
 // No lee solicitud_rechazo: esa tabla es del dominio de Dispatch (ADR-0030, T1). Dispatch envía los
 // aliados que ya rechazaron en $5 y se excluyen antes de paginar, para que totalCount sea exacto.
 // SCRUM-876 (HU-M08-04): incluye calificación agregada por aliado dentro del tenant (sin valorar = null, nunca 0 ficticio).
+// SCRUM-1462: incluye las zonas de cobertura del aliado en zonas activas del tenant, para el criterio COBERTURA de Rules.
 const FIND_ELIGIBLE_SQL = `
   WITH RECURSIVE ascendencia AS (
     SELECT z.id, z.zona_padre_id, 1 AS nivel FROM zona z WHERE z.id = $3
@@ -52,7 +53,12 @@ const FIND_ELIGIBLE_SQL = `
             JOIN solicitud s ON s.id = cal.solicitud_id AND s.tenant_id = cal.tenant_id
             WHERE cal.tenant_id = e.tenant_id
               AND cal.destinatario_id = e.usuario_id
-              AND s.estado IN ('FINALIZADA', 'CERRADA')) AS calificacion_promedio
+              AND s.estado IN ('FINALIZADA', 'CERRADA')) AS calificacion_promedio,
+           (SELECT COUNT(*)::int
+            FROM cobertura_aliado cob
+            JOIN zona zc ON zc.id = cob.zona_id AND upper(btrim(coalesce(zc.estado, ''))) IN ('ACTIVO', 'ACTIVA')
+            WHERE cob.aliado_id = e.id
+              AND cob.tenant_id = e.tenant_id) AS zonas_cobertura
     FROM elegibles e
     ORDER BY e.id OFFSET $6 LIMIT $7
   )
@@ -92,6 +98,7 @@ class PgElegibilidadRepository extends IElegibilidadRepository {
             totalCalificaciones,
             etiquetaCalificacion:
               totalCalificaciones > 0 ? `${calificacionPromedio.toFixed(1)} (${totalCalificaciones})` : 'Sin valorar',
+            zonasCobertura: row.zonas_cobertura,
           };
         }),
         totalCount: rows[0].total,

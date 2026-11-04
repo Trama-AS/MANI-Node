@@ -3,6 +3,7 @@ const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/e
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { aliadoDeSesion, solicitudVisible } = require('./sesionActores');
 const { avisoDeNotificacion } = require('./avisoDeNotificacion');
+const { liberarYLiquidar } = require('./fondosEnGarantia');
 
 const EVENTO = { INICIO: 'INICIO_EJECUCION', FIN: 'FIN_EJECUCION' };
 const AVISO = { INICIO: 'EJECUCION_INICIADA', FIN: 'EJECUCION_FINALIZADA' };
@@ -86,6 +87,9 @@ class PgServiceExecutionRepository extends IServiceExecutionRepository {
           JSON.stringify({ requestId: datos.solicitudId, registradoEn }),
         ]
       );
+
+      // SCRUM-892/893: al finalizar el servicio se libera la retención y se liquida al aliado, en la misma transacción.
+      if (nuevo === 'FINALIZADA') await liberarYLiquidar(client, ctx, datos.solicitudId);
 
       return {
         solicitud: { id: datos.solicitudId, estado: nuevo },

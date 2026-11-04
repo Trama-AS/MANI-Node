@@ -51,7 +51,7 @@ function entrada(extra = {}) {
     phone: '+573001234567',
     documentType: 'CC',
     documentNumber: '1020304050',
-    categoriaIds: ['cat-1', 'cat-2'],
+    categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19'],
     documento: { buffer: PDF, mimetype: 'application/pdf', originalname: 'cedula.pdf' },
     ...extra,
   };
@@ -64,7 +64,7 @@ test('registra al empleado: VERIFICADO, con documento en Storage, categorías y 
   assert.equal(result.employee.tipoAliado, 'EMPLEADO_DIRECTO');
   assert.equal(result.employee.estadoVerificacion, 'VERIFICADO');
   assert.equal(result.employee.status, 'VERIFIED');
-  assert.deepEqual(result.employee.categoriaIds, ['cat-1', 'cat-2']);
+  assert.deepEqual(result.employee.categoriaIds, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
   assert.equal(result.employee.documento.id, 'doc-1');
   assert.ok(result.temporaryPassword.length >= 8);
 
@@ -169,7 +169,7 @@ test('TENANT_NOT_FOUND si el tenant no existe o está inactivo', async () => {
 
 test('CATEGORY_NOT_FOUND si alguna categoría no existe, está inactiva o es de otro tenant', async () => {
   const inactiva = makeUseCase();
-  await assert.rejects(() => inactiva.useCase.execute(entrada({ categoriaIds: ['cat-1', 'cat-inactiva'] })), { code: 'CATEGORY_NOT_FOUND' });
+  await assert.rejects(() => inactiva.useCase.execute(entrada({ categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'cat-inactiva'] })), { code: 'CATEGORY_NOT_FOUND' });
   const ajena = makeUseCase({ catalogRepository: { findById: async (tenantId, id) => (tenantId === 'tenant-1' ? null : { id, isActive: () => true }) } });
   await assert.rejects(() => ajena.useCase.execute(entrada()), { code: 'CATEGORY_NOT_FOUND' });
   assert.equal(ajena.calls.registrar.length, 0);

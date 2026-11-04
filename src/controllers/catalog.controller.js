@@ -49,6 +49,9 @@ async function createCategory(req, res, next) {
       description,
       flujoOperativo,
       role: req.user.role,
+      // La auditoría T10 necesita quién creó la categoría; sale del JWT
+      // verificado, nunca del cuerpo de la petición.
+      userId: req.user.userId,
       correlationId: req.correlationId,
     });
     res.status(201).json({ category });

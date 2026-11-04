@@ -205,7 +205,7 @@ test('GET /api/v1/profiles/me/categories con rol ALLY responde 200 y retorna sus
 
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.body.categories));
-  assert.ok(res.body.categories.includes('cat-1'));
+  assert.ok(res.body.categories.includes('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'));
 });
 
 test('GET /api/v1/profiles/me/categories/available sin Authorization responde 401', async () => {
@@ -235,7 +235,7 @@ test('GET /api/v1/profiles/me/categories/available con rol ALLY lista solo categ
 
   assert.equal(res.status, 200);
   const ids = res.body.categories.map((c) => c.id);
-  assert.ok(ids.includes('cat-1'));
+  assert.ok(ids.includes('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'));
   assert.ok(!ids.includes('cat-inactive'), 'una categoría inactiva no debe ofrecerse');
   for (const c of res.body.categories) assert.deepEqual(Object.keys(c).sort(), ['id', 'name']);
   const names = res.body.categories.map((c) => c.name);
@@ -260,7 +260,7 @@ test('PUT /api/v1/profiles/me/categories con categoría inexistente responde 422
   const res = await request(app)
     .put('/api/v1/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categories: ['cat-1', 'cat-inexistente'] });
+    .send({ categories: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'cat-inexistente'] });
 
   assert.equal(res.status, 422);
   assert.equal(res.body.code, 'MANI-CAT-422C');
@@ -287,16 +287,20 @@ test('PUT /api/v1/profiles/me/categories con categoría inactiva responde 422 (M
   assert.equal(res.body.code, 'MANI-CAT-422C');
 });
 
+// SCRUM-1392: los identificadores que se declaran son UUID de
+// `categoria_servicio.id`. Antes esta prueba usaba 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'/'d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', que existen
+// solo como fixture del repositorio en memoria y PostgreSQL rechazaría; se usan
+// los UUID del catálogo, que son los que la pantalla del aliado envía de verdad.
 test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exitosamente', async () => {
   const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
 
   const res = await request(app)
     .put('/api/v1/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categories: ['cat-1', 'cat-2'] });
+    .send({ categories: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19'] });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.categories, ['cat-1', 'cat-2']);
+  assert.deepEqual(res.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 
   // Verifica que GET posterior retorne las nuevas categorías
   const getRes = await request(app)
@@ -304,7 +308,7 @@ test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exit
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(getRes.status, 200);
-  assert.deepEqual(getRes.body.categories, ['cat-1', 'cat-2']);
+  assert.deepEqual(getRes.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 });
 
 test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () => {
@@ -313,10 +317,10 @@ test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () 
   const res = await request(app)
     .post('/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categoriaIds: ['cat-2', 'cat-3'] });
+    .send({ categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20'] });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.categories, ['cat-2', 'cat-3']);
+  assert.deepEqual(res.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20']);
 });
 
 test('PATCH /api/v1/profiles/me actualiza datos propios y persiste los cambios en GET /api/v1/profiles/me (SCRUM-854)', async () => {
@@ -384,7 +388,27 @@ test('POST /api/v1/profiles/me/photo permite subir foto en formato soportado y r
     .attach('photo', Buffer.from('fake-pdf'), { filename: 'doc.pdf', contentType: 'application/pdf' });
 
   assert.equal(badRes.status, 400);
-  assert.equal(badRes.body.code, 'MANI-PRF-422');
+  assert.equal(badRes.body.code, 'MANI-PRF-422F');
+});
+
+test('POST /api/v1/profiles/me/photo: JPG pasa, WEBP y más de 5 MB se rechazan con código propio (SCRUM-1628)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const subir = (buffer, filename, contentType) =>
+    request(app).post('/api/v1/profiles/me/photo').set('Authorization', `Bearer ${token}`).attach('photo', buffer, { filename, contentType });
+
+  const jpg = await subir(Buffer.from('fake-jpg-bytes'), 'a.jpg', 'image/jpeg');
+  assert.equal(jpg.status, 200);
+
+  const webp = await subir(Buffer.from('fake-webp'), 'a.webp', 'image/webp');
+  assert.equal(webp.status, 400);
+  assert.equal(webp.body.code, 'MANI-PRF-422F');
+  assert.equal(webp.body.error, 'La foto debe ser JPG o PNG de hasta 5 MB');
+
+  const grande = await subir(Buffer.alloc(5 * 1024 * 1024 + 1, 1), 'grande.png', 'image/png');
+  assert.equal(grande.status, 413);
+  assert.equal(grande.body.code, 'MANI-PRF-413');
+  assert.equal(grande.body.error, 'La foto debe ser JPG o PNG de hasta 5 MB');
+  assert.ok(!/File too large/i.test(grande.body.error));
 });
 
 

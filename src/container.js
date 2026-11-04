@@ -100,6 +100,8 @@ const { createPaymentProvider } = require('./infrastructure/payments/createPayme
 const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
 const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
 const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgFondosRepository = require('./infrastructure/repositories/PgFondosRepository');
+const FundsUseCase = require('./application/useCases/payments/FundsUseCase');
 const PgDirectEmployeeRepository = require('./infrastructure/repositories/PgDirectEmployeeRepository');
 const ComposedDirectEmployeeRepository = require('./infrastructure/repositories/ComposedDirectEmployeeRepository');
 const PgTransactionAuditRepository = require('./infrastructure/repositories/PgTransactionAuditRepository');
@@ -130,6 +132,16 @@ const RequestAdditionUseCase = require('./application/useCases/additions/Request
 const ListAdditionsUseCase = require('./application/useCases/additions/ListAdditionsUseCase');
 const RespondAdditionUseCase = require('./application/useCases/additions/RespondAdditionUseCase');
 const PgRatingsRepository = require('./infrastructure/repositories/PgRatingsRepository');
+const PgTariffRepository = require('./infrastructure/repositories/PgTariffRepository');
+const TariffsUseCase = require('./application/useCases/tariffs/TariffsUseCase');
+const PgTenantRulesRepository = require('./infrastructure/repositories/PgTenantRulesRepository');
+const TenantRulesUseCase = require('./application/useCases/tenantRules/TenantRulesUseCase');
+const PgComplaintRepository = require('./infrastructure/repositories/PgComplaintRepository');
+const ComplaintsUseCase = require('./application/useCases/complaints/ComplaintsUseCase');
+const PgOperationalMetricsRepository = require('./infrastructure/repositories/PgOperationalMetricsRepository');
+const OperationalMetricsUseCase = require('./application/useCases/metrics/OperationalMetricsUseCase');
+const PgTenantStatusRepository = require('./infrastructure/repositories/PgTenantStatusRepository');
+const TenantStatusUseCase = require('./application/useCases/tenants/TenantStatusUseCase');
 const RatingsAndClosureUseCase = require('./application/useCases/ratings/RatingsAndClosureUseCase');
 
 const config = require('./config');
@@ -304,6 +316,9 @@ class Container {
       politica: { timeoutMs: config.paymentProviderTimeoutMs },
     });
     this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
+    // Retención, liberación y liquidación simuladas (SCRUM-891 a 894).
+    this.fondosRepository = new PgFondosRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.fundsUseCase = new FundsUseCase({ fondosRepository: this.fondosRepository });
 
     // Registro inmutable de transacciones (HU-M11-03 / SCRUM-889): solo lectura; se escribe junto con cada pago.
     this.transactionAuditRepository = new PgTransactionAuditRepository({ pgPoolFactory: this.pgPoolFactory });
@@ -418,6 +433,27 @@ class Container {
       ratingsRepository: this.ratingsRepository,
       notificador: this.notificarEventoServicioUseCase,
     });
+
+    // Tarifario de referencia (M-10: SCRUM-885, SCRUM-886, SCRUM-887). Core persiste y Rules evalúa el rango
+    // (Mesa CFG-23a punto M2); sin DATABASE_URL o sin Rules responde 503 (T2).
+    this.tariffRepository = new PgTariffRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tariffsUseCase = new TariffsUseCase({
+      tariffRepository: this.tariffRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    // Reglas operativas propias por tenant (M-01: SCRUM-1366 / HU-M01-03).
+    this.tenantRulesRepository = new PgTenantRulesRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tenantRulesUseCase = new TenantRulesUseCase({
+      tenantRulesRepository: this.tenantRulesRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    // Quejas, métricas operativas y estado de tenants (M-12: SCRUM-895, SCRUM-896, SCRUM-900, SCRUM-901).
+    this.complaintRepository = new PgComplaintRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.complaintsUseCase = new ComplaintsUseCase({ complaintRepository: this.complaintRepository });
+    this.metricsRepository = new PgOperationalMetricsRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.operationalMetricsUseCase = new OperationalMetricsUseCase({ metricsRepository: this.metricsRepository });
+    this.tenantStatusRepository = new PgTenantStatusRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tenantStatusUseCase = new TenantStatusUseCase({ tenantStatusRepository: this.tenantStatusRepository });
 
     // Cobertura del aliado (SCRUM-1380): sin DATABASE_URL responde 503, como el resto de repositorios pg.
     this.coberturaRepository = new PgCoberturaRepository({ pgPoolFactory: this.pgPoolFactory });

@@ -158,6 +158,66 @@ test('PG elegibilidad: la cobertura en una zona padre cubre sus descendientes', 
   assert.deepEqual(nombres(result), ['Cubre la ciudad']);
 });
 
+test('PG elegibilidad (SCRUM-1462): zonasCobertura cuenta las zonas activas del aliado en su tenant', opts, async (t) => {
+  const { pool, core } = entorno(t);
+  const s = await seedTenant(pool);
+  const otro = await seedTenant(pool);
+  const addZona = async (estado) => {
+    const id = uuid();
+    await pool.query("INSERT INTO zona (id, nivel, nombre, zona_padre_id, estado) VALUES ($1, 'LOCALIDAD', 'Extra', $2, $3)", [id, s.padre, estado]);
+    return id;
+  };
+  const cubrir = (tenant, aliado, zona) =>
+    pool.query('INSERT INTO cobertura_aliado (tenant_id, aliado_id, zona_id) VALUES ($1, $2, $3)', [tenant, aliado, zona]);
+
+  // Ana: la zona pedida, su padre (no debe duplicarla entre los elegibles), una zona ajena a la búsqueda y una inactiva.
+  const ana = await addAliado(pool, s, { nombre: 'Ana' });
+  await cubrir(s.tenant, ana.aliado, s.padre);
+  await cubrir(s.tenant, ana.aliado, await addZona('ACTIVO'));
+  await cubrir(s.tenant, ana.aliado, await addZona('INACTIVO'));
+  const beto = await addAliado(pool, s, { nombre: 'Beto' });
+
+  // Otro tenant cubre las mismas zonas (zona es un catálogo global) con su propio aliado.
+  const ajeno = await addAliado(pool, otro, { nombre: 'Ajeno', zona: s.zona });
+  await cubrir(otro.tenant, ajeno.aliado, s.padre);
+
+  // Fila a nombre de otro tenant sobre Ana: el disparador de la 0024 la impide, así que se siembra sin disparadores
+  // para comprobar que la consulta tampoco la contaría si existiera.
+  const zonaCruzada = await addZona('ACTIVO');
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await cliente.query("SET LOCAL session_replication_role = 'replica'");
+    await cliente.query('INSERT INTO cobertura_aliado (tenant_id, aliado_id, zona_id) VALUES ($1, $2, $3)', [otro.tenant, ana.aliado, zonaCruzada]);
+    await cliente.query('COMMIT');
+  } finally {
+    cliente.release();
+  }
+
+  const criterios = { categoriaId: s.categoria, zonaId: s.zona, page: 1, pageSize: 20 };
+  const zonasPorAliado = (r) => Object.fromEntries(r.allies.map((a) => [a.id, a.zonasCobertura]));
+  const esperado = { [ana.aliado]: 3, [beto.aliado]: 1 };
+
+  // Con mani_core_svc aplica RLS; con el dueño (sin RLS) el aislamiento depende solo del predicado de la consulta.
+  const repoCore = new PgElegibilidadRepository({ pgPoolFactory: core });
+  const repoDueno = new PgElegibilidadRepository({ pgPoolFactory: new PgPoolFactory({ databaseUrl: url }) });
+  t.after(() => repoDueno.pgPoolFactory.close());
+  const todos = await repoCore.findEligible(s.ctxCliente, criterios);
+  assert.deepEqual(zonasPorAliado(todos), esperado);
+  assert.equal(todos.totalCount, 2, 'cubrir la zona y su padre no duplica al aliado');
+  assert.deepEqual(zonasPorAliado(await repoDueno.findEligible(s.ctxCliente, criterios)), esperado, 'el predicado aísla por tenant sin RLS');
+
+  const idsOrdenados = [ana.aliado, beto.aliado].sort();
+  const primera = await repoCore.findEligible(s.ctxCliente, { ...criterios, pageSize: 1 });
+  const segunda = await repoCore.findEligible(s.ctxCliente, { ...criterios, pageSize: 1, page: 2 });
+  assert.deepEqual([...primera.allies, ...segunda.allies].map((a) => a.id), idsOrdenados, 'sigue ordenado por id entre páginas');
+  assert.deepEqual([primera.totalCount, segunda.totalCount], [2, 2], 'el total es exacto en cada página');
+  assert.deepEqual({ ...zonasPorAliado(primera), ...zonasPorAliado(segunda) }, esperado);
+
+  const delOtro = await repoCore.findEligible(otro.ctxCliente, { ...criterios, categoriaId: otro.categoria });
+  assert.deepEqual(zonasPorAliado(delOtro), { [ajeno.aliado]: 2 }, 'cada tenant ve solo a sus aliados con sus propias zonas');
+});
+
 test('PG contexto (SCRUM-1399) como mani_core_svc: solo el admin, el cliente dueño y los aliados implicados', opts, async (t) => {
   const { pool, core } = entorno(t);
   const repo = new PgSolicitudContextRepository({ pgPoolFactory: core });
