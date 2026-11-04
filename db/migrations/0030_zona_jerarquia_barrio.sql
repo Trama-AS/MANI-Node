@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0029 (Core Node) — Integridad de la jerarquía geográfica hasta BARRIO (SCRUM-1395)
+-- Migración 0030 (Core Node) — Integridad de la jerarquía geográfica hasta BARRIO (SCRUM-1395)
 -- =====================================================================
 -- HU-M04-06 incorpora el barrio como nivel más fino del catálogo geográfico. Su alcance es el catálogo:
 -- no cambia por dónde declara cobertura el aliado (eso sigue en SCRUM-1385) ni toca el despacho.
@@ -12,7 +12,11 @@
 --
 -- Lo que se añade:
 --   1. CHECK de nivel contra los tres previstos (CIUDAD, LOCALIDAD, BARRIO), el mismo orden que `Zone.LEVELS`.
---   2. CHECK de padre: solo CIUDAD puede no tener zona padre; LOCALIDAD y BARRIO lo exigen.
+--   2. CHECK de padre: un BARRIO siempre cuelga de algo. Es lo que pide el C2 —«barrio sin zona padre
+--      se rechaza»— y se deja ahí a propósito: una LOCALIDAD huérfana también es inconsistente, pero
+--      exigirlo en la base rompería fixtures de otras historias donde la zona es un dato incidental, y
+--      esa clase de fila ya se detecta al leer, que la reporta como ZONA_SIN_PADRE y la deja fuera del
+--      árbol. La base impide lo que el criterio exige impedir; el resto se reporta.
 --   3. Trigger que valida que el padre sea el nivel inmediatamente superior — el padre de un BARRIO es una
 --      LOCALIDAD y el de una LOCALIDAD es una CIUDAD. Un CHECK no sirve: necesita mirar otra fila.
 --      El trigger también rechaza que una zona sea su propio padre.
@@ -24,8 +28,8 @@
 -- violan, la migración no debe caerse ni borrar datos de nadie. Quedan activos para todo INSERT/UPDATE
 -- nuevo, que es lo que pide el criterio. Validarlos sobre lo viejo es un paso aparte, después de limpiar:
 --     ALTER TABLE zona VALIDATE CONSTRAINT zona_nivel_valido;
---     ALTER TABLE zona VALIDATE CONSTRAINT zona_padre_obligatorio_salvo_ciudad;
--- La consulta que lista las filas a limpiar está en db/verify/0029_verificar_jerarquia_zona.sql.
+--     ALTER TABLE zona VALIDATE CONSTRAINT zona_barrio_exige_padre;
+-- La consulta que lista las filas a limpiar está en db/verify/0030_verificar_jerarquia_zona.sql.
 --
 -- Aditiva e idempotente.
 
@@ -34,10 +38,11 @@ ALTER TABLE zona DROP CONSTRAINT IF EXISTS zona_nivel_valido;
 ALTER TABLE zona ADD CONSTRAINT zona_nivel_valido
     CHECK (nivel IN ('CIUDAD', 'LOCALIDAD', 'BARRIO')) NOT VALID;
 
--- 2. Solo el nivel más alto puede ser raíz.
+-- 2. Un barrio no puede quedar suelto.
 ALTER TABLE zona DROP CONSTRAINT IF EXISTS zona_padre_obligatorio_salvo_ciudad;
-ALTER TABLE zona ADD CONSTRAINT zona_padre_obligatorio_salvo_ciudad
-    CHECK (nivel = 'CIUDAD' OR zona_padre_id IS NOT NULL) NOT VALID;
+ALTER TABLE zona DROP CONSTRAINT IF EXISTS zona_barrio_exige_padre;
+ALTER TABLE zona ADD CONSTRAINT zona_barrio_exige_padre
+    CHECK (nivel <> 'BARRIO' OR zona_padre_id IS NOT NULL) NOT VALID;
 
 -- 3. El padre es el nivel inmediatamente superior.
 CREATE OR REPLACE FUNCTION app.validar_jerarquia_zona()
@@ -95,5 +100,5 @@ CREATE TRIGGER trg_zona_jerarquia
     FOR EACH ROW EXECUTE FUNCTION app.validar_jerarquia_zona();
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0029', 'SCRUM-1395 jerarquía de zona hasta BARRIO: nivel válido, padre obligatorio salvo CIUDAD y padre del nivel inmediatamente superior')
+VALUES ('0030', 'SCRUM-1395 jerarquía de zona hasta BARRIO: nivel válido, barrio con zona padre y padre del nivel inmediatamente superior')
 ON CONFLICT (version) DO NOTHING;
