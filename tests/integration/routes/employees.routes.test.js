@@ -30,7 +30,7 @@ function registrar(token, { campos = {}, archivo = { buffer: PDF, nombre: 'cedul
     phone: '+573001234567',
     documentType: 'CC',
     documentNumber: `doc-${u}`,
-    categoriaIds: ['cat-1', 'cat-2'],
+    categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19'],
     ...campos,
   };
   let req = request(app).post(ruta);
@@ -52,7 +52,7 @@ test('registra con documento y categorías: 201, VERIFICADO de inmediato, tenant
   assert.equal(res.body.employee.tipoAliado, 'EMPLEADO_DIRECTO');
   assert.equal(res.body.employee.estadoVerificacion, 'VERIFICADO');
   assert.equal(res.body.employee.status, 'VERIFIED');
-  assert.deepEqual(res.body.employee.categoriaIds, ['cat-1', 'cat-2']);
+  assert.deepEqual(res.body.employee.categoriaIds, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
   assert.equal(res.body.employee.documento.tipoDocumento, 'documento_identidad');
   assert.ok(res.body.temporaryPassword);
 });
@@ -65,14 +65,14 @@ test('las tres rutas (Gateway, directa y admin) registran con PNG', async () => 
 });
 
 test('acepta categoriaIds como JSON o separadas por coma y la categoriaId única heredada', async () => {
-  for (const categoriaIds of [JSON.stringify(['cat-1', 'cat-3']), 'cat-1,cat-3']) {
+  for (const categoriaIds of [JSON.stringify(['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20']), 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18,d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20']) {
     const res = await registrar(admin(), { campos: { categoriaIds } });
     assert.equal(res.status, 201);
-    assert.deepEqual(res.body.employee.categoriaIds, ['cat-1', 'cat-3']);
+    assert.deepEqual(res.body.employee.categoriaIds, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20']);
   }
-  const res = await registrar(admin(), { campos: { categoriaIds: undefined, categoriaId: 'cat-2' } });
+  const res = await registrar(admin(), { campos: { categoriaIds: undefined, categoriaId: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19' } });
   assert.equal(res.status, 201);
-  assert.deepEqual(res.body.employee.categoriaIds, ['cat-2']);
+  assert.deepEqual(res.body.employee.categoriaIds, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 });
 
 test('sin Authorization → 401', async () => {
@@ -169,7 +169,7 @@ test('datos obligatorios: sin teléfono, tipo/número de documento o categorías
 });
 
 test('categoría inexistente → 400 CATEGORY_NOT_FOUND', async () => {
-  const res = await registrar(admin(), { campos: { categoriaIds: ['cat-1', 'no-existe'] } });
+  const res = await registrar(admin(), { campos: { categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'no-existe'] } });
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'CATEGORY_NOT_FOUND');
 });
