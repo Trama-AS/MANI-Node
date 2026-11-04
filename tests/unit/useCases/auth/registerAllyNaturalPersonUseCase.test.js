@@ -10,7 +10,7 @@ const VALID_INPUT = {
   email: 'maria@mani.test',
   password: 'Cambiar123!',
   phone: '+573001234567',
-  categoriaId: 'cat-1',
+  categoriaId: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18',
   documentos: [CEDULA],
   acceptsTerms: true,
 };
@@ -19,7 +19,7 @@ function makeUseCase(overrides = {}) {
   const tenantRepository = {
     findBySlug: async (slug) => ({ id: 'trama-demo', slug: slug || 'trama-demo', name: 'Demo', status: 'ACTIVE', isActive: () => true }),
   };
-  const catalogRepository = { findById: async () => ({ id: 'cat-1', isActive: () => true }) };
+  const catalogRepository = { findById: async () => ({ id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', isActive: () => true }) };
   const usuarioRepository = { findByEmail: async () => null, create: async (u) => u };
   const aliadoRepository = { findByDocumentNumber: async () => null, create: async (a) => ({ id: 'aliado-1', ...a }) };
   const aliadoCategoriaRepository = { create: async (ac) => ac };

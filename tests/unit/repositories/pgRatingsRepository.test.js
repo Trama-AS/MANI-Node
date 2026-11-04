@@ -59,7 +59,7 @@ test('PgRatingsRepository: listarReputacionAliados formatea promedios y etiqueta
   });
 
   const repo = new PgRatingsRepository({ pgPoolFactory: factory });
-  const lista = await repo.listarReputacionAliados(ctxCliente, { categoriaId: 'cat-1', zonaId: 'zon-1' });
+  const lista = await repo.listarReputacionAliados(ctxCliente, { categoriaId: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', zonaId: 'zon-1' });
 
   assert.equal(lista.length, 2);
   assert.equal(lista[0].etiquetaCalificacion, '4.8 (4)');

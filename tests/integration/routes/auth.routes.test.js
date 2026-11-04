@@ -14,7 +14,7 @@ function registerRequest(overrides = {}) {
     .field('fullName', overrides.fullName ?? 'Maria Fernanda Rojas')
     .field('email', overrides.email ?? `aliado.${unique}@mani.test`)
     .field('password', overrides.password ?? 'Cambiar123!')
-    .field('categoriaId', overrides.categoriaId ?? 'cat-1')
+    .field('categoriaId', overrides.categoriaId ?? 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18')
     .field('acceptsTerms', overrides.acceptsTerms ?? 'true');
 
   if (overrides.attachCedula !== false) {
@@ -56,7 +56,7 @@ test('POST /api/v1/auth/register/ally sin X-Tenant-Slug responde 400 VALIDATION_
     .field('fullName', 'x')
     .field('email', 'x@mani.test')
     .field('password', 'Cambiar123!')
-    .field('categoriaId', 'cat-1')
+    .field('categoriaId', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18')
     .attach('cedula_ciudadania', Buffer.from('x'), 'cedula.pdf');
 
   assert.equal(res.status, 400);
@@ -70,7 +70,7 @@ test('POST /api/v1/auth/register/ally con solo X-Tenant-Id (sin X-Tenant-Slug) r
     .field('fullName', 'x')
     .field('email', 'x@mani.test')
     .field('password', 'Cambiar123!')
-    .field('categoriaId', 'cat-1')
+    .field('categoriaId', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18')
     .attach('cedula_ciudadania', Buffer.from('x'), 'cedula.pdf');
 
   assert.equal(res.status, 400);
@@ -113,7 +113,7 @@ test('POST /api/v1/auth/register/ally con un campo de archivo fuera del whitelis
     .field('fullName', 'Campo No Permitido')
     .field('email', `aliado.${unique}@mani.test`)
     .field('password', 'Cambiar123!')
-    .field('categoriaId', 'cat-1')
+    .field('categoriaId', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18')
     .attach('lo_que_sea', Buffer.from('contenido'), 'archivo.pdf');
 
   assert.equal(res.status, 400);
@@ -128,7 +128,7 @@ test('POST /api/v1/auth/register/ally con un MIME no permitido responde 400 VALI
     .field('fullName', 'MIME No Permitido')
     .field('email', `aliado.${unique}@mani.test`)
     .field('password', 'Cambiar123!')
-    .field('categoriaId', 'cat-1')
+    .field('categoriaId', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18')
     .attach('cedula_ciudadania', Buffer.from('<html></html>'), { filename: 'cedula.html', contentType: 'text/html' });
 
   assert.equal(res.status, 400);
@@ -157,7 +157,7 @@ function registerCompanyRequest(overrides = {}) {
     .field('nombre_representante', overrides.nombreRepresentante ?? 'Andres Felipe Perez')
     .field('email', overrides.email ?? `empresa.${unique}@mani.test`)
     .field('password', overrides.password ?? 'Cambiar123!')
-    .field('categoria_id', overrides.categoriaId ?? 'cat-1');
+    .field('categoria_id', overrides.categoriaId ?? 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18');
 
   if (overrides.attachCamara !== false) {
     req.attach('camara_comercio', Buffer.from('contenido-fake-camara'), 'camara.pdf');
