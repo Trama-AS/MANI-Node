@@ -134,6 +134,8 @@ const RespondAdditionUseCase = require('./application/useCases/additions/Respond
 const PgRatingsRepository = require('./infrastructure/repositories/PgRatingsRepository');
 const PgTariffRepository = require('./infrastructure/repositories/PgTariffRepository');
 const TariffsUseCase = require('./application/useCases/tariffs/TariffsUseCase');
+const PgTenantRulesRepository = require('./infrastructure/repositories/PgTenantRulesRepository');
+const TenantRulesUseCase = require('./application/useCases/tenantRules/TenantRulesUseCase');
 const RatingsAndClosureUseCase = require('./application/useCases/ratings/RatingsAndClosureUseCase');
 
 const config = require('./config');
@@ -431,6 +433,12 @@ class Container {
     this.tariffRepository = new PgTariffRepository({ pgPoolFactory: this.pgPoolFactory });
     this.tariffsUseCase = new TariffsUseCase({
       tariffRepository: this.tariffRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    // Reglas operativas propias por tenant (M-01: SCRUM-1366 / HU-M01-03).
+    this.tenantRulesRepository = new PgTenantRulesRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tenantRulesUseCase = new TenantRulesUseCase({
+      tenantRulesRepository: this.tenantRulesRepository,
       ruleEvaluationService: this.ruleEvaluationService,
     });
 

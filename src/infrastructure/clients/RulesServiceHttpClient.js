@@ -4,6 +4,7 @@ const { DomainError } = require('../../domain/errors/DomainError');
 
 const EVALUATE_PATH = '/api/v1/rules/categories/evaluate';
 const RATES_PATH = '/api/v1/rules/rates/evaluate';
+const TENANT_RULES_PATH = '/api/v1/rules/tenant-rules/validate';
 const RESULTADOS_TARIFA = new Set(['DENTRO_DE_RANGO', 'POR_DEBAJO', 'POR_ENCIMA']);
 // Lote máximo que acepta Rules por petición (RateEvaluationRequest); el reporte parte la lista.
 const RATES_BATCH = 500;
@@ -64,6 +65,15 @@ class RulesServiceHttpClient extends IRuleEvaluationService {
       resultados.push(...recibidos.map(({ id, resultado, desviacionPorcentaje }) => ({ id, resultado, desviacionPorcentaje })));
     }
     return { version, resultados };
+  }
+
+  async validateTenantRules({ tenantId, role, correlationId, rules } = {}) {
+    const body = await this._post(TENANT_RULES_PATH, { tenantId, role, correlationId }, { rules });
+    if (!body || body.valid !== true) {
+      const msgs = body && Array.isArray(body.violations) ? body.violations.join(', ') : 'reglas incompatibles';
+      throw new DomainError(`Reglas de tenant incompatibles: ${msgs}`, 'RULES_VALIDATION_ERROR', 422);
+    }
+    return body;
   }
 
   async _post(path, { tenantId, role, correlationId }, payload) {
