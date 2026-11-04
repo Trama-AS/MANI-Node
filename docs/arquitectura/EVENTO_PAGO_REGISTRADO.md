@@ -39,7 +39,7 @@ rechazo ni datos de contacto de las personas. El encabezado Kafka `event-id` rep
 ## Cómo se publica
 
 1. **Outbox:** en `PgPaymentRepository.registrar`, el evento se inserta en `outbox_evento` en la **misma transacción**
-   que el pago (migración `0030`). Si el pago no se guarda, el evento tampoco; un reintento con la misma clave no lo
+   que el pago (migración `0032`). Si el pago no se guarda, el evento tampoco; un reintento con la misma clave no lo
    duplica (un evento por pago y tipo).
 2. **Relay:** `OutboxRelay` toma los pendientes de todos los tenants (con `SKIP LOCKED`, así varios Core no publican el
    mismo evento), los publica con `KafkaEventPublisher` y solo entonces los marca publicados. Si Kafka falla, hace

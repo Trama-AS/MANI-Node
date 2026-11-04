@@ -132,6 +132,10 @@ const RequestAdditionUseCase = require('./application/useCases/additions/Request
 const ListAdditionsUseCase = require('./application/useCases/additions/ListAdditionsUseCase');
 const RespondAdditionUseCase = require('./application/useCases/additions/RespondAdditionUseCase');
 const PgRatingsRepository = require('./infrastructure/repositories/PgRatingsRepository');
+const PgTariffRepository = require('./infrastructure/repositories/PgTariffRepository');
+const TariffsUseCase = require('./application/useCases/tariffs/TariffsUseCase');
+const PgTenantRulesRepository = require('./infrastructure/repositories/PgTenantRulesRepository');
+const TenantRulesUseCase = require('./application/useCases/tenantRules/TenantRulesUseCase');
 const RatingsAndClosureUseCase = require('./application/useCases/ratings/RatingsAndClosureUseCase');
 
 const config = require('./config');
@@ -422,6 +426,20 @@ class Container {
     this.ratingsAndClosureUseCase = new RatingsAndClosureUseCase({
       ratingsRepository: this.ratingsRepository,
       notificador: this.notificarEventoServicioUseCase,
+    });
+
+    // Tarifario de referencia (M-10: SCRUM-885, SCRUM-886, SCRUM-887). Core persiste y Rules evalúa el rango
+    // (Mesa CFG-23a punto M2); sin DATABASE_URL o sin Rules responde 503 (T2).
+    this.tariffRepository = new PgTariffRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tariffsUseCase = new TariffsUseCase({
+      tariffRepository: this.tariffRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    // Reglas operativas propias por tenant (M-01: SCRUM-1366 / HU-M01-03).
+    this.tenantRulesRepository = new PgTenantRulesRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tenantRulesUseCase = new TenantRulesUseCase({
+      tenantRulesRepository: this.tenantRulesRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
     });
 
     // Cobertura del aliado (SCRUM-1380): sin DATABASE_URL responde 503, como el resto de repositorios pg.
