@@ -361,3 +361,45 @@ test('901 C2/C3: admin_tenant, cliente y aliado no suspenden tenants ni ven el h
   );
   assert.equal((await pool.query('SELECT estado FROM tenant WHERE id = $1', [a.id])).rows[0].estado, 'ACTIVO');
 });
+
+// =============================================================== Tokens inválidos (revisión de QA)
+test('895/896/900/901 C3: un token expirado, alterado o firmado con otro secreto responde 401 en todos los endpoints y no escribe', opts, async (t) => {
+  const { pool } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  const b = await sembrarTenant(pool);
+  const queja = (await api('post', `/solicitudes/${a.solicitud}/quejas`, a.jwt.cliente).send(quejaValida)).body.queja;
+  const claims = (tenant, role) => ({ sub: a.admin.usuario, app_metadata: { tenant_id: tenant, user_role: role } });
+  const firmar = (c, secreto = config.supabaseJwtSecret, opciones = { expiresIn: '1h' }) =>
+    jwt.sign(c, secreto, { algorithm: 'HS256', ...opciones });
+
+  const invalidos = (role) => {
+    const expirado = firmar({ ...claims(a.id, role), exp: Math.floor(Date.now() / 1000) - 60 }, config.supabaseJwtSecret, {});
+    // Alterado: el payload se cambia al tenant B conservando la firma del token de A.
+    const [cabecera, , firma] = firmar(claims(a.id, role)).split('.');
+    const payloadB = Buffer.from(JSON.stringify({ ...claims(b.id, role), exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
+    const otroSecreto = firmar(claims(b.id, role), 'secreto-que-no-es-el-del-ambiente-0123456789');
+    return [expirado, `${cabecera}.${payloadB}.${firma}`, otroSecreto].map((x) => `Bearer ${x}`);
+  };
+
+  const llamadas = [
+    ['cliente', 'post', `/solicitudes/${a.solicitudOtroCliente}/quejas`, quejaValida],
+    ['cliente', 'get', '/quejas/mias'],
+    ['admin_tenant', 'get', '/quejas'],
+    ['admin_tenant', 'get', `/quejas/${queja.id}`],
+    ['admin_tenant', 'patch', `/quejas/${queja.id}/estado`, { estado: 'EN_REVISION' }],
+    ['admin_tenant', 'get', `/metricas/operativas?desde=${hoy()}&hasta=${hoy()}`],
+    ['admin_plataforma', 'get', '/tenants'],
+    ['admin_plataforma', 'patch', `/tenants/${b.id}/estado`, { estado: 'SUSPENDED', motivo: 'Intento con token inválido' }],
+    ['admin_plataforma', 'get', `/tenants/${b.id}/estado/historial`],
+  ];
+  for (const [role, metodo, ruta, body] of llamadas) {
+    for (const auth of invalidos(role)) {
+      const r = await (body ? api(metodo, ruta, auth).send(body) : api(metodo, ruta, auth));
+      assert.equal(r.status, 401, `${role} ${metodo} ${ruta}`);
+    }
+  }
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM queja WHERE tenant_id = ANY($1)', [[a.id, b.id]])).rows[0].n, 1);
+  assert.equal((await pool.query('SELECT estado FROM queja WHERE id = $1', [queja.id])).rows[0].estado, 'ABIERTA');
+  assert.equal((await pool.query('SELECT estado FROM tenant WHERE id = $1', [b.id])).rows[0].estado, 'ACTIVO');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenant_estado_cambio WHERE tenant_id = $1', [b.id])).rows[0].n, 0);
+});
