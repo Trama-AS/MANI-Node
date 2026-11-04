@@ -85,8 +85,19 @@ function inconsistencyOf(zone, byId) {
   const parentDepth = parent.depth();
   // -1 = nivel fuera de LEVELS (fila histórica): no hay con qué comparar
   // profundidades, así que la relación no se declara inválida.
-  if (depth >= 0 && parentDepth >= 0 && depth <= parentDepth) {
+  if (depth < 0 || parentDepth < 0) {
+    return null;
+  }
+  if (depth <= parentDepth) {
     return 'RELACION_DE_NIVEL_INVERTIDA';
+  }
+  // La jerarquía es estricta: cada zona cuelga del nivel inmediatamente
+  // superior. Un BARRIO colgado de una CIUDAD se salta la LOCALIDAD, y eso es
+  // una «asociación inválida» de C2 (SCRUM-1395): el barrio existe y su padre
+  // existe, pero la relación no es la del catálogo, así que no se coloca en el
+  // árbol en lugar de mostrarlo como si fuera hijo directo de la ciudad.
+  if (depth !== parentDepth + 1) {
+    return 'SALTO_DE_NIVEL';
   }
   return null;
 }

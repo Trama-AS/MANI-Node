@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0034 (Core Node) — Outbox transaccional de eventos de negocio (SCRUM-889, ADR-0029)
+-- Migración 0035 (Core Node) — Outbox transaccional de eventos de negocio (SCRUM-889, ADR-0029)
 -- =====================================================================
 -- Core publica sus eventos en Kafka con el patrón outbox transaccional: el evento se escribe en `outbox_evento` en la
 -- MISMA transacción que el cambio de negocio (hoy, el pago: `PagoRegistrado`), así el pago y su evento nacen juntos o no
@@ -115,5 +115,5 @@ BEGIN
 END $$;
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0034', 'SCRUM-889 outbox transaccional de eventos de negocio (PagoRegistrado) con RLS por tenant y funciones del relay')
+VALUES ('0035', 'SCRUM-889 outbox transaccional de eventos de negocio (PagoRegistrado) con RLS por tenant y funciones del relay')
 ON CONFLICT (version) DO NOTHING;
