@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0030 (Core Node) — Geometrías territoriales del catálogo (SCRUM-1396)
+-- Migración 0034 (Core Node) — Geometrías territoriales del catálogo (SCRUM-1396)
 -- =====================================================================
 -- HU-M04-07 necesita dibujar los límites reales de zonas y barrios. La decisión aprobada el 03-nov-2026 es
 -- guardar los polígonos como GeoJSON (RFC 7946) en JSONB y **no instalar PostGIS**: en el alcance no hay ninguna
@@ -68,5 +68,5 @@ BEGIN
 END $$;
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0030', 'SCRUM-1396 geometria_territorial: límites GeoJSON de las zonas del catálogo, sin PostGIS')
+VALUES ('0034', 'SCRUM-1396 geometria_territorial: límites GeoJSON de las zonas del catálogo, sin PostGIS')
 ON CONFLICT (version) DO NOTHING;
