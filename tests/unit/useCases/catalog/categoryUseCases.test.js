@@ -673,7 +673,7 @@ test('GetCategoryUseCase rechaza con MANI-CAT-400 un id que no es UUID, sin cons
     },
   });
 
-  for (const categoryId of ['abc', '', '  ', 'cat-1', '11111111-1111-4111-8111', 'ZZZZZZZZ-1111-4111-8111-111111111111']) {
+  for (const categoryId of ['abc', '', '  ', 'no-es-uuid', '11111111-1111-4111-8111', 'ZZZZZZZZ-1111-4111-8111-111111111111']) {
     await assert.rejects(
       () => useCase.execute({ tenantId: 't1', categoryId }),
       (err) => {
@@ -698,7 +698,7 @@ test('SetCategoryStatusUseCase rechaza con MANI-CAT-400 un id que no es UUID y n
     auditLogger: (entry) => auditoria.push(entry),
   });
 
-  for (const categoryId of ['abc', 'cat-1']) {
+  for (const categoryId of ['abc', 'no-es-uuid']) {
     await assert.rejects(
       () => useCase.execute({ tenantId: 't1', categoryId, active: false, userId: 'admin-1' }),
       (err) => err.statusCode === 400 && err.code === 'MANI-CAT-400'

@@ -18,7 +18,7 @@ const VALID_INPUT = {
   email: 'contacto@hidraulicas.test',
   password: 'Cambiar123!',
   phone: '+573001112233',
-  categoriaId: 'cat-1',
+  categoriaId: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18',
   documentos: [CAMARA_COMERCIO],
 };
 
@@ -32,7 +32,7 @@ function makeUseCase(overrides = {}) {
       isActive: () => true,
     }),
   };
-  const catalogRepository = { findById: async () => ({ id: 'cat-1', isActive: () => true }) };
+  const catalogRepository = { findById: async () => ({ id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', isActive: () => true }) };
   const usuarioRepository = { findByEmail: async () => null, create: async (u) => u };
   const aliadoRepository = {
     findByDocumentNumber: async () => null,

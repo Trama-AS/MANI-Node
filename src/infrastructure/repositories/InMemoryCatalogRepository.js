@@ -13,12 +13,16 @@ class InMemoryCatalogRepository extends ICatalogRepository {
     // tenantId: null = fixture global de desarrollo, visible para cualquier
     // tenant (igual que antes de US-03.1.1-M2.1); las categorías creadas vía
     // el CRUD de Backoffice llevan un tenantId real y quedan aisladas a él.
+    //
+    // SCRUM-1631/SCRUM-1630: aquí había tres categorías de manicura con ids
+    // 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'..'d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20'. Eran de otro dominio de negocio —MANI es arreglos
+    // locativos— y sus ids no son UUID, así que PostgreSQL los rechazaría: el
+    // doble ofrecía al aliado categorías que la base nunca aceptaría.
     this.categories = [
-      new Category({ id: 'cat-1', name: 'Manicura Tradicional', active: true, tenantId: null, flujoOperativo: 'TARIFA_ESTANDAR' }),
-      new Category({ id: 'cat-2', name: 'Semipermanente', active: true, tenantId: null, flujoOperativo: 'TARIFA_ESTANDAR' }),
-      new Category({ id: 'cat-3', name: 'Uñas Acrílicas / Gel', active: true, tenantId: null, flujoOperativo: 'TARIFA_ESTANDAR' }),
-      // UUIDs del dropdown de MANI-Flutter (registro_aliado_page.dart), para que
-      // DEV local sin Supabase acepte lo que la UI realmente envía.
+      // El catálogo refleja el seed real (MANI-APIGateway/database/init/02-seed.sql):
+      // los mismos UUID y los mismos nombres que el dropdown de MANI-Flutter
+      // (registro_aliado_page.dart), para que DEV local sin Supabase acepte lo
+      // que la UI envía de verdad y no ofrezca nada que la base rechazaría.
       new Category({
         id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18',
         name: 'Plomería y Redes Hidráulicas',
@@ -28,7 +32,7 @@ class InMemoryCatalogRepository extends ICatalogRepository {
       }),
       new Category({
         id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19',
-        name: 'Electricidad Residencial',
+        name: 'Electricidad Residencial e Industrial',
         active: true,
         tenantId: null,
         flujoOperativo: 'COTIZACION_PREVIA',

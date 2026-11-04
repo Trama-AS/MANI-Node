@@ -8,7 +8,7 @@ class InMemoryAliadoCategoriaRepository extends IAliadoCategoriaRepository {
         id: 'demo-ac-1',
         tenantId: 'trama-demo',
         aliadoId: 'demo-aliado-1',
-        categoriaId: 'cat-1',
+        categoriaId: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18',
       },
     ];
   }
