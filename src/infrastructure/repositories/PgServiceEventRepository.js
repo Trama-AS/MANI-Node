@@ -11,11 +11,21 @@ const TOLERANCIA_FUTURO_MS = 5 * 60 * 1000;
 const COLUMNAS = `e.id, e.tipo_evento, e.descripcion, e.timestamp, COALESCE(e.ocurrido_en, e.timestamp) AS ocurrido_en,
        e.actor_id, u.rol AS actor_rol, (e.evidencia_ruta IS NOT NULL) AS tiene_evidencia`;
 
+// Las calificaciones son privadas entre cliente y aliado (privacidadCalificaciones). Los eventos
+// CALIFICACION_* registrados antes de esa regla guardaban el puntaje en la descripción
+// ("Calificación registrada (4/5)."); se ocultan al leer para no reescribir el historial.
+const TIPOS_CALIFICACION = new Set(['CALIFICACION_CLIENTE', 'CALIFICACION_ALIADO']);
+
+function descripcionVisible(row) {
+  if (!TIPOS_CALIFICACION.has(row.tipo_evento)) return row.descripcion;
+  return 'Calificación registrada.';
+}
+
 function toEvento(row) {
   return {
     id: row.id,
     tipo: row.tipo_evento,
-    descripcion: row.descripcion,
+    descripcion: descripcionVisible(row),
     // SCRUM-873: la hora de captura es la oficial (se muestra y ordena); la de registro queda para auditoría.
     ocurridoEn: row.ocurrido_en,
     registradoEn: row.timestamp,

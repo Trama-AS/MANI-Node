@@ -148,6 +148,20 @@ test('listar: secuencia ordenada por hora para el dueño o el aliado; para otro 
   });
 });
 
+test('listar: los eventos de calificación anteriores no exponen el puntaje (calificaciones privadas)', async () => {
+  const viejo = { ...filaEvento, id: 'ev-2', tipo_evento: 'CALIFICACION_CLIENTE', descripcion: 'Calificación registrada (1/5).' };
+  const otro = { ...filaEvento, id: 'ev-3', tipo_evento: 'CALIFICACION_ALIADO', descripcion: 'Calificación registrada (5/5).' };
+  const { factory } = fakeFactory({
+    'SELECT s.estado': { rows: [{ estado: 'CERRADA' }] },
+    'ORDER BY COALESCE(e.ocurrido_en, e.timestamp), e.timestamp, e.id': { rows: [filaEvento, viejo, otro] },
+  });
+  const lista = await new PgServiceEventRepository({ pgPoolFactory: factory }).listar({ ...ctx, role: 'CLIENT' }, SOLICITUD);
+  assert.equal(lista[0].descripcion, 'Cambié la tubería');
+  assert.equal(lista[1].descripcion, 'Calificación registrada.');
+  assert.equal(lista[2].descripcion, 'Calificación registrada.');
+  assert.ok(!JSON.stringify(lista).includes('/5'));
+});
+
 test('sin DATABASE_URL responde 503 y exige pgPoolFactory', async () => {
   await assert.rejects(new PgServiceEventRepository({ pgPoolFactory: { getPool: () => null } }).listar(ctx, SOLICITUD), {
     statusCode: 503,
