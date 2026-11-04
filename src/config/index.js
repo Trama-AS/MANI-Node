@@ -94,6 +94,15 @@ const config = {
   // se leen aquí, desde process.env, y nunca se registran ni se devuelven.
   pushProviderTimeoutMs: positiveIntFromEnv('PUSH_PROVIDER_TIMEOUT_MS', 5000),
   paymentProviderTimeoutMs: positiveIntFromEnv('PAYMENT_PROVIDER_TIMEOUT_MS', 10000),
+  // Kafka (ADR-0029, SCRUM-889). Lista separada por comas de `host:puerto`. Sin ella el relay del outbox no arranca y los
+  // eventos quedan pendientes en `outbox_evento`.
+  kafkaBrokers: (process.env.KAFKA_BROKERS || '')
+    .split(',')
+    .map((b) => b.trim())
+    .filter(Boolean),
+  kafkaClientId: process.env.KAFKA_CLIENT_ID || 'mani-core',
+  outboxRelayIntervalMs: positiveIntFromEnv('OUTBOX_RELAY_INTERVAL_MS', 2000),
+  outboxRelayBatchSize: positiveIntFromEnv('OUTBOX_RELAY_BATCH_SIZE', 50),
   // Página de Flutter que recibe al usuario desde el correo de recuperación (HU-M02-10). Debe estar en la lista de
   // redirecciones permitidas del proyecto de Supabase; sin ella el proveedor usa su Site URL.
   passwordRecoveryRedirectUrl: process.env.PASSWORD_RECOVERY_REDIRECT_URL,
