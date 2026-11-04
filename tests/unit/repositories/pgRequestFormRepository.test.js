@@ -42,18 +42,34 @@ test('categorías: solo ACTIVO del tenant del token, por nombre, con el contexto
 });
 
 test('sitios: los del cliente de la sesión con zona y zona padre; sin nombre se usa la dirección', async () => {
+  // `numeric` llega como cadena desde `pg`; la segunda sede no tiene
+  // coordenadas, que es el caso que el mapa de HU-M04-07 debe reportar sin
+  // inventar un punto.
   const filas = [
-    { id: 's1', nombre: 'Sede Norte', direccion: 'Calle 100 # 10-20', zona_id: 'z1', zona: 'Usaquén', zona_padre: 'Bogotá' },
-    { id: 's2', nombre: null, direccion: 'Carrera 7 # 45-10', zona_id: 'z2', zona: 'Chapinero', zona_padre: null },
+    {
+      id: 's1', nombre: 'Sede Norte', direccion: 'Calle 100 # 10-20', zona_id: 'z1',
+      zona: 'Usaquén', zona_padre: 'Bogotá', latitud: '4.681320', longitud: '-74.050450',
+    },
+    {
+      id: 's2', nombre: null, direccion: 'Carrera 7 # 45-10', zona_id: 'z2',
+      zona: 'Chapinero', zona_padre: null, latitud: null, longitud: null,
+    },
   ];
   const { factory, sentencias } = fakeFactory(conCliente({ 'FROM sitio s': { rows: filas } }));
 
   const r = await new PgRequestFormRepository({ pgPoolFactory: factory }).listarSitios(ctx);
 
   assert.deepEqual(r, [
-    { id: 's1', nombre: 'Sede Norte', direccion: 'Calle 100 # 10-20', zonaId: 'z1', zona: 'Usaquén', zonaPadre: 'Bogotá' },
-    { id: 's2', nombre: 'Carrera 7 # 45-10', direccion: 'Carrera 7 # 45-10', zonaId: 'z2', zona: 'Chapinero', zonaPadre: null },
+    {
+      id: 's1', nombre: 'Sede Norte', direccion: 'Calle 100 # 10-20', zonaId: 'z1',
+      zona: 'Usaquén', zonaPadre: 'Bogotá', latitud: 4.68132, longitud: -74.05045,
+    },
+    {
+      id: 's2', nombre: 'Carrera 7 # 45-10', direccion: 'Carrera 7 # 45-10', zonaId: 'z2',
+      zona: 'Chapinero', zonaPadre: null, latitud: null, longitud: null,
+    },
   ]);
+  assert.equal(typeof r[0].latitud, 'number', 'la coordenada se normaliza a número, no queda como cadena');
   const lectura = sentencias.find((s) => s.sql.includes('FROM sitio s'));
   assert.deepEqual(lectura.params, ['cliente-1', TENANT]);
   assert.match(lectura.sql, /LEFT JOIN zona zp ON zp\.id = z\.zona_padre_id/);

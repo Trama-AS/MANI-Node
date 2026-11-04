@@ -67,6 +67,54 @@ BEGIN
     END IF;
 END $$;
 
+-- ---------------------------------------------------------------------
+-- Coordenadas del sitio del servicio
+-- ---------------------------------------------------------------------
+-- HU-M04-07 pide mostrar en el mapa la ubicación declarada del sitio, además de las zonas y los barrios.
+-- Son columnas en `sitio` y no filas en `geometria_territorial`, conforme a la decisión aprobada de mantener
+-- las coordenadas de los sitios separadas de las geometrías territoriales: un sitio es un punto que pertenece
+-- a un tenant, no un límite del catálogo global, y su ciclo de vida es el de la sede.
+--
+-- Nullable a propósito: las sedes ya registradas no tienen coordenadas y **no se les inventan**. Una sede sin
+-- coordenadas no se dibuja y se reporta como tal (criterio C2).
+--
+-- `numeric(9,6)` da precisión de ~0,1 m, de sobra para ubicar una sede, y evita el error de redondeo de los
+-- flotantes al comparar. Los rangos son los de WGS84; no se valida que el punto caiga en Colombia, porque el
+-- catálogo es de plataforma y un tenant podría operar en otro país.
+--
+-- `sitio` ya tiene `tenant_id`, RLS y los GRANT desde la 0007, y los GRANT son por tabla: cubren las columnas
+-- nuevas sin tocar permisos.
+
+ALTER TABLE sitio ADD COLUMN IF NOT EXISTS latitud  numeric(9,6);
+ALTER TABLE sitio ADD COLUMN IF NOT EXISTS longitud numeric(9,6);
+
+COMMENT ON COLUMN sitio.latitud IS
+    'Latitud declarada de la sede, WGS84 (EPSG 4326). NULL si no se ha capturado; no se infiere de la dirección.';
+COMMENT ON COLUMN sitio.longitud IS
+    'Longitud declarada de la sede, WGS84 (EPSG 4326). NULL si no se ha capturado.';
+
+-- `NOT VALID`: valida las filas nuevas sin exigir reproceso de las existentes, que están en NULL.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'sitio_coordenadas_rango'
+    ) THEN
+        ALTER TABLE sitio ADD CONSTRAINT sitio_coordenadas_rango
+            CHECK (
+                (latitud IS NULL OR (latitud >= -90 AND latitud <= 90))
+                AND (longitud IS NULL OR (longitud >= -180 AND longitud <= 180))
+            ) NOT VALID;
+    END IF;
+    -- Un punto a medias no sirve para dibujar nada y esconde un error de captura:
+    -- o están las dos coordenadas o ninguna.
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'sitio_coordenadas_completas'
+    ) THEN
+        ALTER TABLE sitio ADD CONSTRAINT sitio_coordenadas_completas
+            CHECK ((latitud IS NULL) = (longitud IS NULL)) NOT VALID;
+    END IF;
+END $$;
+
 INSERT INTO schema_migrations (version, description)
-VALUES ('0036', 'SCRUM-1396 geometria_territorial: límites GeoJSON de las zonas del catálogo, sin PostGIS')
+VALUES ('0036', 'SCRUM-1396 geometria_territorial (límites GeoJSON, sin PostGIS) y coordenadas del sitio del servicio')
 ON CONFLICT (version) DO NOTHING;
