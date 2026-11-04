@@ -100,6 +100,8 @@ const { createPaymentProvider } = require('./infrastructure/payments/createPayme
 const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
 const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
 const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgFondosRepository = require('./infrastructure/repositories/PgFondosRepository');
+const FundsUseCase = require('./application/useCases/payments/FundsUseCase');
 const PgDirectEmployeeRepository = require('./infrastructure/repositories/PgDirectEmployeeRepository');
 const ComposedDirectEmployeeRepository = require('./infrastructure/repositories/ComposedDirectEmployeeRepository');
 const PgTransactionAuditRepository = require('./infrastructure/repositories/PgTransactionAuditRepository');
@@ -304,6 +306,9 @@ class Container {
       politica: { timeoutMs: config.paymentProviderTimeoutMs },
     });
     this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
+    // Retención, liberación y liquidación simuladas (SCRUM-891 a 894).
+    this.fondosRepository = new PgFondosRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.fundsUseCase = new FundsUseCase({ fondosRepository: this.fondosRepository });
 
     // Registro inmutable de transacciones (HU-M11-03 / SCRUM-889): solo lectura; se escribe junto con cada pago.
     this.transactionAuditRepository = new PgTransactionAuditRepository({ pgPoolFactory: this.pgPoolFactory });

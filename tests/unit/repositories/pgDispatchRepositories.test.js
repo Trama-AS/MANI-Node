@@ -42,7 +42,7 @@ test('elegibilidad: corre con el contexto del tenant, una sola consulta, y mapea
   const { factory, sentencias, negocio } = fakeFactory(() => ({
     rows: [{
       total: 3,
-      allies: [{ id: ALLY, nombre_razon_social: 'Ana', tipo: 'PERSONA_NATURAL', estado_verificacion: 'VERIFICADO' }],
+      allies: [{ id: ALLY, nombre_razon_social: 'Ana', tipo: 'PERSONA_NATURAL', estado_verificacion: 'VERIFICADO', zonas_cobertura: 2 }],
     }],
   }));
   const repo = new PgElegibilidadRepository({ pgPoolFactory: factory });
@@ -52,7 +52,7 @@ test('elegibilidad: corre con el contexto del tenant, una sola consulta, y mapea
   });
 
   assert.deepEqual(result, {
-    allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO', calificacionPromedio: null, totalCalificaciones: 0, etiquetaCalificacion: 'Sin valorar' }],
+    allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO', calificacionPromedio: null, totalCalificaciones: 0, etiquetaCalificacion: 'Sin valorar', zonasCobertura: 2 }],
     totalCount: 3,
   });
   assert.deepEqual(contextoFijado(sentencias), [TENANT, USER, 'cliente']);

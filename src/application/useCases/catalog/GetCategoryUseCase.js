@@ -1,4 +1,5 @@
 const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
+const requireCategoryUuid = require('./requireCategoryUuid');
 
 class GetCategoryUseCase {
   constructor({ catalogRepository }) {
@@ -15,6 +16,7 @@ class GetCategoryUseCase {
     if (!categoryId || typeof categoryId !== 'string') {
       throw new ValidationError('categoryId es requerido');
     }
+    requireCategoryUuid(categoryId);
 
     const category = await this.catalogRepository.findById(tenantId, categoryId);
     if (!category || category.tenantId !== tenantId) {
