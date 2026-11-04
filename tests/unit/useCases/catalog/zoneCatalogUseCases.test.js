@@ -177,6 +177,66 @@ test('ListZoneCatalogUseCase reporta la relación de nivel invertida', async () 
   assert.strictEqual(invertida.reason, 'RELACION_DE_NIVEL_INVERTIDA');
 });
 
+// --- SCRUM-1395: el barrio es el nivel más fino y cuelga de una localidad ---
+
+test('ListZoneCatalogUseCase reporta el barrio colgado directo de la ciudad y no lo muestra como hijo suyo', async () => {
+  const useCase = new ListZoneCatalogUseCase({
+    zoneRepository: repoWith([
+      { id: CIUDAD, name: 'Bogotá D.C.', level: 'CIUDAD', parentId: null, active: true },
+      { id: CHAPINERO, name: 'Chapinero', level: 'LOCALIDAD', parentId: CIUDAD, active: true },
+      // Se salta la localidad: el barrio existe y su padre existe, pero la
+      // relación no es la del catálogo (C2, «asociación inválida»).
+      { id: CHICO_NORTE, name: 'Chicó Norte', level: 'BARRIO', parentId: CIUDAD, active: true },
+    ]),
+  });
+
+  const { tree, zones, inconsistencies } = await useCase.execute({});
+
+  assert.deepStrictEqual(
+    tree[0].children.map((n) => n.id),
+    [CHAPINERO],
+    'la ciudad solo tiene localidades como hijas'
+  );
+  assert.ok(!zones.some((z) => z.id === CHICO_NORTE), 'el barrio mal colgado no se lista como válido');
+  assert.deepStrictEqual(inconsistencies, [
+    { id: CHICO_NORTE, level: 'BARRIO', parentId: CIUDAD, reason: 'SALTO_DE_NIVEL' },
+  ]);
+});
+
+test('ListZoneCatalogUseCase coloca el barrio bajo su localidad y la localidad bajo su ciudad', async () => {
+  const useCase = new ListZoneCatalogUseCase({
+    zoneRepository: repoWith([
+      { id: CIUDAD, name: 'Bogotá D.C.', level: 'CIUDAD', parentId: null, active: true },
+      { id: CHAPINERO, name: 'Chapinero', level: 'LOCALIDAD', parentId: CIUDAD, active: true },
+      { id: CHICO_NORTE, name: 'Chicó Norte', level: 'BARRIO', parentId: CHAPINERO, active: true },
+    ]),
+  });
+
+  const { tree, inconsistencies } = await useCase.execute({});
+
+  assert.deepStrictEqual(inconsistencies, []);
+  const localidad = tree[0].children[0];
+  assert.strictEqual(localidad.id, CHAPINERO);
+  assert.deepStrictEqual(localidad.children.map((n) => n.id), [CHICO_NORTE]);
+  assert.strictEqual(localidad.children[0].level, 'BARRIO');
+});
+
+test('ListZoneCatalogUseCase no inventa un salto de nivel con filas de nivel histórico', async () => {
+  // Una fila con un nivel fuera de LEVELS no tiene profundidad comparable: se
+  // coloca donde dice su padre en lugar de declararla inconsistente, como ya
+  // decidió SCRUM-1393 para las filas heredadas.
+  const useCase = new ListZoneCatalogUseCase({
+    zoneRepository: repoWith([
+      { id: CIUDAD, name: 'Bogotá D.C.', level: 'CIUDAD', parentId: null, active: true },
+      { id: CHICO_NORTE, name: 'Vereda heredada', level: 'VEREDA', parentId: CIUDAD, active: true },
+    ]),
+  });
+
+  const { inconsistencies } = await useCase.execute({});
+
+  assert.deepStrictEqual(inconsistencies, []);
+});
+
 test('ListZoneCatalogUseCase no se cuelga con un ciclo entre zonas', async () => {
   const useCase = new ListZoneCatalogUseCase({
     zoneRepository: repoWith([
