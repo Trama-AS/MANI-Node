@@ -170,4 +170,41 @@ test('1366 T10: una versión es inmutable y no se borra, aun para el dueño de l
 
   await assert.rejects(() => pool.query("UPDATE regla_tenant SET reglas = '{}'::jsonb WHERE tenant_id = $1", [a.id]), /MANI-RGL-409T|MANI-RGL-409C/);
   await assert.rejects(() => pool.query('DELETE FROM regla_tenant WHERE tenant_id = $1', [a.id]), /MANI-RGL-409I/);
+  // Revisión de QA: TRUNCATE también se rechaza (antes el disparador de sentencia llegaba a RETURN NEW).
+  await assert.rejects(() => pool.query('TRUNCATE regla_tenant'), /MANI-RGL-409I/);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM regla_tenant WHERE tenant_id = $1', [a.id])).rows[0].n, 1);
+});
+
+test('1366 C2: un valor no numérico (null, true, "", "15", []) responde 400 y no guarda (caso de la revisión: null guardaba 0)', opts, async (t) => {
+  const { pool } = await entorno(t);
+  const a = await sembrarTenant(pool);
+
+  for (const valor of [null, true, '', '15', []]) {
+    const r = await api('put', a.jwt.admin, { expectedVersion: 0, reglas: { ...REGLAS, alertaTarifa: { toleranciaPorcentaje: valor } } });
+    assert.equal(r.status, 400, JSON.stringify(valor));
+    assert.equal(r.body.code, 'MANI-RGL-400');
+  }
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM regla_tenant WHERE tenant_id = $1', [a.id])).rows[0].n, 0);
+  assert.equal((await api('get', a.jwt.admin)).body.version, 0);
+});
+
+test('1366 C3: un token expirado, alterado o firmado con otro secreto responde 401 en GET, PUT e historial y no escribe', opts, async (t) => {
+  const { pool } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  const b = await sembrarTenant(pool);
+  const claims = (tenant) => ({ sub: a.admin, app_metadata: { tenant_id: tenant, user_role: 'admin_tenant' } });
+
+  const expirado = `Bearer ${jwt.sign({ ...claims(a.id), exp: Math.floor(Date.now() / 1000) - 60 }, config.supabaseJwtSecret, { algorithm: 'HS256' })}`;
+  // Alterado: el payload se cambia al tenant B conservando la firma del token de A.
+  const [cabecera, , firma] = jwt.sign(claims(a.id), config.supabaseJwtSecret, { algorithm: 'HS256', expiresIn: '1h' }).split('.');
+  const payloadB = Buffer.from(JSON.stringify({ ...claims(b.id), exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
+  const alterado = `Bearer ${cabecera}.${payloadB}.${firma}`;
+  const otroSecreto = `Bearer ${jwt.sign(claims(b.id), 'secreto-que-no-es-el-del-ambiente-0123456789', { algorithm: 'HS256', expiresIn: '1h' })}`;
+
+  for (const auth of [expirado, alterado, otroSecreto]) {
+    assert.equal((await api('get', auth)).status, 401);
+    assert.equal((await api('put', auth, { expectedVersion: 0, reglas: REGLAS })).status, 401);
+    assert.equal((await request(app).get('/api/v1/tenant/rules/history').set('Authorization', auth)).status, 401);
+  }
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM regla_tenant WHERE tenant_id = ANY($1)', [[a.id, b.id]])).rows[0].n, 0);
 });

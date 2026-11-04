@@ -52,7 +52,7 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0032`** | [`0032_queja.sql`](migrations/0032_queja.sql) | `SCRUM-895`, `SCRUM-896` | Tablas `queja` (motivo del catálogo, descripción de 10 a 1000 caracteres, estado `ABIERTA`/`EN_REVISION`/`RESUELTA`/`RECHAZADA`, una sola abierta por solicitud) y `queja_transicion` (historial inmutable con actor, rol, nota y correlación). Disparador que rechaza transiciones inválidas y cambios fuera de estado y respuesta. RLS: el cliente solo ve y crea quejas propias; solo `admin_tenant` cambia el estado. |
 | **`0033`** | [`0033_tenant_estado_auditoria.sql`](migrations/0033_tenant_estado_auditoria.sql) | `SCRUM-901` | `tenant.estado` admite `ACTIVO`, `SUSPENDIDO` e `INACTIVO` (`NOT VALID`). `mani_core_svc` gana `UPDATE (estado)` sobre `tenant`, limitado por política al rol `admin_plataforma`. Tabla `tenant_estado_cambio`: registro inmutable de cada cambio con motivo, actor, rol y tenant de origen; solo `admin_plataforma` la lee o escribe. |
 
-La siguiente migración libre es la **`0030`**.
+La siguiente migración libre es la **`0032`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
