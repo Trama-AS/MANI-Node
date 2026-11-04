@@ -50,6 +50,7 @@ const UpdateCategoryUseCase = require('./application/useCases/catalog/UpdateCate
 const SetCategoryStatusUseCase = require('./application/useCases/catalog/SetCategoryStatusUseCase');
 const ListZoneCatalogUseCase = require('./application/useCases/catalog/ListZoneCatalogUseCase');
 const GetZoneUseCase = require('./application/useCases/catalog/GetZoneUseCase');
+const GetZoneGeometriesUseCase = require('./application/useCases/catalog/GetZoneGeometriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const ListAlliesVerificationUseCase = require('./application/useCases/verification/ListAlliesVerificationUseCase');
@@ -359,6 +360,7 @@ class Container {
     // `zona` es un catálogo global sin esa columna.
     this.listZoneCatalogUseCase = new ListZoneCatalogUseCase({ zoneRepository: this.zoneRepository });
     this.getZoneUseCase = new GetZoneUseCase({ zoneRepository: this.zoneRepository });
+    this.getZoneGeometriesUseCase = new GetZoneGeometriesUseCase({ zoneRepository: this.zoneRepository });
 
     // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).
     // Sin DATABASE_URL no hay respaldo en memoria: responde 503.

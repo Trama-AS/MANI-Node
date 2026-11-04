@@ -237,7 +237,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   async findSitesByClientId(clienteId, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
-      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at
+      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, latitud, longitud, created_at
        FROM sitio
        WHERE cliente_id = $1 AND tenant_id = $2
        ORDER BY created_at ASC`,
@@ -250,7 +250,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   async findSiteById(clienteId, siteId, tenantId) {
     const pool = this._getPool();
     const { rows } = await pool.query(
-      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at
+      `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, latitud, longitud, created_at
        FROM sitio
        WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3`,
       [siteId, clienteId, tenantId]
@@ -265,7 +265,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
         `UPDATE sitio
          SET nombre = $4, direccion = $5, zona_id = $6, contacto_nombre = $7, contacto_telefono = $8
          WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3
-         RETURNING id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at`,
+         RETURNING id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, latitud, longitud, created_at`,
         [
           site.id,
           clienteId,
@@ -317,6 +317,9 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
       contactoNombre: row.contacto_nombre ?? null,
       contactoTelefono: row.contacto_telefono ?? null,
       reglas,
+      // `numeric` llega como cadena desde `pg`; la entidad la normaliza.
+      latitud: row.latitud ?? null,
+      longitud: row.longitud ?? null,
       creadoEn: row.created_at,
     });
   }
