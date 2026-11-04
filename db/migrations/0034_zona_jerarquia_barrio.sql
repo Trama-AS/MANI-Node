@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0030 (Core Node) — Integridad de la jerarquía geográfica hasta BARRIO (SCRUM-1395)
+-- Migración 0034 (Core Node) — Integridad de la jerarquía geográfica hasta BARRIO (SCRUM-1395)
 -- =====================================================================
 -- HU-M04-06 incorpora el barrio como nivel más fino del catálogo geográfico. Su alcance es el catálogo:
 -- no cambia por dónde declara cobertura el aliado (eso sigue en SCRUM-1385) ni toca el despacho.
@@ -29,7 +29,7 @@
 -- nuevo, que es lo que pide el criterio. Validarlos sobre lo viejo es un paso aparte, después de limpiar:
 --     ALTER TABLE zona VALIDATE CONSTRAINT zona_nivel_valido;
 --     ALTER TABLE zona VALIDATE CONSTRAINT zona_barrio_exige_padre;
--- La consulta que lista las filas a limpiar está en db/verify/0030_verificar_jerarquia_zona.sql.
+-- La consulta que lista las filas a limpiar está en db/verify/0034_verificar_jerarquia_zona.sql.
 --
 -- Aditiva e idempotente.
 
@@ -100,5 +100,5 @@ CREATE TRIGGER trg_zona_jerarquia
     FOR EACH ROW EXECUTE FUNCTION app.validar_jerarquia_zona();
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0030', 'SCRUM-1395 jerarquía de zona hasta BARRIO: nivel válido, barrio con zona padre y padre del nivel inmediatamente superior')
+VALUES ('0034', 'SCRUM-1395 jerarquía de zona hasta BARRIO: nivel válido, barrio con zona padre y padre del nivel inmediatamente superior')
 ON CONFLICT (version) DO NOTHING;

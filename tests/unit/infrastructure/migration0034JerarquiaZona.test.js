@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '../../..');
-const MIGRACION = path.join(ROOT, 'db/migrations/0030_zona_jerarquia_barrio.sql');
-const VERIFY = path.join(ROOT, 'db/verify/0030_verificar_jerarquia_zona.sql');
+const MIGRACION = path.join(ROOT, 'db/migrations/0034_zona_jerarquia_barrio.sql');
+const VERIFY = path.join(ROOT, 'db/verify/0034_verificar_jerarquia_zona.sql');
 
-describe('SCRUM-1395: migración 0030, integridad de la jerarquía geográfica hasta BARRIO', () => {
+describe('SCRUM-1395: migración 0034, integridad de la jerarquía geográfica hasta BARRIO', () => {
   const sql = fs.readFileSync(MIGRACION, 'utf8');
   const verify = fs.readFileSync(VERIFY, 'utf8');
 
@@ -64,7 +64,7 @@ describe('SCRUM-1395: migración 0030, integridad de la jerarquía geográfica h
     assert.match(sql, /DROP CONSTRAINT IF EXISTS zona_nivel_valido/);
     assert.match(sql, /DROP CONSTRAINT IF EXISTS zona_barrio_exige_padre/);
     assert.match(sql, /DROP TRIGGER IF EXISTS trg_zona_jerarquia ON zona/);
-    assert.match(sql, /INSERT INTO schema_migrations \(version, description\)\s*\nVALUES \('0030'/);
+    assert.match(sql, /INSERT INTO schema_migrations \(version, description\)\s*\nVALUES \('0034'/);
     assert.match(sql, /ON CONFLICT \(version\) DO NOTHING/);
   });
 
@@ -82,7 +82,7 @@ describe('SCRUM-1395: migración 0030, integridad de la jerarquía geográfica h
 
   it('el número de migración no se repite en la serie', () => {
     const archivos = fs.readdirSync(path.join(ROOT, 'db/migrations')).filter((f) => f.endsWith('.sql'));
-    const con0029 = archivos.filter((f) => f.startsWith('0030'));
-    assert.deepEqual(con0029, ['0030_zona_jerarquia_barrio.sql']);
+    const con0029 = archivos.filter((f) => f.startsWith('0034'));
+    assert.deepEqual(con0029, ['0034_zona_jerarquia_barrio.sql']);
   });
 });

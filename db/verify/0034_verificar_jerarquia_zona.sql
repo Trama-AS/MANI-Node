@@ -1,7 +1,7 @@
 -- =====================================================================
--- Verificación de la migración 0030 (SCRUM-1395) — jerarquía geográfica hasta BARRIO
+-- Verificación de la migración 0034 (SCRUM-1395) — jerarquía geográfica hasta BARRIO
 -- =====================================================================
--- Se ejecuta después de aplicar 0030. Las tres primeras consultas confirman que las defensas existen;
+-- Se ejecuta después de aplicar 0034. Las tres primeras consultas confirman que las defensas existen;
 -- la cuarta lista las filas heredadas que impiden validar los CHECK, que se agregaron NOT VALID para
 -- no hacer caer la migración sobre datos ya sembrados.
 
