@@ -1,5 +1,6 @@
 const container = require('../container');
 const { recordAuthValidation } = require('../infrastructure/observability/metrics');
+const { tienePermisoPlataforma, ROLES_DE_PLATAFORMA } = require('../application/security/contextoPlataforma');
 
 async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -14,7 +15,14 @@ async function authenticate(req, res, next) {
   }
 
   try {
-    const session = await container.tokenService.verifyToken(authHeader);
+    const verificada = await container.tokenService.verifyToken(authHeader);
+    // SCRUM-901: el administrador de plataforma puede operar sobre otro tenant o actuar como un usuario de ese
+    // tenant (cabeceras X-Mani-Tenant y X-Mani-Actuar-Como). Para los demás roles la sesión no cambia.
+    const session = await container.contextoPlataforma.resolver(verificada, req.headers, {
+      correlationId: req.correlationId || null,
+      metodo: req.method,
+      ruta: req.originalUrl,
+    });
     req.user = session;
     req.tenantId = session.tenantId;
     next();
@@ -45,6 +53,9 @@ function requireRole(...allowedRoles) {
     const userRole = String(req.user.role).toUpperCase();
     const isAllowed = allowedRoles.some((role) => {
       const r = String(role).toUpperCase();
+      // Las operaciones exclusivas de plataforma siguen abiertas al administrador de plataforma aunque esté
+      // administrando otro tenant o actuando como un usuario (SCRUM-901).
+      if (ROLES_DE_PLATAFORMA.has(r) && tienePermisoPlataforma(req.user)) return true;
       if (r === 'ADMIN') {
         return userRole === 'ADMIN' || userRole === 'ADMIN_TENANT';
       }
