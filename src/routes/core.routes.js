@@ -13,6 +13,7 @@ const ratingsRoutes = require('./core/ratings.routes');
 const catalogRoutes = require('./core/catalog.routes');
 const messagesRoutes = require('./core/messages.routes');
 const auditRoutes = require('./core/audit.routes');
+const tariffsRoutes = require('./core/tariffs.routes');
 
 // Rutas de Core agrupadas por dominio interno (SCRUM-1447, RNF-02, ADR-0022). Un solo servicio desplegable:
 // cada archivo es un límite de dominio, no un microservicio. Dos rutas que pueden atender la misma URL conservan
@@ -34,5 +35,6 @@ router.use(ratingsRoutes);
 router.use(catalogRoutes);
 router.use(messagesRoutes);
 router.use(auditRoutes);
+router.use(tariffsRoutes);
 
 module.exports = router;
