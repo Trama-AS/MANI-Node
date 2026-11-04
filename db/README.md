@@ -49,7 +49,7 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0029`** | [`0029_retencion_liberacion_liquidacion.sql`](migrations/0029_retencion_liberacion_liquidacion.sql) | `SCRUM-891`, `SCRUM-892`, `SCRUM-893` | Tablas `retencion_fondos` (un pago aprobado retiene su monto en garantía, simulado), `liquidacion` (al liberar se liquida al aliado descontando la comisión; inmutable) y `comision_tenant` (porcentaje 0 a 100 por tenant; sin fila rige el 10 % por defecto). Todas con `tenant_id` y RLS FORCE; `mani_core_svc` solo con SELECT/INSERT/UPDATE (retención y comisión) o SELECT/INSERT (liquidación). |
 | **`0030`** | [`0030_tarifario_referencia.sql`](migrations/0030_tarifario_referencia.sql) | `SCRUM-885` | `tarifa_referencia` (existía desde la 001, solo valores): moneda ISO 4217, vigencia desde/hasta, condiciones, `version` por categoría y `estado` `ACTIVA`/`REEMPLAZADA` con `reemplaza_id`. Editar crea la versión siguiente; un disparador hace inmutable cada versión (solo pasa de `ACTIVA` a `REEMPLAZADA`) y no deja borrarla. `EXCLUDE` con `btree_gist`: dos tarifas `ACTIVA` de la misma categoría no cruzan su vigencia. Auditoría del actor (`creado_por`, `actor_rol`, `correlation_id`). `mani_core_svc` sin `DELETE`; RLS por tenant desde la `0007`. |
 
-La siguiente migración libre es la **`0030`**.
+La siguiente migración libre es la **`0031`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
