@@ -90,7 +90,8 @@ class OutboxRelay {
   async stop() {
     this.running = false;
     if (this.timer) clearTimeout(this.timer);
-    if (this.enCurso) await this.enCurso.catch(() => {});
+    // Comparación explícita: enCurso es una promesa y no debe usarse como condición booleana (Sonar S6544).
+    if (this.enCurso !== null) await this.enCurso.catch(() => {});
     if (typeof this.publisher.close === 'function') await this.publisher.close();
   }
 }
