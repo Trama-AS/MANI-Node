@@ -370,7 +370,7 @@ test('DeclareAllyCategoriesUseCase: un id que no es UUID responde 422C y no cons
     },
   });
 
-  for (const categoryId of ['abc', 'cat-1', '11111111-1111-4111-8111', "' OR 1=1 --"]) {
+  for (const categoryId of ['abc', 'no-es-uuid', '11111111-1111-4111-8111', "' OR 1=1 --"]) {
     await assert.rejects(
       () => useCase.execute({ userId: 'u1', tenantId: 't1', role: 'ALLY', categoryIds: [categoryId] }),
       (err) => {

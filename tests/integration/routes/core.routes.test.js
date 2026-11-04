@@ -205,7 +205,7 @@ test('GET /api/v1/profiles/me/categories con rol ALLY responde 200 y retorna sus
 
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.body.categories));
-  assert.ok(res.body.categories.includes('cat-1'));
+  assert.ok(res.body.categories.includes('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'));
 });
 
 test('GET /api/v1/profiles/me/categories/available sin Authorization responde 401', async () => {
@@ -235,7 +235,7 @@ test('GET /api/v1/profiles/me/categories/available con rol ALLY lista solo categ
 
   assert.equal(res.status, 200);
   const ids = res.body.categories.map((c) => c.id);
-  assert.ok(ids.includes('cat-1'));
+  assert.ok(ids.includes('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'));
   assert.ok(!ids.includes('cat-inactive'), 'una categoría inactiva no debe ofrecerse');
   for (const c of res.body.categories) assert.deepEqual(Object.keys(c).sort(), ['id', 'name']);
   const names = res.body.categories.map((c) => c.name);
@@ -260,7 +260,7 @@ test('PUT /api/v1/profiles/me/categories con categoría inexistente responde 422
   const res = await request(app)
     .put('/api/v1/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categories: ['cat-1', 'cat-inexistente'] });
+    .send({ categories: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'cat-inexistente'] });
 
   assert.equal(res.status, 422);
   assert.equal(res.body.code, 'MANI-CAT-422C');
@@ -288,7 +288,7 @@ test('PUT /api/v1/profiles/me/categories con categoría inactiva responde 422 (M
 });
 
 // SCRUM-1392: los identificadores que se declaran son UUID de
-// `categoria_servicio.id`. Antes esta prueba usaba 'cat-1'/'cat-2', que existen
+// `categoria_servicio.id`. Antes esta prueba usaba 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'/'d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', que existen
 // solo como fixture del repositorio en memoria y PostgreSQL rechazaría; se usan
 // los UUID del catálogo, que son los que la pantalla del aliado envía de verdad.
 test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exitosamente', async () => {

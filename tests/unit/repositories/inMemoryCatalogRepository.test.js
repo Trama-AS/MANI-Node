@@ -15,10 +15,10 @@ test('findAllCategories retorna también las categorías globales (fixtures de d
 test('findById permite ver una categoría global desde cualquier tenant', async () => {
   const repo = new InMemoryCatalogRepository();
 
-  const category = await repo.findById('tenant-a', 'cat-1');
+  const category = await repo.findById('tenant-a', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18');
 
   assert.ok(category);
-  assert.equal(category.id, 'cat-1');
+  assert.equal(category.id, 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18');
 });
 
 test('findAllByTenant NO devuelve las categorías globales, solo las propias del tenant', async () => {
