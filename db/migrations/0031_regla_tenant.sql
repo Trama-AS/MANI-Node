@@ -39,12 +39,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_regla_tenant_vigente
 CREATE INDEX IF NOT EXISTS idx_regla_tenant_historial
     ON regla_tenant (tenant_id, version DESC);
 
--- Disparador de inmutabilidad: solo pasa de VIGENTE a HISTORICA; no se borra ni se alteran campos clave.
+-- Disparador de inmutabilidad: solo pasa de VIGENTE a HISTORICA; no se borra (ni con TRUNCATE) ni se alteran campos clave.
 CREATE OR REPLACE FUNCTION app.proteger_inmutabilidad_regla_tenant() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        RAISE EXCEPTION 'MANI-RGL-409I: una versión de regla_tenant no se borra (SCRUM-1366)'
+    -- DELETE y TRUNCATE se rechazan: el disparador de sentencia de TRUNCATE no tiene fila y antes llegaba a RETURN NEW.
+    IF TG_OP IN ('DELETE', 'TRUNCATE') THEN
+        RAISE EXCEPTION 'MANI-RGL-409I: una versión de regla_tenant no se borra (SCRUM-1366, %)', TG_OP
             USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF TG_OP = 'UPDATE' THEN

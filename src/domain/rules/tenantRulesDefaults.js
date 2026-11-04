@@ -8,67 +8,77 @@ const REGLAS_POR_OMISION = Object.freeze({
 
 const CRITERIOS_ORDEN_VALIDOS = new Set(['CALIFICACION', 'COBERTURA']);
 
+const esObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Número JSON dentro de [min, max]. No convierte: `null`, `true`, `""`, `"15"` o `[]` se rechazan (C2 de SCRUM-1366),
+ * porque `Number()` los convertía en 0, 1 o 15 y se guardaban como si fueran válidos.
+ */
+function numero(valor, min, max, mensaje, invalidoFn, { entero = false } = {}) {
+  const valido =
+    typeof valor === 'number' && Number.isFinite(valor) && valor >= min && valor <= max && (!entero || Number.isInteger(valor));
+  if (!valido) throw invalidoFn(mensaje);
+  return valor;
+}
+
+function seccion(reglas, nombre, invalidoFn) {
+  if (!esObjeto(reglas[nombre])) throw invalidoFn(`${nombre} es obligatorio y debe ser un objeto`);
+  return reglas[nombre];
+}
+
 function validarReglasOperativas(reglas, invalidoFn) {
-  if (!reglas || typeof reglas !== 'object' || Array.isArray(reglas)) {
+  if (!esObjeto(reglas)) {
     throw invalidoFn('reglas debe ser un objeto JSON');
   }
 
   // 1. ordenListado (RF-13)
-  const orden = reglas.ordenListado;
-  if (!orden || typeof orden !== 'object') {
-    throw invalidoFn('ordenListado es obligatorio y debe ser un objeto');
-  }
-  const criterio = String(orden.criterio || '').trim().toUpperCase();
+  const orden = seccion(reglas, 'ordenListado', invalidoFn);
+  const criterio = typeof orden.criterio === 'string' ? orden.criterio.trim().toUpperCase() : '';
   if (!CRITERIOS_ORDEN_VALIDOS.has(criterio)) {
     throw invalidoFn('ordenListado.criterio debe ser CALIFICACION o COBERTURA');
   }
 
   // 2. alertaTarifa (RF-16)
-  const alerta = reglas.alertaTarifa;
-  if (!alerta || typeof alerta !== 'object') {
-    throw invalidoFn('alertaTarifa es obligatorio y debe ser un objeto');
-  }
-  const tol = Number(alerta.toleranciaPorcentaje);
-  if (!Number.isFinite(tol) || tol < 0 || tol > 50) {
-    throw invalidoFn('alertaTarifa.toleranciaPorcentaje debe ser un número entre 0 y 50');
-  }
+  const tol = numero(
+    seccion(reglas, 'alertaTarifa', invalidoFn).toleranciaPorcentaje,
+    0,
+    50,
+    'alertaTarifa.toleranciaPorcentaje debe ser un número entre 0 y 50',
+    invalidoFn
+  );
 
   // 3. comision (RNF-10)
-  const comision = reglas.comision;
-  if (!comision || typeof comision !== 'object') {
-    throw invalidoFn('comision es obligatorio y debe ser un objeto');
-  }
-  const comPct = Number(comision.porcentaje);
-  if (!Number.isFinite(comPct) || comPct < 0 || comPct > 30) {
-    throw invalidoFn('comision.porcentaje debe ser un número entre 0 y 30');
-  }
+  const comPct = numero(
+    seccion(reglas, 'comision', invalidoFn).porcentaje,
+    0,
+    30,
+    'comision.porcentaje debe ser un número entre 0 y 30',
+    invalidoFn
+  );
 
   // 4. cancelacion (RNF-10)
-  const canc = reglas.cancelacion;
-  if (!canc || typeof canc !== 'object') {
-    throw invalidoFn('cancelacion es obligatorio y debe ser un objeto');
-  }
-  const ventana = Number(canc.ventanaHoras);
-  const penalizacion = Number(canc.penalizacionPorcentaje);
-  if (!Number.isFinite(ventana) || ventana < 0 || ventana > 72) {
-    throw invalidoFn('cancelacion.ventanaHoras debe ser un número entero o decimal entre 0 y 72');
-  }
-  if (!Number.isFinite(penalizacion) || penalizacion < 0 || penalizacion > 100) {
-    throw invalidoFn('cancelacion.penalizacionPorcentaje debe ser un número entre 0 y 100');
-  }
+  const canc = seccion(reglas, 'cancelacion', invalidoFn);
+  const ventana = numero(canc.ventanaHoras, 0, 72, 'cancelacion.ventanaHoras debe ser un número entre 0 y 72', invalidoFn);
+  const penalizacion = numero(
+    canc.penalizacionPorcentaje,
+    0,
+    100,
+    'cancelacion.penalizacionPorcentaje debe ser un número entre 0 y 100',
+    invalidoFn
+  );
   if (penalizacion > 0 && ventana === 0) {
     throw invalidoFn('cancelacion incompatible: penalizacionPorcentaje > 0 exige ventanaHoras > 0');
   }
 
   // 5. oferta (RNF-10)
-  const oferta = reglas.oferta;
-  if (!oferta || typeof oferta !== 'object') {
-    throw invalidoFn('oferta es obligatorio y debe ser un objeto');
-  }
-  const minAceptar = Number(oferta.minutosParaAceptar);
-  if (!Number.isInteger(minAceptar) || minAceptar < 1 || minAceptar > 1440) {
-    throw invalidoFn('oferta.minutosParaAceptar debe ser un número entero entre 1 y 1440');
-  }
+  const minAceptar = numero(
+    seccion(reglas, 'oferta', invalidoFn).minutosParaAceptar,
+    1,
+    1440,
+    'oferta.minutosParaAceptar debe ser un número entero entre 1 y 1440',
+    invalidoFn,
+    { entero: true }
+  );
 
   return {
     ordenListado: { criterio },

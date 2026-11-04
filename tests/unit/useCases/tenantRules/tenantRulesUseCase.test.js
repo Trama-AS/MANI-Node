@@ -202,3 +202,77 @@ test('C3: Aislamiento entre tenants: configurar reglas en Tenant A no afecta al 
   assert.equal(vigB.version, 0);
   assert.equal(vigB.origen, 'POR_OMISION');
 });
+
+// Revisión de QA (C2): los valores deben ser números JSON. `Number()` convertía null, true, "", "15" y [] en 0, 1 o 15
+// y se guardaban; ahora cada uno es 400 y no se llega a Rules ni al repositorio.
+const NO_NUMERICOS = [
+  ['null', null],
+  ['true', true],
+  ['false', false],
+  ['cadena vacía', ''],
+  ['cadena con número', '15'],
+  ['arreglo vacío', []],
+  ['arreglo con número', [15]],
+  ['objeto', { valor: 15 }],
+  ['NaN', Number.NaN],
+  ['ausente', undefined],
+];
+const CAMPOS_NUMERICOS = [
+  ['alertaTarifa', 'toleranciaPorcentaje'],
+  ['comision', 'porcentaje'],
+  ['cancelacion', 'ventanaHoras'],
+  ['cancelacion', 'penalizacionPorcentaje'],
+  ['oferta', 'minutosParaAceptar'],
+];
+
+for (const [seccion, campo] of CAMPOS_NUMERICOS) {
+  for (const [nombre, valor] of NO_NUMERICOS) {
+    test(`C2: ${seccion}.${campo} = ${nombre} se rechaza con 400 MANI-RGL-400 sin guardar ni llamar a Rules`, async () => {
+      const repo = new InMemoryTenantRulesRepository();
+      let llamadasRules = 0;
+      const uc = new TenantRulesUseCase({
+        tenantRulesRepository: repo,
+        ruleEvaluationService: { validateTenantRules: async () => { llamadasRules += 1; return { valid: true }; } },
+      });
+      const reglas = { ...REGLAS_VALIDAS, [seccion]: { ...REGLAS_VALIDAS[seccion], [campo]: valor } };
+      await assert.rejects(
+        () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas } }),
+        (err) => err.statusCode === 400 && err.code === 'MANI-RGL-400' && err.message.includes(`${seccion}.${campo}`)
+      );
+      assert.equal(llamadasRules, 0);
+      assert.equal((await repo.getVigente(ADMIN_A)).version, 0);
+    });
+  }
+}
+
+test('C2: el criterio de orden debe ser texto; un número, null o un arreglo se rechazan', async () => {
+  const uc = new TenantRulesUseCase({ tenantRulesRepository: new InMemoryTenantRulesRepository(), ruleEvaluationService: fakeRulesService() });
+  for (const criterio of [1, null, ['COBERTURA'], true]) {
+    await assert.rejects(
+      () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, ordenListado: { criterio } } } }),
+      (err) => err.statusCode === 400 && err.message.includes('ordenListado.criterio')
+    );
+  }
+});
+
+test('C2: los límites numéricos son inclusivos y el criterio se normaliza', async () => {
+  const uc = new TenantRulesUseCase({ tenantRulesRepository: new InMemoryTenantRulesRepository(), ruleEvaluationService: fakeRulesService() });
+  const r = await uc.actualizar({
+    user: ADMIN_A,
+    body: {
+      expectedVersion: 0,
+      reglas: {
+        ordenListado: { criterio: ' calificacion ' },
+        alertaTarifa: { toleranciaPorcentaje: 50 },
+        comision: { porcentaje: 0 },
+        cancelacion: { ventanaHoras: 72, penalizacionPorcentaje: 100 },
+        oferta: { minutosParaAceptar: 1440 },
+      },
+    },
+  });
+  assert.equal(r.reglas.ordenListado.criterio, 'CALIFICACION');
+  await assert.rejects(
+    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 1, reglas: { ...REGLAS_VALIDAS, oferta: { minutosParaAceptar: 1.5 } } } }),
+    (err) => err.statusCode === 400 && err.message.includes('oferta.minutosParaAceptar')
+  );
+});
