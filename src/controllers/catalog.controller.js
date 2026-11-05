@@ -49,6 +49,9 @@ async function createCategory(req, res, next) {
       description,
       flujoOperativo,
       role: req.user.role,
+      // La auditoría T10 necesita quién creó la categoría; sale del JWT
+      // verificado, nunca del cuerpo de la petición.
+      userId: req.user.userId,
       correlationId: req.correlationId,
     });
     res.status(201).json({ category });
@@ -81,6 +84,8 @@ async function activateCategory(req, res, next) {
       tenantId: req.tenantId,
       categoryId: req.params.id,
       active: true,
+      userId: req.user?.userId,
+      correlationId: req.correlationId,
     });
     res.status(200).json({ category });
   } catch (err) {
@@ -94,8 +99,53 @@ async function deactivateCategory(req, res, next) {
       tenantId: req.tenantId,
       categoryId: req.params.id,
       active: false,
+      userId: req.user?.userId,
+      correlationId: req.correlationId,
     });
     res.status(200).json({ category });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Catálogo geográfico (HU-M04-04). `zona` no tiene tenant_id: es un catálogo
+// global, así que estas consultas no filtran por tenant. El aislamiento lo da
+// la ruta, que exige JWT verificado y toma tenant y rol del claim; el tenant
+// que venga en el cuerpo o en una cabecera se ignora.
+async function listZoneCatalog(req, res, next) {
+  try {
+    const result = await container.listZoneCatalogUseCase.execute({
+      onlyActive: req.query.onlyActive === 'true',
+      level: req.query.level ?? null,
+      parentId: req.query.parentId ?? null,
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getZone(req, res, next) {
+  try {
+    const result = await container.getZoneUseCase.execute({ zoneId: req.params.id });
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Geometrías territoriales (HU-M04-07). `zonaIds` llega como lista separada
+// por comas: es una lectura idempotente y cacheable, así que va en la cadena
+// de consulta y no en un cuerpo. El tope de zonas lo impone el caso de uso.
+async function getZoneGeometries(req, res, next) {
+  try {
+    const crudo = req.query.zonaIds ?? '';
+    const zoneIds = String(crudo)
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const result = await container.getZoneGeometriesUseCase.execute({ zoneIds });
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }
@@ -109,4 +159,7 @@ module.exports = {
   updateCategory,
   activateCategory,
   deactivateCategory,
+  listZoneCatalog,
+  getZone,
+  getZoneGeometries,
 };

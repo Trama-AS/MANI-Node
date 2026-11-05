@@ -100,7 +100,7 @@ async function seedPendingAlly(fixture, {
   await fixture.aliadoCategoriaRepository.create({
     tenantId,
     aliadoId,
-    categoriaId: 'cat-1',
+    categoriaId: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18',
   });
 
   if (withDocs) {

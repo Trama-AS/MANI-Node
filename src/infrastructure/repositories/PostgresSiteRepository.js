@@ -3,6 +3,7 @@ const ISiteRepository = require('../../domain/ports/ISiteRepository');
 const Site = require('../../domain/entities/Site');
 const SiteRules = require('../../domain/entities/SiteRules');
 const { DomainError } = require('../../domain/errors/DomainError');
+const { enContextoTenant } = require('../db/enContextoTenant');
 
 class PostgresSiteRepository extends ISiteRepository {
   /**
@@ -16,15 +17,23 @@ class PostgresSiteRepository extends ISiteRepository {
     this.pgPool = pgPool;
   }
 
-  _getPool() {
-    if (this.pgPool) return this.pgPool;
-    if (this.pgPoolFactory) return this.pgPoolFactory.getPool();
+  /**
+   * Corre la consulta con app.set_context del tenant (SCRUM-1468): Core se conecta como mani_core_svc, sin
+   * BYPASSRLS, y sin contexto la política `sitio_tenant` no deja ver ninguna fila.
+   */
+  _enTenant(tenantId, sql, params) {
+    if (this.pgPool) {
+      return enContextoTenant({ getPool: () => this.pgPool }, tenantId, (client) => client.query(sql, params));
+    }
+    if (this.pgPoolFactory) {
+      return enContextoTenant(this.pgPoolFactory, tenantId, (client) => client.query(sql, params));
+    }
     throw new DomainError('DATABASE_URL no configurada: se requiere conexión PostgreSQL.', 'DATABASE_NOT_CONFIGURED', 500);
   }
 
   async findById(id, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._enTenant(
+      tenantId,
       `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, created_at
        FROM sitio
        WHERE id = $1 AND tenant_id = $2
@@ -39,8 +48,8 @@ class PostgresSiteRepository extends ISiteRepository {
     const ids = (requestIds || []).filter(Boolean);
     if (ids.length === 0) return false;
 
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._enTenant(
+      tenantId,
       `SELECT 1
        FROM solicitud
        WHERE tenant_id = $1 AND sitio_id = $2 AND id = ANY($3::uuid[])
@@ -51,11 +60,11 @@ class PostgresSiteRepository extends ISiteRepository {
   }
 
   async updateRules(id, tenantId, rules) {
-    const pool = this._getPool();
     const rulesInstance = rules instanceof SiteRules ? rules : new SiteRules(rules);
     const reglasJson = JSON.stringify(rulesInstance.toJSON());
 
-    const { rows } = await pool.query(
+    const { rows } = await this._enTenant(
+      tenantId,
       `UPDATE sitio
        SET reglas = $1::jsonb
        WHERE id = $2 AND tenant_id = $3
@@ -71,11 +80,11 @@ class PostgresSiteRepository extends ISiteRepository {
   }
 
   async create(site) {
-    const pool = this._getPool();
     const id = site.id || crypto.randomUUID();
     const reglasJson = site.reglas ? JSON.stringify(site.reglas) : null;
 
-    const { rows } = await pool.query(
+    const { rows } = await this._enTenant(
+      site.tenantId,
       `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        RETURNING id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, created_at`,

@@ -15,6 +15,26 @@ function uuidOpcional(valor, codigo, campo) {
   return String(valor);
 }
 
+function sha256(data) {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Huella de lo que el cliente pidió crear (RNF-03, HU-M05-09 C2): mismos datos y mismas fotos dan la misma huella,
+ * así que un reintento legítimo coincide y una clave reutilizada con otro contenido no. El orden de los campos es fijo.
+ */
+function huellaDe({ categoriaId, descripcion, sitioId, direccion, zonaId }, files) {
+  const canonico = JSON.stringify([
+    categoriaId,
+    descripcion,
+    sitioId,
+    direccion,
+    zonaId,
+    files.map((f) => sha256(f.buffer || Buffer.alloc(0))),
+  ]);
+  return sha256(canonico);
+}
+
 function nombreSeguro(value) {
   return String(value || 'foto.jpg')
     .normalize('NFKD')
@@ -35,7 +55,7 @@ class CreateServiceRequestUseCase {
     this.fileStorageService = fileStorageService;
   }
 
-  async execute({ user, body = {}, files = [] }) {
+  async execute({ user, body = {}, files = [], idempotencyKey = null }) {
     if (!user || !user.tenantId || !user.userId) {
       throw new UnauthorizedError('MANI-SOL-401: sesión requerida', 'MANI-SOL-401');
     }
@@ -66,11 +86,22 @@ class CreateServiceRequestUseCase {
       if (!zonaId) throw rechazo('MANI-SOL-422Z', 'zona no disponible');
     }
 
-    const claveIdempotencia = uuidOpcional(body.claveIdempotencia, 'MANI-SOL-422K', 'claveIdempotencia');
+    // La clave llega en el cuerpo (`claveIdempotencia`) o en la cabecera `Idempotency-Key`, que es la que el
+    // GatewayClient usa para decidir si puede reintentar el POST. Si llegan las dos, deben ser la misma.
+    const claveCuerpo = uuidOpcional(body.claveIdempotencia, 'MANI-SOL-422K', 'claveIdempotencia');
+    const claveCabecera = uuidOpcional(idempotencyKey, 'MANI-SOL-422K', 'Idempotency-Key');
+    if (claveCuerpo && claveCabecera && claveCuerpo.toLowerCase() !== claveCabecera.toLowerCase()) {
+      throw rechazo('MANI-SOL-422K', 'claveIdempotencia y la cabecera Idempotency-Key no coinciden');
+    }
+    const claveIdempotencia = claveCuerpo || claveCabecera;
 
     if (files.length > MAX_FOTOS || files.some((f) => !MIMES_IMAGEN.has(String(f.mimetype || '').toLowerCase()))) {
       throw rechazo('MANI-SOL-422F', 'fotos inválidas (máximo 5 imágenes PNG, JPEG o WEBP)');
     }
+
+    const huellaIdempotencia = claveIdempotencia
+      ? huellaDe({ categoriaId, descripcion, sitioId, direccion, zonaId }, files)
+      : null;
 
     // Las fotos se suben antes de la transacción; si la creación falla o resulta ser un reintento, se borran.
     const subidas = [];
@@ -83,7 +114,7 @@ class CreateServiceRequestUseCase {
 
       const resultado = await this.serviceRequestRepository.crear(
         { tenantId: user.tenantId, userId: user.userId, role: user.role },
-        { categoriaId, descripcion, sitioId, direccion, zonaId, fotos: subidas, claveIdempotencia }
+        { categoriaId, descripcion, sitioId, direccion, zonaId, fotos: subidas, claveIdempotencia, huellaIdempotencia }
       );
       if (!resultado.creada) await this.descartar(subidas);
       return resultado;

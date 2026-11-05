@@ -199,8 +199,74 @@ async function getSites(req, res, next) {
         nombre: s.nombre,
         direccion: s.direccion,
         zonaId: s.zonaId,
+        contactoNombre: s.contactoNombre,
+        contactoTelefono: s.contactoTelefono,
         reglas: s.reglas,
       })),
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        error: err.message,
+        code: err.code || 'ERROR',
+        correlationId,
+      });
+    }
+    next(err);
+  }
+}
+
+/**
+ * PATCH /clients/:id/sites/:siteId — edita nombre, dirección, zona o contacto de una sede (SCRUM-1387 / CONS-16).
+ * El tenant, el usuario y el rol salen del JWT (T4); el cuerpo solo trae los campos que cambian.
+ */
+async function updateSite(req, res, next) {
+  const correlationId =
+    res.getHeader('X-Correlation-ID') || req.headers['x-correlation-id'] || `node-${Date.now()}`;
+  const tenantId = req.user?.tenantId;
+
+  if (!tenantId) {
+    return res.status(401).json({
+      error: 'Sesión inválida: tenant_id no presente en el token',
+      code: 'UNAUTHORIZED',
+      correlationId,
+    });
+  }
+
+  const userRole = (req.user?.role || req.user?.user_role || req.user?.rol || '').toUpperCase();
+  const userId = req.user?.userId || req.user?.sub;
+  if (!['CLIENT', 'CLIENTE', 'ADMIN', 'ADMIN_TENANT'].includes(userRole)) {
+    return res.status(403).json({
+      error: 'Rol no autorizado',
+      code: 'FORBIDDEN',
+      correlationId,
+    });
+  }
+
+  try {
+    const sitio = await container.updateCompanyClientSiteUseCase.execute({
+      clienteId: req.params.id,
+      siteId: req.params.siteId,
+      tenantId,
+      cambios: req.body,
+      userId,
+      userRole,
+      correlationId,
+    });
+
+    return res.status(200).json({
+      message: 'Sitio actualizado exitosamente.',
+      correlationId,
+      sitio: {
+        id: sitio.id,
+        clienteId: sitio.clienteId,
+        nombre: sitio.nombre,
+        direccion: sitio.direccion,
+        zonaId: sitio.zonaId,
+        contactoNombre: sitio.contactoNombre,
+        contactoTelefono: sitio.contactoTelefono,
+        reglas: sitio.reglas,
+      },
     });
   } catch (err) {
     if (err.statusCode) {
@@ -218,4 +284,5 @@ module.exports = {
   registerCompany,
   addSite,
   getSites,
+  updateSite,
 };

@@ -1,3 +1,4 @@
+const { ejecutarComo } = require('../../context/contextoIdentidad');
 const Profile = require('../../../domain/entities/Profile');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
 const isValidEmail = require('../../../domain/validation/isValidEmail');
@@ -102,55 +103,60 @@ class RegisterClientNaturalPersonUseCase {
     let clienteId;
     let tokens;
 
-    try {
-      // Espejo de negocio -- handle_new_user migrado explícitamente a Node.
-      await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
-      usuarioCreado = true;
+    // Lo que sigue escribe en la base como el usuario recién creado en Auth: es quien actúa en este registro y el
+    // que exigen las políticas RLS de KYC y consentimientos, porque Core se conecta sin BYPASSRLS (SCRUM-1468).
+    // La compensación corre con la misma identidad, para poder borrar lo que este registro alcanzó a crear.
+    await ejecutarComo({ tenantId, userId, role: 'CLIENT' }, async () => {
+      try {
+        // Espejo de negocio -- handle_new_user migrado explícitamente a Node.
+        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
+        usuarioCreado = true;
 
-      const cliente = await this.clienteRepository.create({
-        tenantId,
-        usuarioId: userId,
-        tipo: 'PERSONA_NATURAL',
-      });
-      clienteCreado = true;
-      clienteId = cliente.id || cliente.usuarioId || userId;
+        const cliente = await this.clienteRepository.create({
+          tenantId,
+          usuarioId: userId,
+          tipo: 'PERSONA_NATURAL',
+        });
+        clienteCreado = true;
+        clienteId = cliente.id || cliente.usuarioId || userId;
 
-      // 3. Si se envía dirección, crear el primer domicilio/hogar del
-      // cliente (migrado de registrar_cliente_persona_natural). `zona` es un
-      // catálogo global sin tenant_id: se toma cualquiera activa, igual que
-      // hacía la función PL/pgSQL legacy. Si no hay ninguna zona activa, se
-      // omite el sitio sin fallar el registro (mismo comportamiento legacy:
-      // el IF solo entra si v_zona_id no es null).
-      const direccion = direccionHogar && direccionHogar.trim();
-      if (direccion) {
-        const zonaId = await this.sitioRepository.findFirstActiveZonaId();
-        if (zonaId) {
-          await this.sitioRepository.create({
-            tenantId,
-            clienteId,
-            zonaId,
-            direccion,
-            reglas: { nombre_contacto: fullName, telefono: phone || null },
-          });
-          sitioCreado = true;
+        // 3. Si se envía dirección, crear el primer domicilio/hogar del
+        // cliente (migrado de registrar_cliente_persona_natural). `zona` es un
+        // catálogo global sin tenant_id: se toma cualquiera activa, igual que
+        // hacía la función PL/pgSQL legacy. Si no hay ninguna zona activa, se
+        // omite el sitio sin fallar el registro (mismo comportamiento legacy:
+        // el IF solo entra si v_zona_id no es null).
+        const direccion = direccionHogar && direccionHogar.trim();
+        if (direccion) {
+          const zonaId = await this.sitioRepository.findFirstActiveZonaId();
+          if (zonaId) {
+            await this.sitioRepository.create({
+              tenantId,
+              clienteId,
+              zonaId,
+              direccion,
+              reglas: { nombre_contacto: fullName, telefono: phone || null },
+            });
+            sitioCreado = true;
+          }
         }
-      }
 
-      // 4. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
-      tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
-    } catch (err) {
-      if (sitioCreado) {
-        await safeRun(() => this.sitioRepository.deleteByClienteId(tenantId, clienteId));
+        // 4. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
+        tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
+      } catch (err) {
+        if (sitioCreado) {
+          await safeRun(() => this.sitioRepository.deleteByClienteId(tenantId, clienteId));
+        }
+        if (clienteCreado) {
+          await safeRun(() => this.clienteRepository.deleteByUsuarioId(tenantId, userId));
+        }
+        if (usuarioCreado) {
+          await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
+        }
+        await safeRun(() => this.authIdentityService.deleteUser(userId));
+        throw err;
       }
-      if (clienteCreado) {
-        await safeRun(() => this.clienteRepository.deleteByUsuarioId(tenantId, userId));
-      }
-      if (usuarioCreado) {
-        await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
-      }
-      await safeRun(() => this.authIdentityService.deleteUser(userId));
-      throw err;
-    }
+    });
 
     const profile = new Profile({
       id: userId,

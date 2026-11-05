@@ -1,4 +1,5 @@
 const {
+  DomainError,
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
@@ -6,7 +7,10 @@ const {
 } = require('../../../domain/errors/DomainError');
 
 const PHONE_REGEX = /^\+?[0-9\s()-]{7,20}$/;
-const ALLOWED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+// SCRUM-1628 (decisión del PO en SCRUM-854): la foto de perfil es JPG o PNG de hasta 5 MB; no se acepta WEBP.
+const ALLOWED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/jpg']);
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const PHOTO_LIMIT_MESSAGE = 'La foto debe ser JPG o PNG de hasta 5 MB';
 const PRIVILEGED_FIELDS = [
   'role',
   'rol',
@@ -119,13 +123,13 @@ class UpdateOwnProfileUseCase {
     if (photoFile) {
       const mime = String(photoFile.contentType || photoFile.mimetype || '').toLowerCase();
       if (!ALLOWED_IMAGE_MIMES.has(mime)) {
-        throw new ValidationError(
-          `Formato de imagen no soportado: ${mime || 'desconocido'}. Use PNG, JPEG o WEBP`,
-          'MANI-PRF-422'
-        );
+        throw new ValidationError(PHOTO_LIMIT_MESSAGE, 'MANI-PRF-422F');
       }
       if (!photoFile.buffer || !photoFile.buffer.length) {
         throw new ValidationError('El archivo de foto de perfil está vacío', 'MANI-PRF-422');
+      }
+      if (photoFile.buffer.length > MAX_PHOTO_BYTES) {
+        throw new DomainError(PHOTO_LIMIT_MESSAGE, 'MANI-PRF-413', 413);
       }
       const path = `${tenantId}/${userId}/avatar-${Date.now()}-${sanitizeFilename(
         photoFile.filename || photoFile.originalname

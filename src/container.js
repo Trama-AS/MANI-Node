@@ -1,29 +1,32 @@
 const InMemoryTenantRepository = require('./infrastructure/repositories/InMemoryTenantRepository');
-const SupabaseTenantRepository = require('./infrastructure/repositories/SupabaseTenantRepository');
 const InMemoryProfileRepository = require('./infrastructure/repositories/InMemoryProfileRepository');
-const SupabaseProfileRepository = require('./infrastructure/repositories/SupabaseProfileRepository');
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
-const SupabaseCatalogRepository = require('./infrastructure/repositories/SupabaseCatalogRepository');
+const InMemoryZoneRepository = require('./infrastructure/repositories/InMemoryZoneRepository');
+const PgZoneRepository = require('./infrastructure/repositories/PgZoneRepository');
+const PgTenantRepository = require('./infrastructure/repositories/PgTenantRepository');
+const PgProfileRepository = require('./infrastructure/repositories/PgProfileRepository');
+const PgCatalogRepository = require('./infrastructure/repositories/PgCatalogRepository');
+const PgUsuarioRepository = require('./infrastructure/repositories/PgUsuarioRepository');
+const PgAliadoRepository = require('./infrastructure/repositories/PgAliadoRepository');
+const PgAliadoCategoriaRepository = require('./infrastructure/repositories/PgAliadoCategoriaRepository');
+const PgDocumentoKycRepository = require('./infrastructure/repositories/PgDocumentoKycRepository');
+const PgClienteRepository = require('./infrastructure/repositories/PgClienteRepository');
+const PgSitioRepository = require('./infrastructure/repositories/PgSitioRepository');
+const PgAliadoAusenciaRepository = require('./infrastructure/repositories/PgAliadoAusenciaRepository');
+const PgLegalDocumentRepository = require('./infrastructure/repositories/PgLegalDocumentRepository');
+const PgUserConsentRepository = require('./infrastructure/repositories/PgUserConsentRepository');
 const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemoryUsuarioRepository');
 const InMemoryAliadoRepository = require('./infrastructure/repositories/InMemoryAliadoRepository');
 const InMemoryAliadoCategoriaRepository = require('./infrastructure/repositories/InMemoryAliadoCategoriaRepository');
 const InMemoryDocumentoKycRepository = require('./infrastructure/repositories/InMemoryDocumentoKycRepository');
 const InMemoryClienteRepository = require('./infrastructure/repositories/InMemoryClienteRepository');
 const InMemorySitioRepository = require('./infrastructure/repositories/InMemorySitioRepository');
-const SupabaseUsuarioRepository = require('./infrastructure/repositories/SupabaseUsuarioRepository');
-const SupabaseAliadoRepository = require('./infrastructure/repositories/SupabaseAliadoRepository');
-const SupabaseAliadoCategoriaRepository = require('./infrastructure/repositories/SupabaseAliadoCategoriaRepository');
-const SupabaseDocumentoKycRepository = require('./infrastructure/repositories/SupabaseDocumentoKycRepository');
-const SupabaseClienteRepository = require('./infrastructure/repositories/SupabaseClienteRepository');
-const SupabaseSitioRepository = require('./infrastructure/repositories/SupabaseSitioRepository');
 const InMemoryAliadoAusenciaRepository = require('./infrastructure/repositories/InMemoryAliadoAusenciaRepository');
-const SupabaseAliadoAusenciaRepository = require('./infrastructure/repositories/SupabaseAliadoAusenciaRepository');
 const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
 const InMemoryFileStorageService = require('./infrastructure/security/InMemoryFileStorageService');
 const SupabaseFileStorageService = require('./infrastructure/security/SupabaseFileStorageService');
-const TransactionalAliadoCategoriaRepository = require('./infrastructure/repositories/TransactionalAliadoCategoriaRepository');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
@@ -35,6 +38,9 @@ const GetOwnProfileUseCase = require('./application/useCases/profiles/GetOwnProf
 const UpdateOwnProfileUseCase = require('./application/useCases/profiles/UpdateOwnProfileUseCase');
 const GetAllyCategoriesUseCase = require('./application/useCases/profiles/GetAllyCategoriesUseCase');
 const DeclareAllyCategoriesUseCase = require('./application/useCases/profiles/DeclareAllyCategoriesUseCase');
+const PgCoberturaRepository = require('./infrastructure/repositories/PgCoberturaRepository');
+const GetAllyCoverageUseCase = require('./application/useCases/profiles/GetAllyCoverageUseCase');
+const DeclareAllyCoverageUseCase = require('./application/useCases/profiles/DeclareAllyCoverageUseCase');
 const ListAvailableAllyCategoriesUseCase = require('./application/useCases/profiles/ListAvailableAllyCategoriesUseCase');
 const ListCatalogCategoriesUseCase = require('./application/useCases/catalog/ListCatalogCategoriesUseCase');
 const ListCategoriesForTenantUseCase = require('./application/useCases/catalog/ListCategoriesForTenantUseCase');
@@ -42,6 +48,9 @@ const GetCategoryUseCase = require('./application/useCases/catalog/GetCategoryUs
 const CreateCategoryUseCase = require('./application/useCases/catalog/CreateCategoryUseCase');
 const UpdateCategoryUseCase = require('./application/useCases/catalog/UpdateCategoryUseCase');
 const SetCategoryStatusUseCase = require('./application/useCases/catalog/SetCategoryStatusUseCase');
+const ListZoneCatalogUseCase = require('./application/useCases/catalog/ListZoneCatalogUseCase');
+const GetZoneUseCase = require('./application/useCases/catalog/GetZoneUseCase');
+const GetZoneGeometriesUseCase = require('./application/useCases/catalog/GetZoneGeometriesUseCase');
 const CheckHealthUseCase = require('./application/useCases/health/CheckHealthUseCase');
 const RegisterAllyNaturalPersonUseCase = require('./application/useCases/auth/RegisterAllyNaturalPersonUseCase');
 const ListAlliesVerificationUseCase = require('./application/useCases/verification/ListAlliesVerificationUseCase');
@@ -58,16 +67,19 @@ const PostgresClientRepository = require('./infrastructure/repositories/Postgres
 const GetActiveLegalDocumentsUseCase = require('./application/useCases/legal/GetActiveLegalDocumentsUseCase');
 const RegisterUserConsentUseCase = require('./application/useCases/legal/RegisterUserConsentUseCase');
 const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/InMemoryLegalDocumentRepository');
-const SupabaseLegalDocumentRepository = require('./infrastructure/repositories/SupabaseLegalDocumentRepository');
 const InMemoryUserConsentRepository = require('./infrastructure/repositories/InMemoryUserConsentRepository');
-const SupabaseUserConsentRepository = require('./infrastructure/repositories/SupabaseUserConsentRepository');
 const RegisterAllyCompanyUseCase = require('./application/useCases/auth/RegisterAllyCompanyUseCase');
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
 const GetCompanyClientSitesUseCase = require('./application/useCases/clients/GetCompanyClientSitesUseCase');
+const UpdateCompanyClientSiteUseCase = require('./application/useCases/clients/UpdateCompanyClientSiteUseCase');
 const InMemoryCompanyClientRepository = require('./infrastructure/repositories/InMemoryCompanyClientRepository');
 const PostgresCompanyClientRepository = require('./infrastructure/repositories/PostgresCompanyClientRepository');
 const RegisterDirectEmployeeUseCase = require('./application/useCases/allies/RegisterDirectEmployeeUseCase');
+const LogoutUseCase = require('./application/useCases/auth/LogoutUseCase');
+const RequestPasswordRecoveryUseCase = require('./application/useCases/auth/RequestPasswordRecoveryUseCase');
+const ResetPasswordUseCase = require('./application/useCases/auth/ResetPasswordUseCase');
+const RegisterClientCompanyUseCase = require('./application/useCases/auth/RegisterClientCompanyUseCase');
 const RegisterClientNaturalPersonUseCase = require('./application/useCases/auth/RegisterClientNaturalPersonUseCase');
 const ListAllyAbsencesUseCase = require('./application/useCases/availability/ListAllyAbsencesUseCase');
 const CreateAllyAbsenceUseCase = require('./application/useCases/availability/CreateAllyAbsenceUseCase');
@@ -81,9 +93,57 @@ const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListE
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
+const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
+const { createPushProvider } = require('./infrastructure/push/createPushProvider');
+const { createPaymentProvider } = require('./infrastructure/payments/createPaymentProvider');
+const PgPaymentRepository = require('./infrastructure/repositories/PgPaymentRepository');
+const CreatePaymentUseCase = require('./application/useCases/payments/CreatePaymentUseCase');
+const GetPaymentUseCase = require('./application/useCases/payments/GetPaymentUseCase');
+const PgFondosRepository = require('./infrastructure/repositories/PgFondosRepository');
+const FundsUseCase = require('./application/useCases/payments/FundsUseCase');
+const PgDirectEmployeeRepository = require('./infrastructure/repositories/PgDirectEmployeeRepository');
+const ComposedDirectEmployeeRepository = require('./infrastructure/repositories/ComposedDirectEmployeeRepository');
+const PgTransactionAuditRepository = require('./infrastructure/repositories/PgTransactionAuditRepository');
+const TransactionAuditUseCase = require('./application/useCases/audit/TransactionAuditUseCase');
+const PgMessageRepository = require('./infrastructure/repositories/PgMessageRepository');
+const MessagesUseCase = require('./application/useCases/messages/MessagesUseCase');
+const NotificarEventoServicioUseCase = require('./application/useCases/notifications/NotificarEventoServicioUseCase');
 const GetOwnAllyProfileUseCase = require('./application/useCases/dispatch/GetOwnAllyProfileUseCase');
 const PgServiceRequestRepository = require('./infrastructure/repositories/PgServiceRequestRepository');
 const CreateServiceRequestUseCase = require('./application/useCases/requests/CreateServiceRequestUseCase');
+const PgRequestFormRepository = require('./infrastructure/repositories/PgRequestFormRepository');
+const GetRequestFormOptionsUseCase = require('./application/useCases/requests/GetRequestFormOptionsUseCase');
+const ConsultOwnServiceRequestsUseCase = require('./application/useCases/requests/ConsultOwnServiceRequestsUseCase');
+const CancelServiceRequestUseCase = require('./application/useCases/requests/CancelServiceRequestUseCase');
+const AssignServiceRequestUseCase = require('./application/useCases/requests/AssignServiceRequestUseCase');
+const PgSolicitudAsignacionRepository = require('./infrastructure/repositories/PgSolicitudAsignacionRepository');
+const ListAllyOffersUseCase = require('./application/useCases/dispatch/ListAllyOffersUseCase');
+const PgQuoteRepository = require('./infrastructure/repositories/PgQuoteRepository');
+const CreateQuoteUseCase = require('./application/useCases/quotes/CreateQuoteUseCase');
+const ListQuotesUseCase = require('./application/useCases/quotes/ListQuotesUseCase');
+const RespondQuoteUseCase = require('./application/useCases/quotes/RespondQuoteUseCase');
+const PgServiceExecutionRepository = require('./infrastructure/repositories/PgServiceExecutionRepository');
+const ServiceExecutionUseCase = require('./application/useCases/services/ServiceExecutionUseCase');
+const PgServiceEventRepository = require('./infrastructure/repositories/PgServiceEventRepository');
+const ServiceEventsUseCase = require('./application/useCases/services/ServiceEventsUseCase');
+const PgAdditionRepository = require('./infrastructure/repositories/PgAdditionRepository');
+const RequestAdditionUseCase = require('./application/useCases/additions/RequestAdditionUseCase');
+const ListAdditionsUseCase = require('./application/useCases/additions/ListAdditionsUseCase');
+const RespondAdditionUseCase = require('./application/useCases/additions/RespondAdditionUseCase');
+const PgRatingsRepository = require('./infrastructure/repositories/PgRatingsRepository');
+const PgTariffRepository = require('./infrastructure/repositories/PgTariffRepository');
+const TariffsUseCase = require('./application/useCases/tariffs/TariffsUseCase');
+const PgTenantRulesRepository = require('./infrastructure/repositories/PgTenantRulesRepository');
+const TenantRulesUseCase = require('./application/useCases/tenantRules/TenantRulesUseCase');
+const PgComplaintRepository = require('./infrastructure/repositories/PgComplaintRepository');
+const ComplaintsUseCase = require('./application/useCases/complaints/ComplaintsUseCase');
+const PgOperationalMetricsRepository = require('./infrastructure/repositories/PgOperationalMetricsRepository');
+const OperationalMetricsUseCase = require('./application/useCases/metrics/OperationalMetricsUseCase');
+const PgTenantStatusRepository = require('./infrastructure/repositories/PgTenantStatusRepository');
+const TenantStatusUseCase = require('./application/useCases/tenants/TenantStatusUseCase');
+const PgContextoPlataformaRepository = require('./infrastructure/repositories/PgContextoPlataformaRepository');
+const { ContextoPlataformaService } = require('./application/security/contextoPlataforma');
+const RatingsAndClosureUseCase = require('./application/useCases/ratings/RatingsAndClosureUseCase');
 
 const config = require('./config');
 
@@ -108,63 +168,47 @@ class Container {
     // de reglas del sitio por un aliado responde 503; el dueño y el admin no dependen de Dispatch.
     this.dispatchAssignmentService = new DispatchServiceHttpClient({ baseUrl: config.dispatchServiceUrl });
 
-    // Con Supabase configurado (QA/producción) se usa la persistencia e identidad
-    // reales; sin configurar (DEV/test sin credenciales) cae a implementaciones
-    // en memoria, igual que ya hacía el resto del container.
+    // Identidad y archivos: con Supabase configurado, Auth (API de administración de GoTrue, para crear y borrar
+    // usuarios) y Storage (documentos KYC, fotos). Son APIs de servicio, no la conexión a la base: la clave
+    // service_role ya no lee ni escribe tablas (SCRUM-1468).
     if (this.supabaseClientFactory.isConfigured()) {
-      this.profileRepository = new SupabaseProfileRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.catalogRepository = new SupabaseCatalogRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.aliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      const supabaseAliadoCategoriaRepository = new SupabaseAliadoCategoriaRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      // Con DATABASE_URL el guardado de categorías es una transacción real (SCRUM-1071).
-      // QA y producción la exigen (config.assertValid); en DEV sin ella se conserva el
-      // guardado de supabase-js, que NO es atómico.
-      if (this.pgPoolFactory.isConfigured()) {
-        this.aliadoCategoriaRepository = new TransactionalAliadoCategoriaRepository({
-          pgPoolFactory: this.pgPoolFactory,
-          delegate: supabaseAliadoCategoriaRepository,
-        });
-      } else {
-        console.warn('⚠️  DATABASE_URL no configurada: el guardado de categorías del aliado no es atómico.');
-        this.aliadoCategoriaRepository = supabaseAliadoCategoriaRepository;
-      }
-      this.documentoKycRepository = new SupabaseDocumentoKycRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      this.clienteRepository = new SupabaseClienteRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.sitioRepository = new SupabaseSitioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.aliadoAusenciaRepository = new SupabaseAliadoAusenciaRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
-      this.legalDocumentRepository = new SupabaseLegalDocumentRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      this.userConsentRepository = new SupabaseUserConsentRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      if (this.pgPoolFactory.isConfigured()) {
-        this.siteRepository = new PostgresSiteRepository({ pgPoolFactory: this.pgPoolFactory });
-        this.clientRepository = new PostgresClientRepository({ pgPoolFactory: this.pgPoolFactory });
-        this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
-      } else {
-        this.siteRepository = new InMemorySiteRepository();
-        this.clientRepository = new InMemoryClientRepository();
-        this.companyClientRepository = new InMemoryCompanyClientRepository();
-      }
+    } else {
+      this.fileStorageService = new InMemoryFileStorageService();
+      this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+    }
+
+    // Datos: con DATABASE_URL todo va por `pg` como mani_core_svc, sin BYPASSRLS, y cada operación fija
+    // app.set_context (SCRUM-1468, ADR-0032): las políticas RLS aíslan los tenants aunque una consulta olvidara
+    // filtrar. QA y producción exigen DATABASE_URL (config.assertValid); sin ella (DEV/test) se usa memoria.
+    if (this.pgPoolFactory.isConfigured()) {
+      const pgPoolFactory = this.pgPoolFactory;
+      this.profileRepository = new PgProfileRepository({ pgPoolFactory });
+      this.tenantRepository = new PgTenantRepository({ pgPoolFactory });
+      this.catalogRepository = new PgCatalogRepository({ pgPoolFactory });
+      this.zoneRepository = new PgZoneRepository({ pgPoolFactory });
+      this.usuarioRepository = new PgUsuarioRepository({ pgPoolFactory });
+      this.aliadoRepository = new PgAliadoRepository({ pgPoolFactory });
+      this.aliadoCategoriaRepository = new PgAliadoCategoriaRepository({ pgPoolFactory });
+      this.documentoKycRepository = new PgDocumentoKycRepository({ pgPoolFactory });
+      this.clienteRepository = new PgClienteRepository({ pgPoolFactory });
+      this.sitioRepository = new PgSitioRepository({ pgPoolFactory });
+      this.aliadoAusenciaRepository = new PgAliadoAusenciaRepository({ pgPoolFactory });
+      this.legalDocumentRepository = new PgLegalDocumentRepository({ pgPoolFactory });
+      this.userConsentRepository = new PgUserConsentRepository({ pgPoolFactory });
+      this.siteRepository = new PostgresSiteRepository({ pgPoolFactory });
+      this.clientRepository = new PostgresClientRepository({ pgPoolFactory });
+      this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory });
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
       this.catalogRepository = new InMemoryCatalogRepository();
+      this.zoneRepository = new InMemoryZoneRepository();
       this.usuarioRepository = new InMemoryUsuarioRepository();
       this.aliadoRepository = new InMemoryAliadoRepository();
       this.aliadoCategoriaRepository = new InMemoryAliadoCategoriaRepository();
@@ -172,13 +216,11 @@ class Container {
       this.clienteRepository = new InMemoryClienteRepository();
       this.sitioRepository = new InMemorySitioRepository();
       this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
-      this.fileStorageService = new InMemoryFileStorageService();
-      this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
-      this.siteRepository = new InMemorySiteRepository();
-      this.clientRepository = new InMemoryClientRepository();
       this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
       this.userConsentRepository = new InMemoryUserConsentRepository();
-      this.companyClientRepository = new InMemoryCompanyClientRepository();
+      this.siteRepository = new InMemorySiteRepository();
+      this.clientRepository = new InMemoryClientRepository();
+      this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
     }
 
     // 2. Instancias de Aplicación (Casos de Uso) con Dependencias Inyectadas (DIP)
@@ -188,6 +230,7 @@ class Container {
 
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
+      tenantRepository: this.tenantRepository,
     });
 
     this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
@@ -230,8 +273,45 @@ class Container {
       solicitudContextRepository: this.solicitudContextRepository,
     });
     this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
-    this.publishNotificationUseCase = new PublishNotificationUseCase({ notificacionRepository: this.notificacionRepository });
+    // Proveedor push por ambiente (PUSH_PROVIDER, por omisión el mock de HU-M09-06): sin FCM ni APNs reales.
+    this.pushProvider = createPushProvider(config.pushProvider);
+    const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
+    this.publishNotificationUseCase = new PublishNotificationUseCase({
+      ...notificationDeps,
+      politica: { timeoutMs: config.pushProviderTimeoutMs },
+    });
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
+    this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
+
+    // Pagos del sandbox (HU-M11-01): proveedor simulado por ambiente (PAYMENT_PROVIDER, por omisión el mock).
+    this.paymentProvider = createPaymentProvider(config.paymentProvider);
+    this.paymentRepository = new PgPaymentRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createPaymentUseCase = new CreatePaymentUseCase({
+      paymentRepository: this.paymentRepository,
+      paymentProvider: this.paymentProvider,
+      politica: { timeoutMs: config.paymentProviderTimeoutMs },
+    });
+    this.getPaymentUseCase = new GetPaymentUseCase({ paymentRepository: this.paymentRepository });
+    // Retención, liberación y liquidación simuladas (SCRUM-891 a 894).
+    this.fondosRepository = new PgFondosRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.fundsUseCase = new FundsUseCase({ fondosRepository: this.fondosRepository });
+
+    // Registro inmutable de transacciones (HU-M11-03 / SCRUM-889): solo lectura; se escribe junto con cada pago.
+    this.transactionAuditRepository = new PgTransactionAuditRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.transactionAuditUseCase = new TransactionAuditUseCase({ auditRepository: this.transactionAuditRepository });
+
+    // Mensajería cliente-aliado por servicio (HU-M09-02 / SCRUM-881).
+    this.messageRepository = new PgMessageRepository({ pgPoolFactory: this.pgPoolFactory });
+    // Eventos del servicio que notifican por la frontera push (SCRUM-882/884); el timeout nunca pasa de 2 s para no
+    // hacer esperar a quien origina el evento.
+    this.notificarEventoServicioUseCase = new NotificarEventoServicioUseCase({
+      ...notificationDeps,
+      politica: { timeoutMs: Math.min(config.pushProviderTimeoutMs, 2000), retries: 0 },
+    });
+    this.messagesUseCase = new MessagesUseCase({
+      messageRepository: this.messageRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
 
     this.listCatalogCategoriesUseCase = new ListCatalogCategoriesUseCase({
       catalogRepository: this.catalogRepository,
@@ -251,6 +331,12 @@ class Container {
     });
     this.setCategoryStatusUseCase = new SetCategoryStatusUseCase({ catalogRepository: this.catalogRepository });
 
+    // Catálogo geográfico (HU-M04-04): solo lectura, sin tenantId porque
+    // `zona` es un catálogo global sin esa columna.
+    this.listZoneCatalogUseCase = new ListZoneCatalogUseCase({ zoneRepository: this.zoneRepository });
+    this.getZoneUseCase = new GetZoneUseCase({ zoneRepository: this.zoneRepository });
+    this.getZoneGeometriesUseCase = new GetZoneGeometriesUseCase({ zoneRepository: this.zoneRepository });
+
     // Creación de solicitudes (SCRUM-1072): transacción sobre `pg` con withTenantContext (ADR-0032).
     // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
     this.serviceRequestRepository = new PgServiceRequestRepository({ pgPoolFactory: this.pgPoolFactory });
@@ -258,6 +344,104 @@ class Container {
       serviceRequestRepository: this.serviceRequestRepository,
       fileStorageService: this.fileStorageService,
     });
+    // Lecturas del formulario de solicitud (SCRUM-1465), con el mismo contexto de tenant. Sin DATABASE_URL: 503.
+    this.requestFormRepository = new PgRequestFormRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.getRequestFormOptionsUseCase = new GetRequestFormOptionsUseCase({
+      requestFormRepository: this.requestFormRepository,
+    });
+    this.consultOwnServiceRequestsUseCase = new ConsultOwnServiceRequestsUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+    });
+    this.cancelServiceRequestUseCase = new CancelServiceRequestUseCase({
+      serviceRequestRepository: this.serviceRequestRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    // Asignación (SCRUM-1403, decisión 6A): Core registra la aceptación que decide Dispatch y expone la bandeja
+    // del aliado. Sin DATABASE_URL responde 503.
+    this.solicitudAsignacionRepository = new PgSolicitudAsignacionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.assignServiceRequestUseCase = new AssignServiceRequestUseCase({
+      solicitudAsignacionRepository: this.solicitudAsignacionRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    this.listAllyOffersUseCase = new ListAllyOffersUseCase({
+      solicitudAsignacionRepository: this.solicitudAsignacionRepository,
+    });
+
+    // Cotización (SCRUM-865): Core es dueño del estado tras la asignación (decisión 6A, SAD §7.4).
+    // Sin DATABASE_URL no hay respaldo en memoria: responde 503.
+    this.quoteRepository = new PgQuoteRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.createQuoteUseCase = new CreateQuoteUseCase({
+      quoteRepository: this.quoteRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    this.listQuotesUseCase = new ListQuotesUseCase({ quoteRepository: this.quoteRepository });
+    this.respondQuoteUseCase = new RespondQuoteUseCase({
+      quoteRepository: this.quoteRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    // Ejecución del servicio (SCRUM-868), con el mismo criterio: sin DATABASE_URL responde 503.
+    this.serviceExecutionRepository = new PgServiceExecutionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.serviceExecutionUseCase = new ServiceExecutionUseCase({
+      serviceExecutionRepository: this.serviceExecutionRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    // Eventos durante la ejecución (SCRUM-869); la evidencia va al bucket `solicitudes`.
+    this.serviceEventRepository = new PgServiceEventRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.serviceEventsUseCase = new ServiceEventsUseCase({
+      serviceEventRepository: this.serviceEventRepository,
+      fileStorageService: this.fileStorageService,
+    });
+    // Adiciones por imprevisto durante la ejecución (SCRUM-872), con el mismo criterio: sin DATABASE_URL responde 503.
+    this.additionRepository = new PgAdditionRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.requestAdditionUseCase = new RequestAdditionUseCase({
+      additionRepository: this.additionRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    this.listAdditionsUseCase = new ListAdditionsUseCase({ additionRepository: this.additionRepository });
+    this.respondAdditionUseCase = new RespondAdditionUseCase({
+      additionRepository: this.additionRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+    // Módulo M-08: Calificación bidireccional, cierre condicionado, reputación agregada, penalización por
+    // cancelación tardía e historial (SCRUM-1418, SCRUM-874, SCRUM-875, SCRUM-876, SCRUM-878, SCRUM-879, SCRUM-880).
+    // Sin DATABASE_URL responde 503 (T2).
+    this.ratingsRepository = new PgRatingsRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.ratingsAndClosureUseCase = new RatingsAndClosureUseCase({
+      ratingsRepository: this.ratingsRepository,
+      notificador: this.notificarEventoServicioUseCase,
+    });
+
+    // Tarifario de referencia (M-10: SCRUM-885, SCRUM-886, SCRUM-887). Core persiste y Rules evalúa el rango
+    // (Mesa CFG-23a punto M2); sin DATABASE_URL o sin Rules responde 503 (T2).
+    this.tariffRepository = new PgTariffRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tariffsUseCase = new TariffsUseCase({
+      tariffRepository: this.tariffRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    // Reglas operativas propias por tenant (M-01: SCRUM-1366 / HU-M01-03).
+    this.tenantRulesRepository = new PgTenantRulesRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tenantRulesUseCase = new TenantRulesUseCase({
+      tenantRulesRepository: this.tenantRulesRepository,
+      ruleEvaluationService: this.ruleEvaluationService,
+    });
+    // Quejas, métricas operativas y estado de tenants (M-12: SCRUM-895, SCRUM-896, SCRUM-900, SCRUM-901).
+    this.complaintRepository = new PgComplaintRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.complaintsUseCase = new ComplaintsUseCase({ complaintRepository: this.complaintRepository });
+    this.metricsRepository = new PgOperationalMetricsRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.operationalMetricsUseCase = new OperationalMetricsUseCase({ metricsRepository: this.metricsRepository });
+    this.tenantStatusRepository = new PgTenantStatusRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.tenantStatusUseCase = new TenantStatusUseCase({ tenantStatusRepository: this.tenantStatusRepository });
+    // Contexto efectivo del administrador de plataforma (SCRUM-901): tenant elegido y usuario con el que actúa.
+    // Sin DATABASE_URL las cabeceras responden 503; sin cabeceras la sesión sigue igual.
+    this.contextoPlataformaRepository = this.pgPoolFactory.isConfigured()
+      ? new PgContextoPlataformaRepository({ pgPoolFactory: this.pgPoolFactory })
+      : null;
+    this.contextoPlataforma = new ContextoPlataformaService({ repositorio: this.contextoPlataformaRepository });
+
+    // Cobertura del aliado (SCRUM-1380): sin DATABASE_URL responde 503, como el resto de repositorios pg.
+    this.coberturaRepository = new PgCoberturaRepository({ pgPoolFactory: this.pgPoolFactory });
+    this.getAllyCoverageUseCase = new GetAllyCoverageUseCase({ coberturaRepository: this.coberturaRepository });
+    this.declareAllyCoverageUseCase = new DeclareAllyCoverageUseCase({ coberturaRepository: this.coberturaRepository });
 
     this.checkHealthUseCase = new CheckHealthUseCase({
       supabaseConnectionChecker: this.supabaseConnectionChecker,
@@ -297,6 +481,8 @@ class Container {
     this.addSiteToCompanyClientUseCase = new AddSiteToCompanyClientUseCase(this.companyClientRepository);
 
     this.getCompanyClientSitesUseCase = new GetCompanyClientSitesUseCase(this.companyClientRepository);
+
+    this.updateCompanyClientSiteUseCase = new UpdateCompanyClientSiteUseCase(this.companyClientRepository);
 
     this.registerAllyNaturalPersonUseCase = new RegisterAllyNaturalPersonUseCase({
       tenantRepository: this.tenantRepository,
@@ -352,12 +538,22 @@ class Container {
       documentoKycRepository: this.documentoKycRepository,
     });
 
+    // Con DATABASE_URL el registro del empleado directo es una transacción real bajo RLS como mani_core_svc (SCRUM-1376).
+    this.directEmployeeRepository = this.pgPoolFactory.isConfigured()
+      ? new PgDirectEmployeeRepository({ pgPoolFactory: this.pgPoolFactory })
+      : new ComposedDirectEmployeeRepository({
+          usuarioRepository: this.usuarioRepository,
+          aliadoRepository: this.aliadoRepository,
+          aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+          documentoKycRepository: this.documentoKycRepository,
+        });
     this.registerDirectEmployeeUseCase = new RegisterDirectEmployeeUseCase({
       tenantRepository: this.tenantRepository,
       catalogRepository: this.catalogRepository,
       usuarioRepository: this.usuarioRepository,
       aliadoRepository: this.aliadoRepository,
-      aliadoCategoriaRepository: this.aliadoCategoriaRepository,
+      directEmployeeRepository: this.directEmployeeRepository,
+      fileStorageService: this.fileStorageService,
       authIdentityService: this.authIdentityService,
     });
 
@@ -368,6 +564,31 @@ class Container {
       usuarioRepository: this.usuarioRepository,
       clienteRepository: this.clienteRepository,
       sitioRepository: this.sitioRepository,
+      authIdentityService: this.authIdentityService,
+    });
+
+    this.registerClientCompanyUseCase = new RegisterClientCompanyUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      clienteRepository: this.clienteRepository,
+      authIdentityService: this.authIdentityService,
+      registerUserConsentUseCase: this.registerUserConsentUseCase,
+      userConsentRepository: this.userConsentRepository,
+    });
+
+    // HU-M02-03: constancia del cierre de sesión para auditoría.
+    this.logoutUseCase = new LogoutUseCase();
+
+    // HU-M02-10: recuperación de contraseña orquestada contra el proveedor de identidad.
+    this.requestPasswordRecoveryUseCase = new RequestPasswordRecoveryUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
+      authIdentityService: this.authIdentityService,
+      redirectTo: config.passwordRecoveryRedirectUrl,
+    });
+    this.resetPasswordUseCase = new ResetPasswordUseCase({
+      tenantRepository: this.tenantRepository,
+      usuarioRepository: this.usuarioRepository,
       authIdentityService: this.authIdentityService,
     });
   }

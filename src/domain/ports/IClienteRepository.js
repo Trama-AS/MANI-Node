@@ -12,6 +12,13 @@ class IClienteRepository {
     throw new Error('Método create() no implementado en IClienteRepository');
   }
 
+  /**
+   * Cliente empresa del tenant con ese NIT, o null (HU-M02-07: un NIT no se registra dos veces en el tenant).
+   */
+  async findByNit(_tenantId, _nit) {
+    throw new Error('Método findByNit() no implementado en IClienteRepository');
+  }
+
   /** Compensación (B3): deshace create() si un paso posterior del registro falla. */
   async deleteByUsuarioId(_tenantId, _usuarioId) {
     throw new Error('Método deleteByUsuarioId() no implementado en IClienteRepository');

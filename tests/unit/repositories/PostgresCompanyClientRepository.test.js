@@ -4,12 +4,28 @@ const PostgresCompanyClientRepository = require('../../../src/infrastructure/rep
 const CompanyClient = require('../../../src/domain/entities/CompanyClient');
 const Site = require('../../../src/domain/entities/Site');
 
+const CONTROL = /^(BEGIN|COMMIT|ROLLBACK)$/;
+
+/**
+ * Pool falso con transacciones (SCRUM-1468: cada consulta corre en una transacción con app.set_context).
+ * `queries` guarda solo las sentencias de datos; `todas` también BEGIN/COMMIT/ROLLBACK; `contextos`, los parámetros
+ * de cada app.set_context.
+ */
 function createMockPgPool(queryHandler) {
   const queries = [];
+  const todas = [];
+  const contextos = [];
   let clientReleased = false;
 
   const mockClient = {
     query: async (sql, params) => {
+      const texto = sql.trim();
+      if (texto.startsWith('SELECT app.set_context')) {
+        contextos.push(params);
+        return { rows: [] };
+      }
+      todas.push({ sql, params });
+      if (CONTROL.test(texto)) return { rows: [] };
       queries.push({ sql, params });
       if (queryHandler) {
         return queryHandler(sql, params);
@@ -21,27 +37,18 @@ function createMockPgPool(queryHandler) {
     },
   };
 
-  const mockPool = {
-    connect: async () => mockClient,
-    query: async (sql, params) => {
-      queries.push({ sql, params });
-      if (queryHandler) {
-        return queryHandler(sql, params);
-      }
-      return { rows: [] };
-    },
-  };
+  const mockPool = { connect: async () => mockClient };
 
-  return { mockPool, queries, isClientReleased: () => clientReleased };
+  return { mockPool, queries, todas, contextos, isClientReleased: () => clientReleased };
 }
 
 describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', () => {
   it('save ejecuta BEGIN, INSERT usuario, INSERT cliente, INSERT sitio y COMMIT exitosamente', async () => {
-    const { mockPool, queries, isClientReleased } = createMockPgPool();
+    const { mockPool, todas, contextos, isClientReleased } = createMockPgPool();
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
 
     const company = new CompanyClient({
-      tenantId: 'tenant-uuid-1',
+      tenantId: '11111111-1111-4111-8111-111111111111',
       razonSocial: 'Empresa Test SQL',
       nit: '900123456-1',
       email: 'test@sql.com',
@@ -50,7 +57,7 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     });
 
     const site = new Site({
-      tenantId: 'tenant-uuid-1',
+      tenantId: '11111111-1111-4111-8111-111111111111',
       nombre: 'Sede Norte',
       direccion: 'Calle 100 # 20-30',
       zonaId: 'zona-uuid-1',
@@ -65,17 +72,19 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     assert.ok(result.sites[0].id);
 
     // Verificar flujo transaccional en SQL
-    const sqlCommands = queries.map((q) => q.sql.trim());
+    const sqlCommands = todas.map((q) => q.sql.trim());
     assert.strictEqual(sqlCommands[0], 'BEGIN');
     assert.ok(sqlCommands[1].includes('INSERT INTO usuario'));
     assert.ok(sqlCommands[2].includes('INSERT INTO cliente'));
     assert.ok(sqlCommands[3].includes('INSERT INTO sitio'));
     assert.strictEqual(sqlCommands[4], 'COMMIT');
     assert.strictEqual(isClientReleased(), true);
+    // SCRUM-1468: la transacción fija el tenant con app.set_context antes de escribir.
+    assert.deepStrictEqual(contextos, [['11111111-1111-4111-8111-111111111111', null, null]]);
   });
 
   it('save ejecuta ROLLBACK si alguna consulta dentro de la transacción falla', async () => {
-    const { mockPool, queries, isClientReleased } = createMockPgPool((sql) => {
+    const { mockPool, todas, isClientReleased } = createMockPgPool((sql) => {
       if (sql.includes('INSERT INTO cliente')) {
         throw new Error('violación de llave foránea simulada');
       }
@@ -85,7 +94,7 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
 
     const company = new CompanyClient({
-      tenantId: 'tenant-uuid-1',
+      tenantId: '11111111-1111-4111-8111-111111111111',
       razonSocial: 'Empresa Error SQL',
       nit: '900999999-1',
       email: 'err@sql.com',
@@ -98,7 +107,7 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
       /violación de llave foránea simulada/
     );
 
-    const sqlCommands = queries.map((q) => q.sql.trim());
+    const sqlCommands = todas.map((q) => q.sql.trim());
     assert.strictEqual(sqlCommands[0], 'BEGIN');
     assert.ok(sqlCommands.includes('ROLLBACK'));
     assert.strictEqual(isClientReleased(), true);
@@ -126,13 +135,13 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     });
 
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
-    const client = await repo.findById('client-123', 'tenant-123');
+    const client = await repo.findById('client-123', '33333333-3333-4333-8333-333333333333');
 
     assert.ok(client);
     assert.strictEqual(client.id, 'client-123');
     assert.strictEqual(client.razonSocial, 'Empresa Encontrada');
     assert.strictEqual(queries[0].params[0], 'client-123');
-    assert.strictEqual(queries[0].params[1], 'tenant-123');
+    assert.strictEqual(queries[0].params[1], '33333333-3333-4333-8333-333333333333');
   });
 
   it('findByNitAndTenant filtra exactamente por NIT y tenantId', async () => {
@@ -153,12 +162,12 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     });
 
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
-    const client = await repo.findByNitAndTenant('900111222-3', 'tenant-xyz');
+    const client = await repo.findByNitAndTenant('900111222-3', '44444444-4444-4444-8444-444444444444');
 
     assert.ok(client);
     assert.strictEqual(client.nit, '900111222-3');
     assert.strictEqual(queries[0].params[0], '900111222-3');
-    assert.strictEqual(queries[0].params[1], 'tenant-xyz');
+    assert.strictEqual(queries[0].params[1], '44444444-4444-4444-8444-444444444444');
   });
 
   it('findByEmailAndTenant busca insensible a mayúsculas/minúsculas', async () => {
@@ -179,7 +188,7 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     });
 
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
-    const client = await repo.findByEmailAndTenant('TEST@EMAIL.COM', 'tenant-xyz');
+    const client = await repo.findByEmailAndTenant('TEST@EMAIL.COM', '44444444-4444-4444-8444-444444444444');
 
     assert.ok(client);
     assert.strictEqual(queries[0].params[0], 'TEST@EMAIL.COM');
@@ -208,8 +217,8 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
 
     const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
 
-    const newSite = await repo.addSite('client-1', 'tenant-1', new Site({
-      tenantId: 'tenant-1',
+    const newSite = await repo.addSite('client-1', '22222222-2222-4222-8222-222222222222', new Site({
+      tenantId: '22222222-2222-4222-8222-222222222222',
       clienteId: 'client-1',
       nombre: 'Sede Sucursal',
       direccion: 'Carrera 7 # 15-20',
@@ -220,14 +229,160 @@ describe('PostgresCompanyClientRepository (SQL Path & Transaction Coverage)', ()
     assert.ok(newSite.id);
     assert.strictEqual(newSite.nombre, 'Sede Sucursal');
 
-    const sites = await repo.findSitesByClientId('client-1', 'tenant-1');
+    const sites = await repo.findSitesByClientId('client-1', '22222222-2222-4222-8222-222222222222');
     assert.strictEqual(sites.length, 1);
     assert.strictEqual(sites[0].nombre, 'Sede Principal');
     assert.strictEqual(sites[0].reglas.horario, '07:00-18:00');
   });
 
-  it('lanza DomainError si se invoca sin conexión ni factory', () => {
+  const filaSitio = {
+    id: 'sitio-1',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    cliente_id: 'cliente-1',
+    zona_id: 'zona-2',
+    direccion: 'Carrera 7 # 64-20',
+    nombre: 'Sede Editada',
+    reglas: '{"requiereEpi":true}',
+    contacto_nombre: 'Laura',
+    contacto_telefono: null,
+    created_at: new Date('2026-10-01T00:00:00Z'),
+  };
+
+  it('findByUsuarioId busca el cliente empresa por el usuario dueño y el tenant (alias me)', async () => {
+    const fila = {
+      id: 'cliente-1',
+      tenant_id: '11111111-1111-4111-8111-111111111111',
+      usuario_id: 'usuario-1',
+      razon_social: 'Empresa SQL',
+      nit: '900123456-1',
+      tipo: 'PERSONA_JURIDICA',
+      email: 'sql@empresa.com',
+      estado: 'ACTIVO',
+    };
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [fila] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    const client = await repo.findByUsuarioId('usuario-1', '11111111-1111-4111-8111-111111111111');
+
+    assert.match(queries[0].sql, /WHERE c\.usuario_id = \$1 AND c\.tenant_id = \$2/);
+    assert.deepStrictEqual(queries[0].params, ['usuario-1', '11111111-1111-4111-8111-111111111111']);
+    assert.strictEqual(client.id, 'cliente-1');
+    assert.strictEqual(client.usuarioId, 'usuario-1');
+  });
+
+  it('findByUsuarioId devuelve null si el usuario no tiene cliente empresa en el tenant', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    assert.strictEqual(await repo.findByUsuarioId('usuario-x', '11111111-1111-4111-8111-111111111111'), null);
+  });
+
+  it('findSiteById filtra por sitio, cliente y tenant (SCRUM-1387)', async () => {
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [filaSitio] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    const sitio = await repo.findSiteById('cliente-1', 'sitio-1', '11111111-1111-4111-8111-111111111111');
+
+    assert.match(queries[0].sql, /WHERE id = \$1 AND cliente_id = \$2 AND tenant_id = \$3/);
+    assert.deepStrictEqual(queries[0].params, ['sitio-1', 'cliente-1', '11111111-1111-4111-8111-111111111111']);
+    assert.ok(sitio instanceof Site);
+    assert.deepStrictEqual(sitio.reglas, { requiereEpi: true });
+  });
+
+  it('findSiteById devuelve null si la sede no es de ese cliente o tenant', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+
+    assert.strictEqual(await repo.findSiteById('cliente-1', 'sitio-x', '11111111-1111-4111-8111-111111111111'), null);
+  });
+
+  it('updateSite actualiza solo los campos editables, filtrando por sitio, cliente y tenant, sin tocar reglas', async () => {
+    const { mockPool, queries } = createMockPgPool(() => ({ rows: [filaSitio] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({
+      id: 'sitio-1',
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      clienteId: 'cliente-1',
+      nombre: 'Sede Editada',
+      direccion: 'Carrera 7 # 64-20',
+      zonaId: 'zona-2',
+      contactoNombre: 'Laura',
+    });
+
+    const guardado = await repo.updateSite('cliente-1', '11111111-1111-4111-8111-111111111111', sitio);
+
+    assert.match(queries[0].sql, /^UPDATE sitio/);
+    assert.match(queries[0].sql, /WHERE id = \$1 AND cliente_id = \$2 AND tenant_id = \$3/);
+    assert.doesNotMatch(queries[0].sql, /reglas =/);
+    assert.deepStrictEqual(queries[0].params, [
+      'sitio-1',
+      'cliente-1',
+      '11111111-1111-4111-8111-111111111111',
+      'Sede Editada',
+      'Carrera 7 # 64-20',
+      'zona-2',
+      'Laura',
+      null,
+    ]);
+    assert.strictEqual(guardado.nombre, 'Sede Editada');
+  });
+
+  it('updateSite devuelve null si no actualizó ninguna fila', async () => {
+    const { mockPool } = createMockPgPool(() => ({ rows: [] }));
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ id: 'sitio-x', tenantId: '55555555-5555-4555-8555-555555555555', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'z' });
+
+    assert.strictEqual(await repo.updateSite('c', '55555555-5555-4555-8555-555555555555', sitio), null);
+  });
+
+  for (const code of ['23503', '22P02']) {
+    it(`updateSite traduce el error ${code} de zona inexistente o inválida a error de validación`, async () => {
+      const { mockPool } = createMockPgPool(() => {
+        throw Object.assign(new Error('pg'), { code });
+      });
+      const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+      const sitio = new Site({ id: 's', tenantId: '55555555-5555-4555-8555-555555555555', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'no-existe' });
+
+      await assert.rejects(repo.updateSite('c', '55555555-5555-4555-8555-555555555555', sitio), (err) => {
+        assert.strictEqual(err.statusCode, 400);
+        assert.strictEqual(err.code, 'VALIDATION_ERROR');
+        return true;
+      });
+    });
+  }
+
+  it('addSite también traduce una zona inexistente a error de validación (400, no 500)', async () => {
+    const { mockPool } = createMockPgPool(() => {
+      throw Object.assign(new Error('fk'), { code: '23503' });
+    });
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ tenantId: '55555555-5555-4555-8555-555555555555', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'no-existe' });
+
+    await assert.rejects(repo.addSite('c', '55555555-5555-4555-8555-555555555555', sitio), (err) => err.statusCode === 400 && err.code === 'VALIDATION_ERROR');
+  });
+
+  it('addSite propaga cualquier otro error de la base', async () => {
+    const { mockPool } = createMockPgPool(() => {
+      throw Object.assign(new Error('timeout'), { code: '57014' });
+    });
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ tenantId: '55555555-5555-4555-8555-555555555555', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'z' });
+
+    await assert.rejects(repo.addSite('c', '55555555-5555-4555-8555-555555555555', sitio), /timeout/);
+  });
+
+  it('updateSite propaga cualquier otro error de la base', async () => {
+    const { mockPool } = createMockPgPool(() => {
+      throw Object.assign(new Error('conexión caída'), { code: '08006' });
+    });
+    const repo = new PostgresCompanyClientRepository({ pgPool: mockPool });
+    const sitio = new Site({ id: 's', tenantId: '55555555-5555-4555-8555-555555555555', clienteId: 'c', direccion: 'Calle 1 # 2-3', zonaId: 'z' });
+
+    await assert.rejects(repo.updateSite('c', '55555555-5555-4555-8555-555555555555', sitio), /conexión caída/);
+  });
+
+  it('lanza DomainError si se invoca sin conexión ni factory', async () => {
     const repo = new PostgresCompanyClientRepository({});
-    assert.throws(() => repo._getPool(), /DATABASE_URL no configurada/);
+    await assert.rejects(() => repo.findById('c', '55555555-5555-4555-8555-555555555555'), /DATABASE_URL no configurada/);
   });
 });

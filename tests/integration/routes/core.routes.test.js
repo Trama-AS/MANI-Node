@@ -7,6 +7,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const app = require('../../../src/app');
 const config = require('../../../src/config');
 const container = require('../../../src/container');
+const Profile = require('../../../src/domain/entities/Profile');
 const { startFakeRulesService } = require('../../helpers/fakeRulesService');
 
 let rules;
@@ -29,12 +30,59 @@ function signTestToken({ sub, tenantId, role }) {
   });
 }
 
-test('GET /api/v1/tenants responde 200 con el listado de tenants', async () => {
+// ---- SCRUM-1364 (HU-M01-01): el listado global de tenants no se enumera ----
+
+const TENANT_A = 'trama-demo';
+const TENANT_B = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+const bearerOf = (opts) => `Bearer ${signTestToken(opts)}`;
+
+test('C2: GET /api/v1/tenants sin sesión responde 401 y no devuelve datos', async () => {
   const res = await request(app).get('/api/v1/tenants');
 
+  assert.equal(res.status, 401);
+  assert.equal(res.body.data, undefined);
+});
+
+test('C2: ningún rol de tenant puede listar todos los tenants (403 sin datos), ni siquiera el admin del tenant', async () => {
+  for (const role of ['cliente', 'aliado', 'admin_tenant']) {
+    const res = await request(app).get('/api/v1/tenants').set('Authorization', bearerOf({ sub: 'u-1', tenantId: TENANT_A, role }));
+
+    assert.equal(res.status, 403, `rol ${role}`);
+    assert.equal(res.body.code, 'FORBIDDEN');
+    assert.equal(res.body.data, undefined, `rol ${role} no debe recibir tenants`);
+    assert.equal(JSON.stringify(res.body).includes('Plomería'), false, 'la respuesta no nombra a otros tenants');
+  }
+});
+
+test('C3: solo el permiso explícito de plataforma lista todos los tenants', async () => {
+  const res = await request(app).get('/api/v1/tenants').set('Authorization', bearerOf({ sub: 'root-1', tenantId: TENANT_A, role: 'admin_plataforma' }));
+
   assert.equal(res.status, 200);
-  assert.ok(Array.isArray(res.body.data));
-  assert.equal(res.body.data[0].id, 'trama-demo');
+  assert.ok(res.body.data.length >= 2);
+  assert.ok(res.body.data.some((t) => t.id === TENANT_B));
+});
+
+test('C1: el perfil trae el nombre del propio tenant y no el de otros', async () => {
+  container.profileRepository.profiles.push(
+    new Profile({ id: 'user-b', userId: 'user-b', role: 'CLIENT', fullName: 'Cliente B', status: 'VERIFIED', tenantId: TENANT_B })
+  );
+
+  const a = await request(app).get('/api/v1/profiles/me').set('Authorization', bearerOf({ sub: 'demo-user-1', tenantId: TENANT_A, role: 'cliente' }));
+  const b = await request(app).get('/api/v1/profiles/me').set('Authorization', bearerOf({ sub: 'user-b', tenantId: TENANT_B, role: 'cliente' }));
+
+  assert.equal(a.status, 200);
+  assert.equal(a.body.profile.tenantName, 'TRAMA Servicios Demo');
+  assert.equal(b.status, 200);
+  assert.equal(b.body.profile.tenantName, 'Plomería Express CDMX SA');
+  assert.equal(JSON.stringify(a.body).includes('Plomería'), false, 'el tenant A no ve el nombre del B');
+  assert.equal(JSON.stringify(b.body).includes('TRAMA'), false, 'el tenant B no ve el nombre del A');
+});
+
+test('C1: un usuario del tenant B no obtiene el perfil de un usuario del tenant A (404)', async () => {
+  const res = await request(app).get('/api/v1/profiles/me').set('Authorization', bearerOf({ sub: 'demo-user-1', tenantId: TENANT_B, role: 'cliente' }));
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.profile, undefined);
 });
 
 test('GET /api/v1/profiles/me sin Authorization responde 401', async () => {
@@ -157,7 +205,7 @@ test('GET /api/v1/profiles/me/categories con rol ALLY responde 200 y retorna sus
 
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.body.categories));
-  assert.ok(res.body.categories.includes('cat-1'));
+  assert.ok(res.body.categories.includes('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'));
 });
 
 test('GET /api/v1/profiles/me/categories/available sin Authorization responde 401', async () => {
@@ -187,7 +235,7 @@ test('GET /api/v1/profiles/me/categories/available con rol ALLY lista solo categ
 
   assert.equal(res.status, 200);
   const ids = res.body.categories.map((c) => c.id);
-  assert.ok(ids.includes('cat-1'));
+  assert.ok(ids.includes('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'));
   assert.ok(!ids.includes('cat-inactive'), 'una categoría inactiva no debe ofrecerse');
   for (const c of res.body.categories) assert.deepEqual(Object.keys(c).sort(), ['id', 'name']);
   const names = res.body.categories.map((c) => c.name);
@@ -212,7 +260,7 @@ test('PUT /api/v1/profiles/me/categories con categoría inexistente responde 422
   const res = await request(app)
     .put('/api/v1/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categories: ['cat-1', 'cat-inexistente'] });
+    .send({ categories: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'cat-inexistente'] });
 
   assert.equal(res.status, 422);
   assert.equal(res.body.code, 'MANI-CAT-422C');
@@ -239,16 +287,20 @@ test('PUT /api/v1/profiles/me/categories con categoría inactiva responde 422 (M
   assert.equal(res.body.code, 'MANI-CAT-422C');
 });
 
+// SCRUM-1392: los identificadores que se declaran son UUID de
+// `categoria_servicio.id`. Antes esta prueba usaba 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18'/'d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', que existen
+// solo como fixture del repositorio en memoria y PostgreSQL rechazaría; se usan
+// los UUID del catálogo, que son los que la pantalla del aliado envía de verdad.
 test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exitosamente', async () => {
   const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
 
   const res = await request(app)
     .put('/api/v1/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categories: ['cat-1', 'cat-2'] });
+    .send({ categories: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19'] });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.categories, ['cat-1', 'cat-2']);
+  assert.deepEqual(res.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 
   // Verifica que GET posterior retorne las nuevas categorías
   const getRes = await request(app)
@@ -256,7 +308,7 @@ test('PUT /api/v1/profiles/me/categories con categorías válidas actualiza exit
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(getRes.status, 200);
-  assert.deepEqual(getRes.body.categories, ['cat-1', 'cat-2']);
+  assert.deepEqual(getRes.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a18', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19']);
 });
 
 test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () => {
@@ -265,10 +317,10 @@ test('POST /profiles/me/categories (alias y ruta raíz) responde 200', async () 
   const res = await request(app)
     .post('/profiles/me/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ categoriaIds: ['cat-2', 'cat-3'] });
+    .send({ categoriaIds: ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20'] });
 
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.categories, ['cat-2', 'cat-3']);
+  assert.deepEqual(res.body.categories, ['d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a19', 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20']);
 });
 
 test('PATCH /api/v1/profiles/me actualiza datos propios y persiste los cambios en GET /api/v1/profiles/me (SCRUM-854)', async () => {
@@ -336,7 +388,27 @@ test('POST /api/v1/profiles/me/photo permite subir foto en formato soportado y r
     .attach('photo', Buffer.from('fake-pdf'), { filename: 'doc.pdf', contentType: 'application/pdf' });
 
   assert.equal(badRes.status, 400);
-  assert.equal(badRes.body.code, 'MANI-PRF-422');
+  assert.equal(badRes.body.code, 'MANI-PRF-422F');
+});
+
+test('POST /api/v1/profiles/me/photo: JPG pasa, WEBP y más de 5 MB se rechazan con código propio (SCRUM-1628)', async () => {
+  const token = signTestToken({ sub: 'demo-ally-1', tenantId: 'trama-demo', role: 'aliado' });
+  const subir = (buffer, filename, contentType) =>
+    request(app).post('/api/v1/profiles/me/photo').set('Authorization', `Bearer ${token}`).attach('photo', buffer, { filename, contentType });
+
+  const jpg = await subir(Buffer.from('fake-jpg-bytes'), 'a.jpg', 'image/jpeg');
+  assert.equal(jpg.status, 200);
+
+  const webp = await subir(Buffer.from('fake-webp'), 'a.webp', 'image/webp');
+  assert.equal(webp.status, 400);
+  assert.equal(webp.body.code, 'MANI-PRF-422F');
+  assert.equal(webp.body.error, 'La foto debe ser JPG o PNG de hasta 5 MB');
+
+  const grande = await subir(Buffer.alloc(5 * 1024 * 1024 + 1, 1), 'grande.png', 'image/png');
+  assert.equal(grande.status, 413);
+  assert.equal(grande.body.code, 'MANI-PRF-413');
+  assert.equal(grande.body.error, 'La foto debe ser JPG o PNG de hasta 5 MB');
+  assert.ok(!/File too large/i.test(grande.body.error));
 });
 
 
@@ -510,6 +582,53 @@ test('PATCH /api/v1/catalog/categories/:id/deactivate y /activate alternan el fl
     .set('Authorization', `Bearer ${adminToken(tenantId)}`);
   assert.equal(activateRes.status, 200);
   assert.equal(activateRes.body.category.active, true);
+});
+
+test('PATCH /deactivate y /activate auditan con el usuario del token y el X-Correlation-ID de la petición (T10 / SCRUM-1391)', async () => {
+  const tenantId = 'tenant-categorias-auditoria';
+  const createRes = await request(app)
+    .post('/api/v1/catalog/categories')
+    .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+    .send({ name: 'Cerrajería', flujoOperativo: 'TARIFA_ESTANDAR' });
+  const id = createRes.body.category.id;
+
+  const auditoria = [];
+  const original = container.setCategoryStatusUseCase.auditLogger;
+  container.setCategoryStatusUseCase.auditLogger = (entry) => auditoria.push(entry);
+  try {
+    const desactivar = await request(app)
+      .patch(`/api/v1/catalog/categories/${id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+      .set('X-Correlation-ID', 'corr-auditoria-1');
+    assert.equal(desactivar.status, 200);
+
+    const activar = await request(app)
+      .patch(`/api/v1/catalog/categories/${id}/activate`)
+      .set('Authorization', `Bearer ${adminToken(tenantId)}`)
+      .set('X-Correlation-ID', 'corr-auditoria-2');
+    assert.equal(activar.status, 200);
+
+    const otroTenant = await request(app)
+      .patch(`/api/v1/catalog/categories/${id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken('tenant-ajeno-auditoria')}`);
+    assert.equal(otroTenant.status, 404);
+  } finally {
+    container.setCategoryStatusUseCase.auditLogger = original;
+  }
+
+  assert.deepEqual(
+    auditoria.map(({ decision, realizado_por, tenant_id, categoria_id, correlation_id }) => ({
+      decision,
+      realizado_por,
+      tenant_id,
+      categoria_id,
+      correlation_id,
+    })),
+    [
+      { decision: 'DESACTIVAR', realizado_por: 'admin-1', tenant_id: tenantId, categoria_id: id, correlation_id: 'corr-auditoria-1' },
+      { decision: 'ACTIVAR', realizado_por: 'admin-1', tenant_id: tenantId, categoria_id: id, correlation_id: 'corr-auditoria-2' },
+    ]
+  );
 });
 
 // --- Reglas de categoría delegadas al Rules Service (US-03.1.1-M6) ---

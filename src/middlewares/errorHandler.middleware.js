@@ -17,12 +17,25 @@ function errorHandler(err, req, res, _next) {
   // por VALIDATION_ERROR en vez de dejarlo pasar.
   const isMulterError = err.name === 'MulterError';
   const statusCode = err.statusCode || (isMulterError ? 400 : 500);
-  const code = isMulterError ? 'VALIDATION_ERROR' : err.code;
+
+  // T9 (fallo cerrado, sin detalle interno). Lo que decide si el mensaje sale
+  // no es el código HTTP, sino si el error estaba previsto: un error de
+  // dominio fija su statusCode y su mensaje está escrito para el cliente,
+  // incluso cuando es 503 (Rules no disponible) o 504 (timeout del
+  // proveedor). Lo que llega sin statusCode es una falla no prevista —por
+  // ejemplo un SQLSTATE de PostgreSQL, cuyo texto nombra tablas, columnas y
+  // tipos— y ese mensaje no puede salir en la respuesta. El error completo
+  // queda en el console.error de arriba, que es donde hay que leerlo.
+  const isUnexpected = !Number.isInteger(err.statusCode) && !isMulterError;
+  const code = isMulterError ? 'VALIDATION_ERROR' : (isUnexpected ? 'INTERNAL_ERROR' : err.code);
+  const message = isUnexpected
+    ? 'Error interno del servidor'
+    : (err.message || 'Error interno del servidor');
 
   res.status(statusCode).json({
-    error: err.message || 'Error interno del servidor',
+    error: message,
     code,
-    ...(Array.isArray(err.violations) && { violations: err.violations }),
+    ...(!isUnexpected && Array.isArray(err.violations) && { violations: err.violations }),
     correlationId: req.correlationId || 'none',
   });
 }

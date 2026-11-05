@@ -37,7 +37,7 @@ test('con dirección nueva: valida, normaliza y pasa al repositorio el contexto 
 
   assert.equal(r.creada, true);
   assert.deepEqual(llamadas[0].ctx, { tenantId: TENANT, userId: USER, role: 'CLIENT' });
-  assert.deepEqual(llamadas[0].datos, { categoriaId: CAT, descripcion, sitioId: null, direccion: 'Calle 1 # 2-3', zonaId: ZONA, fotos: [], claveIdempotencia: null });
+  assert.deepEqual(llamadas[0].datos, { categoriaId: CAT, descripcion, sitioId: null, direccion: 'Calle 1 # 2-3', zonaId: ZONA, fotos: [], claveIdempotencia: null, huellaIdempotencia: null });
 });
 
 test('con sitio existente no exige dirección ni zona', async () => {
@@ -48,6 +48,42 @@ test('con sitio existente no exige dirección ni zona', async () => {
   assert.equal(llamadas[0].datos.sitioId, SITIO);
   assert.equal(llamadas[0].datos.direccion, null);
   assert.equal(llamadas[0].datos.claveIdempotencia, CLAVE);
+});
+
+test('la clave puede llegar en la cabecera Idempotency-Key; si llegan las dos deben coincidir (422K)', async () => {
+  const { useCase, llamadas } = setup();
+
+  await useCase.execute({ user: cliente, body: { categoriaId: CAT, descripcion, sitioId: SITIO }, idempotencyKey: CLAVE });
+  assert.equal(llamadas[0].datos.claveIdempotencia, CLAVE);
+
+  await useCase.execute({ user: cliente, body: { categoriaId: CAT, descripcion, sitioId: SITIO, claveIdempotencia: CLAVE }, idempotencyKey: CLAVE.toUpperCase() });
+  assert.equal(llamadas.length, 2);
+
+  await assert.rejects(
+    () => useCase.execute({
+      user: cliente,
+      body: { categoriaId: CAT, descripcion, sitioId: SITIO, claveIdempotencia: CLAVE },
+      idempotencyKey: '77777777-7777-4777-8777-777777777777',
+    }),
+    (err) => err.statusCode === 422 && err.code === 'MANI-SOL-422K'
+  );
+  assert.equal(llamadas.length, 2);
+});
+
+test('con clave calcula una huella estable: mismos datos y fotos dan la misma, otro contenido da otra', async () => {
+  const { useCase, llamadas } = setup();
+  const body = { categoriaId: CAT, descripcion, sitioId: SITIO, claveIdempotencia: CLAVE };
+
+  await useCase.execute({ user: cliente, body, files: [foto()] });
+  await useCase.execute({ user: cliente, body: { ...body, descripcion: `  ${descripcion} ` }, files: [foto('otro nombre.png')] });
+  await useCase.execute({ user: cliente, body: { ...body, descripcion: `${descripcion} y la cocina` }, files: [foto()] });
+  await useCase.execute({ user: cliente, body, files: [{ ...foto(), buffer: Buffer.from('y') }] });
+
+  const [h1, h2, h3, h4] = llamadas.map((l) => l.datos.huellaIdempotencia);
+  assert.match(h1, /^[0-9a-f]{64}$/);
+  assert.equal(h2, h1, 'reintento: la misma descripción normalizada y el mismo contenido de foto');
+  assert.notEqual(h3, h1, 'otra descripción');
+  assert.notEqual(h4, h1, 'otra foto');
 });
 
 test('sube las fotos al bucket solicitudes bajo {tenant}/{usuario}/ y pasa esas rutas', async () => {

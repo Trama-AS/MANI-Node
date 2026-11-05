@@ -1,5 +1,12 @@
 const { ValidationError } = require('../../../domain/errors/DomainError');
-const { requireDispatchSession, requireUuid, TIPOS_ALIADO, MAX_PAGE_SIZE } = require('./dispatchAccess');
+const {
+  requireDispatchSession,
+  requireUuid,
+  uuidList,
+  TIPOS_ALIADO,
+  MAX_PAGE_SIZE,
+  MAX_EXCLUIDOS,
+} = require('./dispatchAccess');
 
 function positiveInt(value, field, fallback, max) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -17,15 +24,19 @@ class ListEligibleAlliesUseCase {
   }
 
   async execute({ session, query = {} }) {
-    const { tenantId } = requireDispatchSession(session);
+    const ctx = requireDispatchSession(session);
 
     const categoriaId = requireUuid(query.categoriaId, 'categoriaId');
     const zonaId = requireUuid(query.zonaId, 'zonaId');
-    const requestId = query.requestId ? requireUuid(query.requestId, 'requestId') : undefined;
+    // `requestId` queda por compatibilidad con clientes anteriores: se valida, pero ya no filtra. Los rechazos
+    // son del dominio de Dispatch, que los manda resueltos en `excludeAllyIds` (ADR-0030).
+    if (query.requestId) requireUuid(query.requestId, 'requestId');
+    const excludeAllyIds = uuidList(query.excludeAllyIds, 'excludeAllyIds', MAX_EXCLUIDOS);
 
-    let tipo;
-    if (query.tipo) {
-      tipo = String(query.tipo).trim().toUpperCase();
+    let tipo = null;
+    const tipoPedido = query.tipo === undefined || query.tipo === null ? '' : String(query.tipo).trim();
+    if (tipoPedido !== '') {
+      tipo = tipoPedido.toUpperCase();
       if (!TIPOS_ALIADO.includes(tipo)) {
         throw new ValidationError(
           `MANI-DSP-400: tipo debe ser uno de ${TIPOS_ALIADO.join(', ')}`,
@@ -37,7 +48,7 @@ class ListEligibleAlliesUseCase {
     const page = positiveInt(query.page, 'page', 1);
     const pageSize = positiveInt(query.pageSize, 'pageSize', 20, MAX_PAGE_SIZE);
 
-    return this.elegibilidadRepository.findEligible({ tenantId, categoriaId, zonaId, requestId, tipo, page, pageSize });
+    return this.elegibilidadRepository.findEligible(ctx, { categoriaId, zonaId, excludeAllyIds, tipo, page, pageSize });
   }
 }
 

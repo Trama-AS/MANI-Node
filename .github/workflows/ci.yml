@@ -10,6 +10,23 @@ jobs:
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    # PostgreSQL real para tests/integration/pg (se omiten sin TEST_DATABASE_URL). Base efímera del
+    # job, sin contraseña (trust): no hay credencial que proteger y no aparece ninguna en el workflow.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: mani
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mani"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres@localhost:5432/mani
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,5 +43,28 @@ jobs:
       - name: Linter
         run: npm run lint
 
+      # Esquema base 001-008: el dueño es MANI-APIGateway (database/migrations). Solo esa carpeta.
+      - name: Migraciones base del esquema (MANI-APIGateway)
+        uses: actions/checkout@v4
+        with:
+          repository: Trama-AS/MANI-APIGateway
+          ref: develop
+          path: .mani-gateway
+          sparse-checkout: database/migrations
+          sparse-checkout-cone-mode: false
+
+      - name: Preparar base de pruebas
+        run: bash scripts/preparar-base-pruebas.sh .mani-gateway/database/migrations
+
       - name: Pruebas unitarias e integración
         run: npm test
+
+      # Si la base no quedara configurada, las pruebas pg se omitirían y el job seguiría en verde.
+      - name: Verificar que las pruebas contra PostgreSQL no se omiten
+        run: |
+          set -o pipefail
+          node --test tests/integration/pg/*.test.js | tee pg.txt
+          if ! grep -q '^# skipped 0$' pg.txt; then
+            echo "::error::Las pruebas de tests/integration/pg se omitieron: revisar TEST_DATABASE_URL y la base de pruebas."
+            exit 1
+          fi

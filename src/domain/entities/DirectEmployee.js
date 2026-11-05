@@ -3,8 +3,8 @@ const { ValidationError } = require('../errors/DomainError');
 /**
  * Entidad de Dominio: DirectEmployee (RF-05 / US-02.1.5 / SCRUM-850)
  * Representa a un empleado directo de la empresa del tenant.
- * A diferencia del aliado externo independiente, no pasa por el flujo de
- * aprobación KYC ni requiere documentos; queda en estado VERIFICADO de inmediato.
+ * A diferencia del aliado externo independiente, no pasa por la bandeja de verificación: lo registra el
+ * administrador del tenant (que sube la copia de su documento de identidad) y queda VERIFICADO de inmediato.
  */
 class DirectEmployee {
   constructor({
@@ -16,7 +16,7 @@ class DirectEmployee {
     phone = null,
     documentType = null,
     documentNumber = null,
-    categoriaId = null,
+    categoriaIds = [],
     status = 'VERIFIED',
     tipo = 'EMPLEADO_DIRECTO',
     createdAt = new Date(),
@@ -39,7 +39,7 @@ class DirectEmployee {
     this.phone = phone ? String(phone).trim() : null;
     this.documentType = documentType;
     this.documentNumber = documentNumber;
-    this.categoriaId = categoriaId;
+    this.categoriaIds = categoriaIds;
     this.status = status;
     this.tipo = tipo;
     this.createdAt = createdAt;
@@ -65,7 +65,8 @@ class DirectEmployee {
       telefono: this.phone,
       documentType: this.documentType,
       documentNumber: this.documentNumber,
-      categoriaId: this.categoriaId,
+      categoriaId: this.categoriaIds[0] || null,
+      categoriaIds: this.categoriaIds,
       tipo: this.tipo,
       tipoAliado: this.tipo,
       estadoVerificacion: 'VERIFICADO',

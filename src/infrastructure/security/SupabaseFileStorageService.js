@@ -43,10 +43,11 @@ class SupabaseFileStorageService extends IFileStorageService {
     if (error) throw new DomainError(`Error eliminando documento de Storage: ${error.message}`, 'INTERNAL_ERROR', 500);
   }
 
-  async createSignedUrl(path, expiresInSeconds = 300) {
+  async createSignedUrl(path, expiresInSeconds = 300, { bucket = BUCKET } = {}) {
     const client = this.supabaseClientFactory.getClient();
-    const cleanPath = String(path || '').replace(new RegExp(`^${BUCKET}/`), '');
-    const { data, error } = await client.storage.from(BUCKET).createSignedUrl(cleanPath, expiresInSeconds);
+    const destino = bucketValido(bucket);
+    const cleanPath = String(path || '').replace(new RegExp(`^${destino}/`), '');
+    const { data, error } = await client.storage.from(destino).createSignedUrl(cleanPath, expiresInSeconds);
     if (error || !data?.signedUrl) {
       throw new DomainError(
         `Error generando URL firmada de Storage: ${error?.message || 'sin URL'}`,

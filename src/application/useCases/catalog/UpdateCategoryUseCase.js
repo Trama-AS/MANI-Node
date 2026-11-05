@@ -1,5 +1,6 @@
 const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
 const assertCategoryRules = require('./assertCategoryRules');
+const requireCategoryUuid = require('./requireCategoryUuid');
 
 class UpdateCategoryUseCase {
   constructor({ catalogRepository, ruleEvaluationService }) {
@@ -20,6 +21,7 @@ class UpdateCategoryUseCase {
     if (!categoryId || typeof categoryId !== 'string') {
       throw new ValidationError('categoryId es requerido');
     }
+    requireCategoryUuid(categoryId);
     if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
       throw new ValidationError('name no puede estar vacío');
     }
