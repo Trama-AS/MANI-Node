@@ -1,3 +1,4 @@
+const { ejecutarComo } = require('../../context/contextoIdentidad');
 const Profile = require('../../../domain/entities/Profile');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
 const isValidEmail = require('../../../domain/validation/isValidEmail');
@@ -162,72 +163,77 @@ class RegisterAllyNaturalPersonUseCase {
     const uploadedPaths = [];
     let tokens;
 
-    try {
-      // 2. Espejo de negocio — handle_new_user migrado explícitamente a Node.
-      await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'ALLY', estado: 'ACTIVE', phone });
-      usuarioCreado = true;
+    // Lo que sigue escribe en la base como el usuario recién creado en Auth: es quien actúa en este registro y el
+    // que exigen las políticas RLS de KYC y consentimientos, porque Core se conecta sin BYPASSRLS (SCRUM-1468).
+    // La compensación corre con la misma identidad, para poder borrar lo que este registro alcanzó a crear.
+    await ejecutarComo({ tenantId, userId, role: 'ALLY' }, async () => {
+      try {
+        // 2. Espejo de negocio — handle_new_user migrado explícitamente a Node.
+        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'ALLY', estado: 'ACTIVE', phone });
+        usuarioCreado = true;
 
-      const aliado = await this.aliadoRepository.create({
-        tenantId,
-        usuarioId: userId,
-        tipo: 'PERSONA_NATURAL',
-        nombreRazonSocial: fullName,
-        estadoVerificacion: 'PENDING',
-        documentType,
-        documentNumber,
-      });
-      aliadoCreado = true;
-      aliadoId = aliado.id || aliado.usuarioId || userId;
-
-      await this.aliadoCategoriaRepository.create({ tenantId, aliadoId, categoriaId });
-      aliadoCategoriaCreada = true;
-
-      // 3. KYC: subir cada archivo a kyc-documentos/{tenantId}/{userId}/... y
-      // registrar la fila en documento_kyc con la ruta resultante.
-      const documentosConRuta = [];
-      for (const doc of documentos) {
-        const filename = `${Date.now()}-${sanitizeForPath(doc.filename || doc.tipoDocumento)}`;
-        const path = `${tenantId}/${userId}/${filename}`;
-        await this.fileStorageService.upload({ path, buffer: doc.buffer, contentType: doc.contentType });
-        uploadedPaths.push(path);
-        documentosConRuta.push({ tipoDocumento: doc.tipoDocumento, rutaStorage: path });
-      }
-      await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
-      documentoKycCreado = true;
-
-      // 4. Consentimiento de términos y condiciones (SCRUM-856) DENTRO de la compensación
-      if (this.registerUserConsentUseCase && acceptsTerms !== false && acceptsTerms !== 'false') {
-        await this.registerUserConsentUseCase.execute({
+        const aliado = await this.aliadoRepository.create({
           tenantId,
           usuarioId: userId,
-          ipAddress: ipAddress || 'unknown',
-          userAgent: userAgent || 'unknown',
+          tipo: 'PERSONA_NATURAL',
+          nombreRazonSocial: fullName,
+          estadoVerificacion: 'PENDING',
+          documentType,
+          documentNumber,
         });
-        consentimientoCreado = true;
-      }
+        aliadoCreado = true;
+        aliadoId = aliado.id || aliado.usuarioId || userId;
 
-      // 5. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
-      tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
-    } catch (err) {
-      if (consentimientoCreado && this.userConsentRepository) {
-        await safeRun(() => this.userConsentRepository.deleteByUsuarioId(tenantId, userId));
+        await this.aliadoCategoriaRepository.create({ tenantId, aliadoId, categoriaId });
+        aliadoCategoriaCreada = true;
+
+        // 3. KYC: subir cada archivo a kyc-documentos/{tenantId}/{userId}/... y
+        // registrar la fila en documento_kyc con la ruta resultante.
+        const documentosConRuta = [];
+        for (const doc of documentos) {
+          const filename = `${Date.now()}-${sanitizeForPath(doc.filename || doc.tipoDocumento)}`;
+          const path = `${tenantId}/${userId}/${filename}`;
+          await this.fileStorageService.upload({ path, buffer: doc.buffer, contentType: doc.contentType });
+          uploadedPaths.push(path);
+          documentosConRuta.push({ tipoDocumento: doc.tipoDocumento, rutaStorage: path });
+        }
+        await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
+        documentoKycCreado = true;
+
+        // 4. Consentimiento de términos y condiciones (SCRUM-856) DENTRO de la compensación
+        if (this.registerUserConsentUseCase && acceptsTerms !== false && acceptsTerms !== 'false') {
+          await this.registerUserConsentUseCase.execute({
+            tenantId,
+            usuarioId: userId,
+            ipAddress: ipAddress || 'unknown',
+            userAgent: userAgent || 'unknown',
+          });
+          consentimientoCreado = true;
+        }
+
+        // 5. Recién ahora la fila de usuario existe: autenticar emite claims correctos.
+        tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
+      } catch (err) {
+        if (consentimientoCreado && this.userConsentRepository) {
+          await safeRun(() => this.userConsentRepository.deleteByUsuarioId(tenantId, userId));
+        }
+        if (documentoKycCreado) {
+          await safeRun(() => this.documentoKycRepository.deleteByAliadoId(tenantId, aliadoId));
+        }
+        await Promise.allSettled(uploadedPaths.map((path) => safeRun(() => this.fileStorageService.delete(path))));
+        if (aliadoCategoriaCreada) {
+          await safeRun(() => this.aliadoCategoriaRepository.deleteByAliadoId(tenantId, aliadoId));
+        }
+        if (aliadoCreado) {
+          await safeRun(() => this.aliadoRepository.deleteByUsuarioId(tenantId, userId));
+        }
+        if (usuarioCreado) {
+          await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
+        }
+        await safeRun(() => this.authIdentityService.deleteUser(userId));
+        throw err;
       }
-      if (documentoKycCreado) {
-        await safeRun(() => this.documentoKycRepository.deleteByAliadoId(tenantId, aliadoId));
-      }
-      await Promise.allSettled(uploadedPaths.map((path) => safeRun(() => this.fileStorageService.delete(path))));
-      if (aliadoCategoriaCreada) {
-        await safeRun(() => this.aliadoCategoriaRepository.deleteByAliadoId(tenantId, aliadoId));
-      }
-      if (aliadoCreado) {
-        await safeRun(() => this.aliadoRepository.deleteByUsuarioId(tenantId, userId));
-      }
-      if (usuarioCreado) {
-        await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
-      }
-      await safeRun(() => this.authIdentityService.deleteUser(userId));
-      throw err;
-    }
+    });
 
     const profile = new Profile({
       id: userId,

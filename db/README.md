@@ -9,6 +9,7 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | Ruta | Propósito |
 | :--- | :--- |
 | [`db/migrations/`](migrations/) | Serie incremental e inmutable de migraciones SQL registradas en `schema_migrations`. |
+| [`db/ops/`](ops/) | Scripts que corre operaciones con el dueño del esquema y secretos fuera de git (p. ej. credenciales de los roles de servicio). |
 | [`db/verify/`](verify/) | Scripts SQL ejecutables (`ON_ERROR_STOP=1`, transacción con `ROLLBACK`) que acreditan el cierre de exposiciones y los 6 casos de aislamiento cross-tenant en el motor. |
 | [`src/infrastructure/db/withTenantContext.js`](../src/infrastructure/db/withTenantContext.js) | Puerta transaccional de Core (`pg`) que ejecuta `SELECT app.set_context($1, $2, $3)` al inicio de cada transacción. |
 
@@ -53,8 +54,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0033`** | [`0033_tenant_estado_auditoria.sql`](migrations/0033_tenant_estado_auditoria.sql) | `SCRUM-901` | `tenant.estado` admite `ACTIVO`, `SUSPENDIDO` e `INACTIVO` (`NOT VALID`). `mani_core_svc` gana `UPDATE (estado)` sobre `tenant`, limitado por política al rol `admin_plataforma`. Tabla `tenant_estado_cambio`: registro inmutable de cada cambio con motivo, actor, rol y tenant de origen; solo `admin_plataforma` la lee o escribe. |
 | **`0035`** | [`0035_outbox_evento.sql`](migrations/0035_outbox_evento.sql) | `SCRUM-889` | Tabla `outbox_evento`: outbox transaccional de eventos de negocio (ADR-0029), escrito en la misma transacción que el cambio (hoy `PagoRegistrado`). `tenant_id` y RLS por tenant; `mani_core_svc` solo con SELECT/INSERT. El relay lee los pendientes de todos los tenants con tres funciones `SECURITY DEFINER` (`app.outbox_tomar_pendientes` con `SKIP LOCKED`, `app.outbox_marcar_publicados`, `app.outbox_registrar_fallo`); la tabla **no** usa `FORCE ROW LEVEL SECURITY` a propósito. Un evento por agregado y tipo. |
 | **`0036`** | [`0036_geometria_territorial.sql`](migrations/0036_geometria_territorial.sql) | `SCRUM-1396` | Tabla `geometria_territorial`: límite geográfico de una zona del catálogo como GeoJSON (RFC 7946) en `JSONB`, con `CHECK` de tipo (`Polygon` o `MultiPolygon`) y de coordenadas no vacías. **Sin PostGIS:** en el alcance no hay consulta espacial, solo transporte y dibujo. Tabla aparte y no columnas en `zona`, porque la geometría es opcional y pesada y el catálogo se lee en cada listado. Catálogo global sin `tenant_id`, igual que `zona`; el aislamiento lo da el borde. `mani_core_svc` solo recibe `SELECT`: la carga la opera DevOps. La procedencia, la licencia y la atribución son columnas, porque la licencia de la fuente obliga a acreditarla en la interfaz. Añade además `sitio.latitud` y `sitio.longitud` (`numeric(9,6)`, nullable, con `CHECK NOT VALID` de rango WGS84 y de que las dos estén o falten juntas): la ubicación declarada de la sede, separada de las geometrías territoriales. |
+| **`0037`** | [`0037_retirar_politicas_to_public.sql`](migrations/0037_retirar_politicas_to_public.sql) | `SCRUM-1468` | TEC-21 (R-06): recorre las políticas `tenant_isolation_*` abiertas a `PUBLIC` que se crearon a mano en QA (ADR-0018) y que la `0007` no retiró: si la tabla ya tiene política canónica, la heredada se elimina (las permisivas se suman con OR y la ampliarían); si es la única, se restringe a `authenticated` y `mani_core_svc` conservando su condición. Da `DELETE` sobre `consentimiento_usuario` con la política `consentimiento_usuario_borrado` (propio usuario), que la compensación del registro necesita sin `BYPASSRLS`. Avisa con `WARNING` si queda otra política `TO public` sobre datos de tenant. Las credenciales `LOGIN` las asigna operaciones con [`db/ops/credenciales_roles_servicio.sql`](ops/credenciales_roles_servicio.sql). |
 
-La siguiente migración libre es la **`0037`**.
+La siguiente migración libre es la **`0038`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
@@ -113,7 +115,7 @@ Toda tabla con `tenant_id` tiene `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL 
 | `tarifa_referencia`, `cotizacion`, `mensaje`, `evento_servicio`, `calificacion`, `notificacion` | Core | `CRUD` | — | `<tabla>_tenant` (`TO authenticated, mani_core_svc`) | Patrón T: `tenant_id = app.tenant_id()`. |
 | `solicitud_foto` | Core | `SELECT, INSERT` | — | `solicitud_foto_tenant` (`TO authenticated, mani_core_svc`) | Patrón T: `tenant_id = app.tenant_id()`. |
 | `documento_legal` | Core | `SELECT, INSERT` | — | `documento_legal_lectura`, `documento_legal_alta` | Lectura de activos globales (`tenant_id IS NULL`) o del tenant (`app.tenant_id()`). |
-| `consentimiento_usuario` | Core | `SELECT, INSERT` | — | `consentimiento_usuario_propio`, `consentimiento_usuario_alta` | `usuario_id = app.user_id()` **y** (`tenant_id IS NULL` o `tenant_id = app.tenant_id()`). |
+| `consentimiento_usuario` | Core | `SELECT, INSERT, DELETE` | — | `consentimiento_usuario_propio`, `consentimiento_usuario_alta`, `consentimiento_usuario_borrado` (`0037`) | `usuario_id = app.user_id()` **y** (`tenant_id IS NULL` o `tenant_id = app.tenant_id()`). |
 | `solicitud` | Core | `SELECT, INSERT, UPDATE` | `SELECT` | `solicitud_lectura`, `solicitud_alta_cliente`, `solicitud_transicion_core` | Lectura por tenant; alta exige `app.user_role() = 'cliente'`. Desde la `0019` (decisión 6A) solo Core escribe el estado: la aceptación que decide Dispatch se registra con el comando de asignación de Core. |
 | `solicitud_rechazo` | Dispatch | — | `SELECT, INSERT` | `solicitud_rechazo_aliado` (`TO authenticated, mani_dispatch_svc`), `solicitud_rechazo_lectura_despacho` (`TO mani_dispatch_svc`, solo `SELECT`) | Mismo tenant (`app.tenant_id()`) **y** aliado dueño (`app.user_id()`); para orquestar, Dispatch lee los rechazos del tenant con el rol `cliente` o `admin_tenant`. |
 | `storage.objects` | Core | Storage API | — | `kyc_isolation`, `solicitudes_isolation` (`TO authenticated, mani_core_svc`) | Exige `(storage.foldername(name))[1] = app.tenant_id()::text` y carpeta de usuario `(storage.foldername(name))[2] = app.user_id()::text` (o `admin_tenant`). |
@@ -140,14 +142,22 @@ Salida esperada:
 - `NOTICE:  OK 0005: exposiciones cerradas y servicios sin cambios`
 - `NOTICE:  OK 0007: modelo de identidad, politicas RLS y 6 casos cross-tenant verificados`
 
-### 5.2 Activación operativa de los roles de servicio (Paso 5 — DevOps)
+### 5.2 Activación operativa de los roles de servicio (TEC-21, `SCRUM-1468`)
 
-Las migraciones `0005`–`0007` son **aditivas y seguras de aplicar antes de cambiar las credenciales de conexión** de los servicios. Para activar el filtrado en QA/PROD:
+Desde `SCRUM-1468` Core no lee ni escribe tablas con la clave `service_role` de Supabase: todos sus repositorios van por `pg` y cada transacción fija `app.set_context`. La clave queda solo para la API de administración de Auth (crear y borrar usuarios) y Storage. Para que RLS se evalúe falta que la conexión use el rol propio:
 
-1. Operaciones ejecuta fuera de git (con el secreto almacenado en `/opt/mani/.env.{dev,qa,prod}`):
-   ```sql
-   ALTER ROLE mani_core_svc WITH LOGIN PASSWORD '<CORE_DB_PASSWORD>';
-   ALTER ROLE mani_dispatch_svc WITH LOGIN PASSWORD '<DISPATCH_DB_PASSWORD>';
+1. Aplicar la `0037` (como cualquier migración, con el dueño del esquema).
+2. Dar `LOGIN` y contraseña a los dos roles, leyendo la contraseña de un archivo protegido (no pasa por git ni por el historial):
+   ```bash
+   psql "$URL_ADMIN" -v ON_ERROR_STOP=1         -v core_password="$(cat /opt/mani/secrets/mani_core_svc)"         -v dispatch_password="$(cat /opt/mani/secrets/mani_dispatch_svc)"         -f db/ops/credenciales_roles_servicio.sql
    ```
-2. Actualizar `DATABASE_URL` de `MANI-Node` para conectar como `mani_core_svc` y de `MANI-.NET` para conectar como `mani_dispatch_svc`.
-3. **Reversa inmediata:** restaurar `DATABASE_URL` al usuario previo restablece el comportamiento anterior en segundos sin revertir migraciones ni tocar datos.
+3. En `/opt/mani/.env.<ambiente>`: `DATABASE_URL` de `MANI-Node` con el usuario `mani_core_svc` y `ConnectionStrings__DefaultConnection` de `MANI-.NET` con `mani_dispatch_svc` (con el pooler de Supabase el usuario lleva el sufijo del proyecto: `mani_core_svc.<project_ref>`).
+4. Reiniciar Core y Dispatch y correr la verificación del ambiente:
+   ```bash
+   psql "$URL_ADMIN" -v ON_ERROR_STOP=1 -f db/verify/0037_verificar_sin_bypassrls.sql
+   ```
+   Termina con error si algún rol tiene `SUPERUSER`/`BYPASSRLS` o le falta `LOGIN`, o si queda una política `TO public` sobre datos de tenant; avisa si Core o Dispatch no aparecen conectados con su rol.
+
+**Arranque protegido.** En `qa` y `production`, Core y Dispatch comprueban al arrancar con qué rol conectan y **no arrancan** si es superusuario o tiene `BYPASSRLS` (en desarrollo solo avisan). Por eso los pasos 2 y 3 van **antes** de desplegar la versión con `SCRUM-1468`. Volver a conectar con `postgres` ya no es una reversa válida: la reversa es desplegar la imagen anterior.
+
+**Cómo se prueba.** `tests/integration/pg/rlsSinBypass.pg.test.js` conecta como `mani_core_svc` y `mani_dispatch_svc` y, con consultas sin `WHERE tenant_id`, comprueba que la política impide leer, modificar, borrar o insertar filas de otro tenant, que sin contexto no se ve nada y que la `0037` retira las políticas heredadas. Las pruebas `pg` de los repositorios usan `tests/helpers/pgPruebas.js`: siembran como `postgres` y ejecutan el repositorio como `mani_core_svc`.

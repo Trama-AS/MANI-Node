@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgRatingsRepository = require('../../../src/infrastructure/repositories/PgRatingsRepository');
 
 const url = process.env.TEST_DATABASE_URL;
@@ -20,9 +21,11 @@ test('PG Módulo M-08: sin DATABASE_URL PgRatingsRepository falla cerrado con 50
 
 test('PG Módulo M-08: flujo completo contra PostgreSQL real', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgRatingsRepository({ pgPoolFactory: factory });
+  const repo = new PgRatingsRepository({ pgPoolFactory: core });
 
   const tenant = uuid();
   const zona = uuid();

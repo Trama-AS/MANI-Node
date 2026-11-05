@@ -1,5 +1,6 @@
 const container = require('../container');
 const { recordAuthValidation } = require('../infrastructure/observability/metrics');
+const { ejecutarComo } = require('../application/context/contextoIdentidad');
 
 async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -13,11 +14,9 @@ async function authenticate(req, res, next) {
     });
   }
 
+  let session;
   try {
-    const session = await container.tokenService.verifyToken(authHeader);
-    req.user = session;
-    req.tenantId = session.tenantId;
-    next();
+    session = await container.tokenService.verifyToken(authHeader);
   } catch (err) {
     // Mismo formato que el errorHandler: { error, code, correlationId } (T5).
     return res.status(err.statusCode || 401).json({
@@ -26,6 +25,36 @@ async function authenticate(req, res, next) {
       correlationId: req.correlationId || 'none',
     });
   }
+
+  req.user = session;
+  req.tenantId = session.tenantId;
+  // La identidad verificada acompaña al resto de la petición: los repositorios la usan para fijar el usuario y el
+  // rol en app.set_context, porque Core se conecta sin BYPASSRLS (SCRUM-1468). `next` queda fuera del try: un
+  // error de la ruta no debe responderse como un 401.
+  return ejecutarComo({ tenantId: session.tenantId, userId: session.userId, role: session.role }, () => next());
+}
+
+/**
+ * Para las rutas cuyo controlador verifica el token por su cuenta y responde su propio 401 (verificación de aliados,
+ * perfil propio, disponibilidad): si el token es válido, deja la sesión en `req.user` y fija la identidad de la
+ * petición, igual que `authenticate`; si falta o no es válido, sigue sin identidad y el controlador responde con su
+ * código de siempre. Así los repositorios fijan el usuario y el rol en app.set_context (SCRUM-1468) sin cambiar el
+ * contrato de error de esas rutas.
+ */
+async function identificarSiHayToken(req, _res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return next();
+
+  let session;
+  try {
+    session = await container.tokenService.verifyToken(authHeader);
+  } catch {
+    return next();
+  }
+
+  req.user = session;
+  req.tenantId = session.tenantId;
+  return ejecutarComo({ tenantId: session.tenantId, userId: session.userId, role: session.role }, () => next());
 }
 
 /**
@@ -66,3 +95,4 @@ function requireRole(...allowedRoles) {
 module.exports = authenticate;
 module.exports.authenticate = authenticate;
 module.exports.requireRole = requireRole;
+module.exports.identificarSiHayToken = identificarSiHayToken;

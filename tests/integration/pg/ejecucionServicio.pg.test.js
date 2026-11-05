@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgQuoteRepository = require('../../../src/infrastructure/repositories/PgQuoteRepository');
 const PgServiceExecutionRepository = require('../../../src/infrastructure/repositories/PgServiceExecutionRepository');
 const { DECISIONES } = require('../../../src/application/useCases/quotes/RespondQuoteUseCase');
@@ -48,10 +49,12 @@ async function seed(pool, flujo = 'COTIZACION_PREVIA') {
 
 test('PG ejecución: cotización aceptada → inicio → fin, con horas del servidor, avisos y consulta', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const cotizaciones = new PgQuoteRepository({ pgPoolFactory: factory });
-  const ejecucion = new PgServiceExecutionRepository({ pgPoolFactory: factory });
+  const cotizaciones = new PgQuoteRepository({ pgPoolFactory: core });
+  const ejecucion = new PgServiceExecutionRepository({ pgPoolFactory: core });
   const s = await seed(pool);
   const aliado = { tenantId: s.tenant, userId: s.usuarioAliado, role: 'ALLY' };
   const cliente = { tenantId: s.tenant, userId: s.usuarioCliente, role: 'CLIENT' };
@@ -93,9 +96,11 @@ test('PG ejecución: cotización aceptada → inicio → fin, con horas del serv
 
 test('PG ejecución: TARIFA_ESTANDAR inicia desde la asignación; otro tenant no la ve', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const ejecucion = new PgServiceExecutionRepository({ pgPoolFactory: factory });
+  const ejecucion = new PgServiceExecutionRepository({ pgPoolFactory: core });
   const s = await seed(pool, 'TARIFA_ESTANDAR');
   const otro = await seed(pool);
 
