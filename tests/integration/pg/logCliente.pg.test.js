@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgServiceEventRepository = require('../../../src/infrastructure/repositories/PgServiceEventRepository');
 
 const url = process.env.TEST_DATABASE_URL;
@@ -43,9 +44,11 @@ async function seed(pool) {
 
 test('PG log del cliente: secuencia ordenada al recargar, evidencia solo para el dueño, 404 para ajenos', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceEventRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceEventRepository({ pgPoolFactory: core });
   const s = await seed(pool);
   const aliado = { tenantId: s.tenant, userId: s.usuarioAliado, role: 'ALLY' };
   const cliente = { tenantId: s.tenant, userId: s.usuarioCliente, role: 'CLIENT' };

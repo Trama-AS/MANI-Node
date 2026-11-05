@@ -1,3 +1,4 @@
+const { ejecutarComo } = require('../../context/contextoIdentidad');
 const Profile = require('../../../domain/entities/Profile');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
 
@@ -150,66 +151,71 @@ class RegisterAllyCompanyUseCase {
     const uploadedPaths = [];
     let tokens;
 
-    try {
-      await this.usuarioRepository.create({
-        id: userId,
-        tenantId,
-        email: cleanEmail,
-        rol: 'ALLY',
-        estado: 'ACTIVE',
-        phone: phone ? String(phone).trim() : undefined,
-      });
-      usuarioCreado = true;
+    // Lo que sigue escribe en la base como el usuario recién creado en Auth: es quien actúa en este registro y el
+    // que exigen las políticas RLS de KYC y consentimientos, porque Core se conecta sin BYPASSRLS (SCRUM-1468).
+    // La compensación corre con la misma identidad, para poder borrar lo que este registro alcanzó a crear.
+    await ejecutarComo({ tenantId, userId, role: 'ALLY' }, async () => {
+      try {
+        await this.usuarioRepository.create({
+          id: userId,
+          tenantId,
+          email: cleanEmail,
+          rol: 'ALLY',
+          estado: 'ACTIVE',
+          phone: phone ? String(phone).trim() : undefined,
+        });
+        usuarioCreado = true;
 
-      const aliado = await this.aliadoRepository.create({
-        tenantId,
-        usuarioId: userId,
-        tipo: 'PERSONA_JURIDICA',
-        nombreRazonSocial: cleanRazonSocial,
-        estadoVerificacion: 'PENDING',
-        documentType: 'NIT',
-        documentNumber: cleanNit,
-        nombreRepresentante: nombreRepresentante.trim(),
-        docRepresentante: docRepresentante ? String(docRepresentante).trim() : undefined,
-      });
-      aliadoCreado = true;
-      aliadoId = aliado.id || aliado.usuarioId || userId;
+        const aliado = await this.aliadoRepository.create({
+          tenantId,
+          usuarioId: userId,
+          tipo: 'PERSONA_JURIDICA',
+          nombreRazonSocial: cleanRazonSocial,
+          estadoVerificacion: 'PENDING',
+          documentType: 'NIT',
+          documentNumber: cleanNit,
+          nombreRepresentante: nombreRepresentante.trim(),
+          docRepresentante: docRepresentante ? String(docRepresentante).trim() : undefined,
+        });
+        aliadoCreado = true;
+        aliadoId = aliado.id || aliado.usuarioId || userId;
 
-      if (categoriaId) {
-        await this.aliadoCategoriaRepository.create({ tenantId, aliadoId, categoriaId });
-        aliadoCategoriaCreada = true;
-      }
+        if (categoriaId) {
+          await this.aliadoCategoriaRepository.create({ tenantId, aliadoId, categoriaId });
+          aliadoCategoriaCreada = true;
+        }
 
-      // CA-2: almacenar documentos en el bucket privado con ruta tenant_id/aliado_id/documento
-      const documentosConRuta = [];
-      for (const doc of documentos) {
-        const filename = `${Date.now()}-${sanitizeForPath(doc.filename || doc.tipoDocumento)}`;
-        const path = `${tenantId}/${aliadoId}/${filename}`;
-        await this.fileStorageService.upload({ path, buffer: doc.buffer, contentType: doc.contentType });
-        uploadedPaths.push(path);
-        documentosConRuta.push({ tipoDocumento: doc.tipoDocumento.toUpperCase(), rutaStorage: path });
-      }
-      await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
-      documentoKycCreado = true;
+        // CA-2: almacenar documentos en el bucket privado con ruta tenant_id/aliado_id/documento
+        const documentosConRuta = [];
+        for (const doc of documentos) {
+          const filename = `${Date.now()}-${sanitizeForPath(doc.filename || doc.tipoDocumento)}`;
+          const path = `${tenantId}/${aliadoId}/${filename}`;
+          await this.fileStorageService.upload({ path, buffer: doc.buffer, contentType: doc.contentType });
+          uploadedPaths.push(path);
+          documentosConRuta.push({ tipoDocumento: doc.tipoDocumento.toUpperCase(), rutaStorage: path });
+        }
+        await this.documentoKycRepository.createMany(tenantId, aliadoId, documentosConRuta);
+        documentoKycCreado = true;
 
-      tokens = await this.authIdentityService.authenticate({ tenantId, email: cleanEmail, password });
-    } catch (err) {
-      if (documentoKycCreado) {
-        await safeRun(() => this.documentoKycRepository.deleteByAliadoId(tenantId, aliadoId));
+        tokens = await this.authIdentityService.authenticate({ tenantId, email: cleanEmail, password });
+      } catch (err) {
+        if (documentoKycCreado) {
+          await safeRun(() => this.documentoKycRepository.deleteByAliadoId(tenantId, aliadoId));
+        }
+        await Promise.allSettled(uploadedPaths.map((path) => safeRun(() => this.fileStorageService.delete(path))));
+        if (aliadoCategoriaCreada) {
+          await safeRun(() => this.aliadoCategoriaRepository.deleteByAliadoId(tenantId, aliadoId));
+        }
+        if (aliadoCreado) {
+          await safeRun(() => this.aliadoRepository.deleteByUsuarioId(tenantId, userId));
+        }
+        if (usuarioCreado) {
+          await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
+        }
+        await safeRun(() => this.authIdentityService.deleteUser(userId));
+        throw err;
       }
-      await Promise.allSettled(uploadedPaths.map((path) => safeRun(() => this.fileStorageService.delete(path))));
-      if (aliadoCategoriaCreada) {
-        await safeRun(() => this.aliadoCategoriaRepository.deleteByAliadoId(tenantId, aliadoId));
-      }
-      if (aliadoCreado) {
-        await safeRun(() => this.aliadoRepository.deleteByUsuarioId(tenantId, userId));
-      }
-      if (usuarioCreado) {
-        await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
-      }
-      await safeRun(() => this.authIdentityService.deleteUser(userId));
-      throw err;
-    }
+    });
 
     const profile = new Profile({
       id: userId,

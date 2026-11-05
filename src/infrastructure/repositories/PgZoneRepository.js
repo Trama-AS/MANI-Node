@@ -3,15 +3,9 @@ const Zone = require('../../domain/entities/Zone');
 const { DomainError } = require('../../domain/errors/DomainError');
 
 /**
- * Catálogo geográfico leído por `pg` (DATABASE_URL), espejo exacto de
- * SupabaseZoneRepository: mismas columnas, mismo orden y los mismos estados
- * activos.
- *
- * Existe porque sin él el único camino a los límites reales era Supabase, y un
- * entorno local que tiene la base con la migración 0036 aplicada y las
- * geometrías cargadas seguía respondiendo con la fixture sintética en memoria.
- * Eso dejaba HU-M04-07 sin forma de verse con datos reales fuera de QA, y hacía
- * que `geometria_territorial` no tuviera ningún lector por `pg`.
+ * Catálogo geográfico leído por `pg` (DATABASE_URL) como `mani_core_svc`. Es el
+ * único lector de zonas con base: desde SCRUM-1468 Core ya no lee tablas con la
+ * clave service_role de Supabase, que saltaba RLS.
  *
  * `zona` es un catálogo global sin tenant_id, así que no se abre contexto de
  * tenant: la autorización vive en el borde HTTP (T4/T7), igual que documenta

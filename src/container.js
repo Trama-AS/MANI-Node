@@ -1,33 +1,32 @@
 const InMemoryTenantRepository = require('./infrastructure/repositories/InMemoryTenantRepository');
-const SupabaseTenantRepository = require('./infrastructure/repositories/SupabaseTenantRepository');
 const InMemoryProfileRepository = require('./infrastructure/repositories/InMemoryProfileRepository');
-const SupabaseProfileRepository = require('./infrastructure/repositories/SupabaseProfileRepository');
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
-const SupabaseCatalogRepository = require('./infrastructure/repositories/SupabaseCatalogRepository');
 const InMemoryZoneRepository = require('./infrastructure/repositories/InMemoryZoneRepository');
 const PgZoneRepository = require('./infrastructure/repositories/PgZoneRepository');
-const SupabaseZoneRepository = require('./infrastructure/repositories/SupabaseZoneRepository');
+const PgTenantRepository = require('./infrastructure/repositories/PgTenantRepository');
+const PgProfileRepository = require('./infrastructure/repositories/PgProfileRepository');
+const PgCatalogRepository = require('./infrastructure/repositories/PgCatalogRepository');
+const PgUsuarioRepository = require('./infrastructure/repositories/PgUsuarioRepository');
+const PgAliadoRepository = require('./infrastructure/repositories/PgAliadoRepository');
+const PgAliadoCategoriaRepository = require('./infrastructure/repositories/PgAliadoCategoriaRepository');
+const PgDocumentoKycRepository = require('./infrastructure/repositories/PgDocumentoKycRepository');
+const PgClienteRepository = require('./infrastructure/repositories/PgClienteRepository');
+const PgSitioRepository = require('./infrastructure/repositories/PgSitioRepository');
+const PgAliadoAusenciaRepository = require('./infrastructure/repositories/PgAliadoAusenciaRepository');
+const PgLegalDocumentRepository = require('./infrastructure/repositories/PgLegalDocumentRepository');
+const PgUserConsentRepository = require('./infrastructure/repositories/PgUserConsentRepository');
 const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemoryUsuarioRepository');
 const InMemoryAliadoRepository = require('./infrastructure/repositories/InMemoryAliadoRepository');
 const InMemoryAliadoCategoriaRepository = require('./infrastructure/repositories/InMemoryAliadoCategoriaRepository');
 const InMemoryDocumentoKycRepository = require('./infrastructure/repositories/InMemoryDocumentoKycRepository');
 const InMemoryClienteRepository = require('./infrastructure/repositories/InMemoryClienteRepository');
 const InMemorySitioRepository = require('./infrastructure/repositories/InMemorySitioRepository');
-const SupabaseUsuarioRepository = require('./infrastructure/repositories/SupabaseUsuarioRepository');
-const SupabaseAliadoRepository = require('./infrastructure/repositories/SupabaseAliadoRepository');
-const SupabaseAliadoCategoriaRepository = require('./infrastructure/repositories/SupabaseAliadoCategoriaRepository');
-const SupabaseDocumentoKycRepository = require('./infrastructure/repositories/SupabaseDocumentoKycRepository');
-const SupabaseClienteRepository = require('./infrastructure/repositories/SupabaseClienteRepository');
-const SupabaseSitioRepository = require('./infrastructure/repositories/SupabaseSitioRepository');
 const InMemoryAliadoAusenciaRepository = require('./infrastructure/repositories/InMemoryAliadoAusenciaRepository');
-const SupabaseAliadoAusenciaRepository = require('./infrastructure/repositories/SupabaseAliadoAusenciaRepository');
 const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
 const InMemoryFileStorageService = require('./infrastructure/security/InMemoryFileStorageService');
 const SupabaseFileStorageService = require('./infrastructure/security/SupabaseFileStorageService');
-const TransactionalAliadoCategoriaRepository = require('./infrastructure/repositories/TransactionalAliadoCategoriaRepository');
-const TransactionalAliadoRepository = require('./infrastructure/repositories/TransactionalAliadoRepository');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
 const SupabaseConnectionChecker = require('./infrastructure/db/SupabaseConnectionChecker');
@@ -68,9 +67,7 @@ const PostgresClientRepository = require('./infrastructure/repositories/Postgres
 const GetActiveLegalDocumentsUseCase = require('./application/useCases/legal/GetActiveLegalDocumentsUseCase');
 const RegisterUserConsentUseCase = require('./application/useCases/legal/RegisterUserConsentUseCase');
 const InMemoryLegalDocumentRepository = require('./infrastructure/repositories/InMemoryLegalDocumentRepository');
-const SupabaseLegalDocumentRepository = require('./infrastructure/repositories/SupabaseLegalDocumentRepository');
 const InMemoryUserConsentRepository = require('./infrastructure/repositories/InMemoryUserConsentRepository');
-const SupabaseUserConsentRepository = require('./infrastructure/repositories/SupabaseUserConsentRepository');
 const RegisterAllyCompanyUseCase = require('./application/useCases/auth/RegisterAllyCompanyUseCase');
 const RegisterCompanyClientWithSitesUseCase = require('./application/useCases/clients/RegisterCompanyClientWithSitesUseCase');
 const AddSiteToCompanyClientUseCase = require('./application/useCases/clients/AddSiteToCompanyClientUseCase');
@@ -169,76 +166,47 @@ class Container {
     // de reglas del sitio por un aliado responde 503; el dueño y el admin no dependen de Dispatch.
     this.dispatchAssignmentService = new DispatchServiceHttpClient({ baseUrl: config.dispatchServiceUrl });
 
-    // Con Supabase configurado (QA/producción) se usa la persistencia e identidad
-    // reales; sin configurar (DEV/test sin credenciales) cae a implementaciones
-    // en memoria, igual que ya hacía el resto del container.
+    // Identidad y archivos: con Supabase configurado, Auth (API de administración de GoTrue, para crear y borrar
+    // usuarios) y Storage (documentos KYC, fotos). Son APIs de servicio, no la conexión a la base: la clave
+    // service_role ya no lee ni escribe tablas (SCRUM-1468).
     if (this.supabaseClientFactory.isConfigured()) {
-      this.profileRepository = new SupabaseProfileRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.tenantRepository = new SupabaseTenantRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.catalogRepository = new SupabaseCatalogRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.zoneRepository = new SupabaseZoneRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.usuarioRepository = new SupabaseUsuarioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      const supabaseAliadoRepository = new SupabaseAliadoRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      // Con DATABASE_URL la resolución de la verificación se escribe por pg, donde una prueba
-      // contra PostgreSQL acredita que verificado_por queda en la base (CA-5, TEC-20).
-      this.aliadoRepository = this.pgPoolFactory.isConfigured()
-        ? new TransactionalAliadoRepository({ pgPoolFactory: this.pgPoolFactory, delegate: supabaseAliadoRepository })
-        : supabaseAliadoRepository;
-      const supabaseAliadoCategoriaRepository = new SupabaseAliadoCategoriaRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      // Con DATABASE_URL el guardado de categorías es una transacción real (SCRUM-1071).
-      // QA y producción la exigen (config.assertValid); en DEV sin ella se conserva el
-      // guardado de supabase-js, que NO es atómico.
-      if (this.pgPoolFactory.isConfigured()) {
-        this.aliadoCategoriaRepository = new TransactionalAliadoCategoriaRepository({
-          pgPoolFactory: this.pgPoolFactory,
-          delegate: supabaseAliadoCategoriaRepository,
-        });
-      } else {
-        console.warn('⚠️  DATABASE_URL no configurada: el guardado de categorías del aliado no es atómico.');
-        this.aliadoCategoriaRepository = supabaseAliadoCategoriaRepository;
-      }
-      this.documentoKycRepository = new SupabaseDocumentoKycRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      this.clienteRepository = new SupabaseClienteRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.sitioRepository = new SupabaseSitioRepository({ supabaseClientFactory: this.supabaseClientFactory });
-      this.aliadoAusenciaRepository = new SupabaseAliadoAusenciaRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
       this.fileStorageService = new SupabaseFileStorageService({ supabaseClientFactory: this.supabaseClientFactory });
       this.authIdentityService = new SupabaseAuthIdentityService({
         supabaseClientFactory: this.supabaseClientFactory,
         supabaseUrl: config.supabaseUrl,
         supabaseAnonKey: config.supabaseAnonKey,
       });
-      this.legalDocumentRepository = new SupabaseLegalDocumentRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      this.userConsentRepository = new SupabaseUserConsentRepository({
-        supabaseClientFactory: this.supabaseClientFactory,
-      });
-      if (this.pgPoolFactory.isConfigured()) {
-        this.siteRepository = new PostgresSiteRepository({ pgPoolFactory: this.pgPoolFactory });
-        this.clientRepository = new PostgresClientRepository({ pgPoolFactory: this.pgPoolFactory });
-        this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory: this.pgPoolFactory });
-      } else {
-        this.siteRepository = new InMemorySiteRepository();
-        this.clientRepository = new InMemoryClientRepository();
-        this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
-      }
+    } else {
+      this.fileStorageService = new InMemoryFileStorageService();
+      this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+    }
+
+    // Datos: con DATABASE_URL todo va por `pg` como mani_core_svc, sin BYPASSRLS, y cada operación fija
+    // app.set_context (SCRUM-1468, ADR-0032): las políticas RLS aíslan los tenants aunque una consulta olvidara
+    // filtrar. QA y producción exigen DATABASE_URL (config.assertValid); sin ella (DEV/test) se usa memoria.
+    if (this.pgPoolFactory.isConfigured()) {
+      const pgPoolFactory = this.pgPoolFactory;
+      this.profileRepository = new PgProfileRepository({ pgPoolFactory });
+      this.tenantRepository = new PgTenantRepository({ pgPoolFactory });
+      this.catalogRepository = new PgCatalogRepository({ pgPoolFactory });
+      this.zoneRepository = new PgZoneRepository({ pgPoolFactory });
+      this.usuarioRepository = new PgUsuarioRepository({ pgPoolFactory });
+      this.aliadoRepository = new PgAliadoRepository({ pgPoolFactory });
+      this.aliadoCategoriaRepository = new PgAliadoCategoriaRepository({ pgPoolFactory });
+      this.documentoKycRepository = new PgDocumentoKycRepository({ pgPoolFactory });
+      this.clienteRepository = new PgClienteRepository({ pgPoolFactory });
+      this.sitioRepository = new PgSitioRepository({ pgPoolFactory });
+      this.aliadoAusenciaRepository = new PgAliadoAusenciaRepository({ pgPoolFactory });
+      this.legalDocumentRepository = new PgLegalDocumentRepository({ pgPoolFactory });
+      this.userConsentRepository = new PgUserConsentRepository({ pgPoolFactory });
+      this.siteRepository = new PostgresSiteRepository({ pgPoolFactory });
+      this.clientRepository = new PostgresClientRepository({ pgPoolFactory });
+      this.companyClientRepository = new PostgresCompanyClientRepository({ pgPoolFactory });
     } else {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
       this.catalogRepository = new InMemoryCatalogRepository();
-      // El catálogo geográfico sí tiene lectura por `pg`: con DATABASE_URL se
-      // leen las zonas y sus límites reales de la base (migración 0036), que es
-      // lo mismo que verá QA. La fixture en memoria dibuja un cuadrado
-      // sintético y solo debe usarse cuando no hay base ninguna (SCRUM-1396).
-      this.zoneRepository = this.pgPoolFactory.isConfigured()
-        ? new PgZoneRepository({ pgPoolFactory: this.pgPoolFactory })
-        : new InMemoryZoneRepository();
+      this.zoneRepository = new InMemoryZoneRepository();
       this.usuarioRepository = new InMemoryUsuarioRepository();
       this.aliadoRepository = new InMemoryAliadoRepository();
       this.aliadoCategoriaRepository = new InMemoryAliadoCategoriaRepository();
@@ -246,12 +214,10 @@ class Container {
       this.clienteRepository = new InMemoryClienteRepository();
       this.sitioRepository = new InMemorySitioRepository();
       this.aliadoAusenciaRepository = new InMemoryAliadoAusenciaRepository();
-      this.fileStorageService = new InMemoryFileStorageService();
-      this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
-      this.siteRepository = new InMemorySiteRepository();
-      this.clientRepository = new InMemoryClientRepository();
       this.legalDocumentRepository = new InMemoryLegalDocumentRepository();
       this.userConsentRepository = new InMemoryUserConsentRepository();
+      this.siteRepository = new InMemorySiteRepository();
+      this.clientRepository = new InMemoryClientRepository();
       this.companyClientRepository = new InMemoryCompanyClientRepository({ zoneRepository: this.zoneRepository });
     }
 
