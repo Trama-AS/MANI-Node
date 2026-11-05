@@ -18,8 +18,10 @@
 -- (con el pooler de Supabase el usuario lleva el sufijo del proyecto:
 --  mani_core_svc.<project_ref>).
 --
--- Reafirma NOBYPASSRLS y NOSUPERUSER: dar LOGIN nunca debe abrir el salto de
--- RLS. Es idempotente: reaplicarlo solo rota la contraseña.
+-- Solo da LOGIN y contraseña. No menciona atributos: desde PostgreSQL 16 cada uno
+-- exige tenerlo o ser superusuario, y `postgres` en Supabase no lo es. En su lugar
+-- comprueba al final que ninguno salta RLS, y termina en error si alguno lo hace.
+-- Es idempotente: reaplicarlo solo rota la contraseña.
 -- =====================================================================
 
 \if :{?core_password}
@@ -33,11 +35,22 @@
   \quit 1
 \endif
 
-ALTER ROLE mani_core_svc LOGIN PASSWORD :'core_password' NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
-ALTER ROLE mani_dispatch_svc LOGIN PASSWORD :'dispatch_password' NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
+ALTER ROLE mani_core_svc LOGIN PASSWORD :'core_password';
+ALTER ROLE mani_dispatch_svc LOGIN PASSWORD :'dispatch_password';
 
 -- Lo que debe quedar: los dos con LOGIN y ninguno con BYPASSRLS ni SUPERUSER.
 SELECT rolname, rolcanlogin, rolbypassrls, rolsuper
   FROM pg_roles
  WHERE rolname IN ('mani_core_svc', 'mani_dispatch_svc')
  ORDER BY rolname;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_roles
+         WHERE rolname IN ('mani_core_svc', 'mani_dispatch_svc')
+           AND (rolsuper OR rolbypassrls OR NOT rolcanlogin)
+    ) THEN
+        RAISE EXCEPTION 'TEC-21: mani_core_svc y mani_dispatch_svc deben tener LOGIN y no tener SUPERUSER ni BYPASSRLS';
+    END IF;
+END $$;
