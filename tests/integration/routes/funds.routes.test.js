@@ -28,12 +28,11 @@ function withRepo(repo, fn) {
   };
 }
 
-test('sin token → 401 en las cuatro rutas', async () => {
+test('sin token → 401 en las tres rutas', async () => {
   for (const [metodo, ruta] of [
     ['get', `/api/v1/pagos/${PAGO}/retencion`],
     ['get', '/api/v1/pagos/aliado'],
     ['get', '/api/v1/pagos/comision'],
-    ['put', '/api/v1/pagos/comision'],
   ]) {
     assert.equal((await request(app)[metodo](ruta)).status, 401, ruta);
   }
@@ -83,27 +82,19 @@ test(
 );
 
 test(
-  'GET y PUT /pagos/comision: el administrador la lee y la fija; un valor inválido → 422; cliente y aliado → 403',
+  'GET /pagos/comision: el administrador la lee; cliente y aliado → 403; PUT ya no existe',
   withRepo(
     {
       obtenerComision: async () => ({ porcentaje: 10, porDefecto: true }),
-      fijarComision: async (ctx, porcentaje) => {
-        assert.equal(ctx.tenantId, TENANT);
-        return { porcentaje, porDefecto: false };
-      },
     },
     async () => {
       const get = await request(app).get('/api/v1/pagos/comision').set('Authorization', bearer('admin_tenant'));
       assert.equal(get.status, 200);
       assert.deepEqual(get.body.comision, { porcentaje: 10, porDefecto: true });
-      const put = await request(app).put('/api/v1/pagos/comision').set('Authorization', bearer('admin_tenant')).send({ porcentaje: 15, tenantId: 'otro' });
-      assert.equal(put.status, 200);
-      assert.equal(put.body.comision.porcentaje, 15);
-      const mala = await request(app).put('/api/v1/pagos/comision').set('Authorization', bearer('admin_tenant')).send({ porcentaje: 101 });
-      assert.equal(mala.status, 422);
-      assert.equal(mala.body.code, 'MANI-FON-422');
+      const put = await request(app).put('/api/v1/pagos/comision').set('Authorization', bearer('admin_tenant')).send({ porcentaje: 15 });
+      assert.equal(put.status, 404);
       for (const rol of ['cliente', 'aliado']) {
-        assert.equal((await request(app).put('/api/v1/pagos/comision').set('Authorization', bearer(rol)).send({ porcentaje: 1 })).status, 403, rol);
+        assert.equal((await request(app).get('/api/v1/pagos/comision').set('Authorization', bearer(rol))).status, 403, rol);
       }
     }
   )

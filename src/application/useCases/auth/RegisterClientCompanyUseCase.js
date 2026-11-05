@@ -1,3 +1,4 @@
+const { ejecutarComo } = require('../../context/contextoIdentidad');
 const Profile = require('../../../domain/entities/Profile');
 const { ValidationError, ConflictError } = require('../../../domain/errors/DomainError');
 const isValidEmail = require('../../../domain/validation/isValidEmail');
@@ -102,45 +103,50 @@ class RegisterClientCompanyUseCase {
     let cliente;
     let tokens;
 
-    try {
-      await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
-      usuarioCreado = true;
+    // Lo que sigue escribe en la base como el usuario recién creado en Auth: es quien actúa en este registro y el
+    // que exigen las políticas RLS de KYC y consentimientos, porque Core se conecta sin BYPASSRLS (SCRUM-1468).
+    // La compensación corre con la misma identidad, para poder borrar lo que este registro alcanzó a crear.
+    await ejecutarComo({ tenantId, userId, role: 'CLIENT' }, async () => {
+      try {
+        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
+        usuarioCreado = true;
 
-      cliente = await this.clienteRepository.create({
-        tenantId,
-        usuarioId: userId,
-        tipo: 'PERSONA_JURIDICA',
-        razonSocial,
-        nit,
-        telefono: phone || null,
-        nombreRepresentante,
-      });
-      clienteCreado = true;
-
-      if (this.registerUserConsentUseCase) {
-        await this.registerUserConsentUseCase.execute({
+        cliente = await this.clienteRepository.create({
           tenantId,
           usuarioId: userId,
-          ipAddress: ipAddress || 'unknown',
-          userAgent: userAgent || 'unknown',
+          tipo: 'PERSONA_JURIDICA',
+          razonSocial,
+          nit,
+          telefono: phone || null,
+          nombreRepresentante,
         });
-        consentimientoCreado = true;
-      }
+        clienteCreado = true;
 
-      tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
-    } catch (err) {
-      if (consentimientoCreado && this.userConsentRepository) {
-        await safeRun(() => this.userConsentRepository.deleteByUsuarioId(tenantId, userId));
+        if (this.registerUserConsentUseCase) {
+          await this.registerUserConsentUseCase.execute({
+            tenantId,
+            usuarioId: userId,
+            ipAddress: ipAddress || 'unknown',
+            userAgent: userAgent || 'unknown',
+          });
+          consentimientoCreado = true;
+        }
+
+        tokens = await this.authIdentityService.authenticate({ tenantId, email, password });
+      } catch (err) {
+        if (consentimientoCreado && this.userConsentRepository) {
+          await safeRun(() => this.userConsentRepository.deleteByUsuarioId(tenantId, userId));
+        }
+        if (clienteCreado) {
+          await safeRun(() => this.clienteRepository.deleteByUsuarioId(tenantId, userId));
+        }
+        if (usuarioCreado) {
+          await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
+        }
+        await safeRun(() => this.authIdentityService.deleteUser(userId));
+        throw err;
       }
-      if (clienteCreado) {
-        await safeRun(() => this.clienteRepository.deleteByUsuarioId(tenantId, userId));
-      }
-      if (usuarioCreado) {
-        await safeRun(() => this.usuarioRepository.deleteById(tenantId, userId));
-      }
-      await safeRun(() => this.authIdentityService.deleteUser(userId));
-      throw err;
-    }
+    });
 
     const profile = new Profile({ id: userId, userId, role: 'CLIENT', fullName: razonSocial, status: 'VERIFIED', tenantId });
     return {

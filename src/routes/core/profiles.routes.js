@@ -1,10 +1,11 @@
 const { Router } = require('express');
 const multer = require('multer');
-const { authenticate } = require('../../middlewares/auth.middleware');
+const { authenticate, identificarSiHayToken } = require('../../middlewares/auth.middleware');
 const profilesController = require('../../controllers/profiles.controller');
 const { DomainError } = require('../../domain/errors/DomainError');
 
 // Dominio Perfiles: perfil propio y categorías que declara el aliado.
+// identificarSiHayToken fija la identidad para app.set_context sin cambiar el 401 de los controladores (SCRUM-1468).
 const router = Router();
 
 const uploadPhoto = multer({
@@ -18,17 +19,16 @@ const photoMiddleware = uploadPhoto.fields([
   { name: 'foto', maxCount: 1 },
 ]);
 
-// `authenticate` resuelve la sesión efectiva (SCRUM-901): el administrador de plataforma que actúa como un usuario
-// ve y edita el perfil de ese usuario. Los controladores ya usaban req.user cuando existía.
-router.get('/profiles/me', authenticate, profilesController.getOwnProfile);
+router.get('/profiles/me', identificarSiHayToken, profilesController.getOwnProfile);
 // SCRUM-854: una ruta por operación sobre el perfil propio. Los datos van por PATCH (JSON) y la foto
 // solo por subida de archivo; no hay ruta por :id porque el caso de uso edita únicamente el perfil propio.
-router.patch('/profiles/me', authenticate, profilesController.updateOwnProfile);
-router.post('/profiles/me/photo', authenticate, photoMiddleware, profilesController.updateOwnProfilePhoto);
-router.get('/profiles/me/categories', authenticate, profilesController.getAllyCategories);
-router.get('/profiles/me/categories/available', authenticate, profilesController.listAvailableAllyCategories);
-router.put('/profiles/me/categories', authenticate, profilesController.declareAllyCategories);
-router.post('/profiles/me/categories', authenticate, profilesController.declareAllyCategories);
+router.patch('/profiles/me', identificarSiHayToken, profilesController.updateOwnProfile);
+// Después de multer: los eventos del stream de la subida no conservan la identidad de AsyncLocalStorage.
+router.post('/profiles/me/photo', photoMiddleware, identificarSiHayToken, profilesController.updateOwnProfilePhoto);
+router.get('/profiles/me/categories', identificarSiHayToken, profilesController.getAllyCategories);
+router.get('/profiles/me/categories/available', identificarSiHayToken, profilesController.listAvailableAllyCategories);
+router.put('/profiles/me/categories', identificarSiHayToken, profilesController.declareAllyCategories);
+router.post('/profiles/me/categories', identificarSiHayToken, profilesController.declareAllyCategories);
 
 // SCRUM-1380: cobertura del aliado (reemplaza las RPC obtener_mi_cobertura y declarar_cobertura de Supabase).
 router.get('/profiles/me/coverage', authenticate, profilesController.getAllyCoverage);

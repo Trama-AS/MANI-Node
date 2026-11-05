@@ -58,14 +58,9 @@ Dependencias hacia otros servicios, siempre por HTTP (ADR-0030):
 
 No se corrigen en este cambio, porque tocan persistencia o contratos y necesitan su propia historia y su propia regresión.
 
-1. **ADR-0032 aplicado en un solo repositorio (C3).**
-   - Al corte 12e1e75, los repositorios `pg` de solicitudes, asignación, elegibilidad, contexto de solicitud, notificaciones, cotización, ejecución, eventos, pagos y mensajes ya fijan el contexto con `withTenantContext`/`runInTenantContext`.
-   - Los repositorios de Supabase usan el cliente con la *service-role key* (`SupabaseClientFactory`), que **no pasa por RLS**.
-   - Cinco repositorios `pg` siguen consultando con `pool.query` o con su propia transacción, sin `app.set_context`: `PostgresClientRepository`, `PostgresCompanyClientRepository`, `PostgresSiteRepository`, `TransactionalAliadoRepository` y `TransactionalAliadoCategoriaRepository`.
-   - En todos ellos el aislamiento por tenant depende solo del filtro `tenant_id` escrito en cada consulta.
-   - Pasarlos a `runInTenantContext` es el cambio que hace efectiva la 0007. Conviene hacerlo por dominio y con su prueba `pg` de aislamiento, empezando por elegibilidad y sitios, que exponen datos a otros roles.
-2. **Repositorios duplicados de cliente y sitio.** Conviven tres accesos a las mismas tablas:
-   - `clienteRepository` y `sitioRepository` (Supabase): registro de cliente;
+1. **Resuelto (SCRUM-1468, TEC-21): ADR-0032 aplicado en todos los repositorios.** Los 13 repositorios de Supabase con la *service-role key* (que no pasaba por RLS) se reemplazaron por repositorios `pg` (`Pg*Repository`) que corren con `app.set_context`; `PostgresClientRepository`, `PostgresCompanyClientRepository` y `PostgresSiteRepository` pasaron a `enContextoTenant`, y `TransactionalAliadoRepository` y `TransactionalAliadoCategoriaRepository` se fundieron en `PgAliadoRepository` y `PgAliadoCategoriaRepository`. El usuario y el rol del contexto salen de la identidad verificada de la petición (`application/context/contextoIdentidad.js`), que fijan `authenticate`, `identificarSiHayToken` y los registros públicos (como el usuario recién creado). La clave `service_role` queda solo para Auth y Storage.
+2. **Repositorios duplicados de cliente y sitio.** Conviven tres accesos a las mismas tablas (desde SCRUM-1468 los tres van por `pg` con contexto, pero siguen siendo tres):
+   - `clienteRepository` y `sitioRepository` (`PgClienteRepository`, `PgSitioRepository`): registro de cliente;
    - `clientRepository` y `siteRepository` (pg): reglas y horario del sitio;
    - `companyClientRepository` (pg): cliente empresa y sus sedes.
    Hay que unificarlos en un solo puerto de clientes y uno de sitios.
@@ -73,7 +68,7 @@ No se corrigen en este cambio, porque tocan persistencia o contratos y necesitan
 4. **`container.js` (404 líneas)** arma todos los dominios en un solo constructor. El paso siguiente es una función de composición por dominio, sin cambiar las instancias que reciben los controladores.
 5. **Resuelto (SCRUM-1364, Node #72):** `GET /tenants` era pública y listaba los tenants. Ahora exige sesión y `PLATFORM_ADMIN`.
 6. **Resuelto en `develop`:** `PgElegibilidadRepository` ya no lee `solicitud_rechazo`; los rechazos los filtra Dispatch. Se conserva el hallazgo original como referencia. **Core lee una tabla de Dispatch.** `PgElegibilidadRepository` excluye a los aliados que rechazaron la solicitud con un `NOT EXISTS` sobre `solicitud_rechazo`. La 0007 la declara de dominio de Dispatch y no le da permisos a `mani_core_svc`. Hay que decidir si Dispatch expone los rechazos por HTTP o si la tabla se comparte de forma explícita en el ADR-0030.
-7. **Rol de la conexión, por confirmar con DevOps.** `withTenantContext` fija el contexto con `app.set_context`, pero no hace `SET ROLE`, y `mani_core_svc` es `NOLOGIN`. Por eso RLS solo filtra si el usuario de `DATABASE_URL` hereda ese rol y no tiene `BYPASSRLS` ni es superusuario. Con el usuario `postgres`, RLS no aplica y el aislamiento depende de los filtros `tenant_id` de cada consulta. Si en cambio hereda `mani_core_svc`, la consulta del hallazgo 6 respondería con permiso denegado.
+7. **Resuelto (SCRUM-1468, TEC-21): rol de la conexión.** Core se conecta como `mani_core_svc` (LOGIN sin `BYPASSRLS`, credenciales con `db/ops/credenciales_roles_servicio.sql`) y en `qa`/`production` no arranca si `DATABASE_URL` usa un rol que salta RLS (`infrastructure/db/verificarRolServicio.js`). `tests/integration/pg/rlsSinBypass.pg.test.js` prueba, con consultas sin filtro de tenant, que la política bloquea el acceso cruzado.
 
 ## 5. Cómo se verificó
 

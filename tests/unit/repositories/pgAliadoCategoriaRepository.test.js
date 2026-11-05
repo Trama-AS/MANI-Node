@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const TransactionalAliadoCategoriaRepository = require('../../../src/infrastructure/repositories/TransactionalAliadoCategoriaRepository');
+const PgAliadoCategoriaRepository = require('../../../src/infrastructure/repositories/PgAliadoCategoriaRepository');
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const ALIADO = '22222222-2222-4222-8222-222222222222';
@@ -39,11 +39,8 @@ function makePool(script = {}) {
   return { pool: { connect: async () => client }, calls, contexts, released };
 }
 
-function makeRepo(pool, delegate = {}) {
-  return new TransactionalAliadoCategoriaRepository({
-    pgPoolFactory: { getPool: () => pool },
-    delegate,
-  });
+function makeRepo(pool) {
+  return new PgAliadoCategoriaRepository({ pgPoolFactory: { getPool: () => pool } });
 }
 
 const happyScript = (finalIds) => ({
@@ -181,26 +178,35 @@ test('valida antes de abrir una conexión: lista vacía y valores que no son UUI
 });
 
 test('sin DATABASE_URL configurada falla con un error interno claro', async () => {
-  const repo = new TransactionalAliadoCategoriaRepository({ pgPoolFactory: { getPool: () => null }, delegate: {} });
+  const repo = new PgAliadoCategoriaRepository({ pgPoolFactory: { getPool: () => null } });
   await assert.rejects(() => repo.setAliadoCategorias(TENANT, ALIADO, [CAT_A]), /DATABASE_URL/);
 });
 
-test('create, findByAliadoId y deleteByAliadoId se delegan sin cambios (el registro no se altera)', async () => {
-  const seen = [];
-  const delegate = {
-    create: async (x) => { seen.push(['create', x]); return 'c'; },
-    findByAliadoId: async (...x) => { seen.push(['find', x]); return ['f']; },
-    deleteByAliadoId: async (...x) => { seen.push(['del', x]); },
-  };
-  const repo = makeRepo(null, delegate);
+test('SCRUM-1468: create, findByAliadoId y deleteByAliadoId corren con app.set_context del tenant', async () => {
+  const { pool, calls, contexts } = makePool({
+    'INSERT INTO aliado_categoria': { rows: [{ tenant_id: TENANT, aliado_id: ALIADO, categoria_id: CAT_A }], rowCount: 1 },
+    'SELECT categoria_id': { rows: [{ categoria_id: CAT_A }], rowCount: 1 },
+  });
+  const repo = makeRepo(pool);
 
-  assert.equal(await repo.create({ a: 1 }), 'c');
-  assert.deepEqual(await repo.findByAliadoId(TENANT, ALIADO), ['f']);
+  assert.equal((await repo.create({ tenantId: TENANT, aliadoId: ALIADO, categoriaId: CAT_A })).categoria_id, CAT_A);
+  assert.deepEqual(await repo.findByAliadoId(TENANT, ALIADO), [CAT_A]);
   await repo.deleteByAliadoId(TENANT, ALIADO);
-  assert.deepEqual(seen.map((s) => s[0]), ['create', 'find', 'del']);
+
+  // Antes iban por supabase-js con service_role, sin RLS; ahora cada una abre su transacción con el tenant.
+  assert.deepEqual(contexts, [[TENANT, null, null], [TENANT, null, null], [TENANT, null, null]]);
+  for (const c of calls.filter((q) => !['BEGIN', 'COMMIT'].includes(q.sql))) {
+    assert.ok(c.params.includes(TENANT), `la consulta no recibe el tenant: ${c.sql}`);
+  }
+});
+
+test('findByAliadoId sin tenant devuelve vacío sin abrir conexión', async () => {
+  let conexiones = 0;
+  const repo = makeRepo({ connect: async () => { conexiones += 1; } });
+  assert.deepEqual(await repo.findByAliadoId(null, ALIADO), []);
+  assert.equal(conexiones, 0);
 });
 
 test('el constructor exige sus dependencias', () => {
-  assert.throws(() => new TransactionalAliadoCategoriaRepository({ delegate: {} }), /pgPoolFactory/);
-  assert.throws(() => new TransactionalAliadoCategoriaRepository({ pgPoolFactory: {} }), /delegate/);
+  assert.throws(() => new PgAliadoCategoriaRepository({}), /pgPoolFactory/);
 });

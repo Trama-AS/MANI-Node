@@ -8,6 +8,7 @@ const PgPaymentRepository = require('../../../src/infrastructure/repositories/Pg
 const PgServiceExecutionRepository = require('../../../src/infrastructure/repositories/PgServiceExecutionRepository');
 const PgFondosRepository = require('../../../src/infrastructure/repositories/PgFondosRepository');
 const FundsUseCase = require('../../../src/application/useCases/payments/FundsUseCase');
+const { REGLAS_POR_OMISION } = require('../../../src/domain/rules/tenantRulesDefaults');
 
 const url = process.env.TEST_DATABASE_URL;
 const opts = { skip: url ? false : 'TEST_DATABASE_URL no configurada' };
@@ -27,6 +28,16 @@ async function entorno(t) {
     fondos,
     funds: new FundsUseCase({ fondosRepository: fondos }),
   };
+}
+
+// Guarda una versión nueva de las reglas del tenant, como lo hace SCRUM-1366: la anterior pasa a HISTORICA.
+async function guardarRegla(pool, s, cambios) {
+  const { rows } = await pool.query('SELECT coalesce(max(version), 0) + 1 AS version FROM regla_tenant WHERE tenant_id = $1', [s.tenant]);
+  await pool.query("UPDATE regla_tenant SET estado = 'HISTORICA' WHERE tenant_id = $1 AND estado = 'VIGENTE'", [s.tenant]);
+  await pool.query(
+    "INSERT INTO regla_tenant (tenant_id, version, reglas, estado, creado_por, actor_rol) VALUES ($1, $2, $3, 'VIGENTE', $4, 'ADMIN')",
+    [s.tenant, rows[0].version, JSON.stringify({ ...REGLAS_POR_OMISION, ...cambios }), s.admin.userId]
+  );
 }
 
 async function usuario(pool, tenant, rol) {
@@ -147,40 +158,57 @@ test('PG 893: la liquidación descuenta el 10 % por defecto; bruto = comisión +
   assert.equal(cobros[0].simulada, true);
 });
 
-test('PG 893: la comisión del tenant es editable; cambiarla no altera liquidaciones ya generadas', opts, async (t) => {
+test('PG 893: la liquidación usa la regla vigente del tenant; cambiarla no altera liquidaciones ya generadas', opts, async (t) => {
   const e = await entorno(t);
   const s = await sembrar(e.pool);
   assert.deepEqual(await e.funds.obtenerComision({ user: s.admin }), { porcentaje: 10, porDefecto: true });
-  assert.deepEqual(await e.funds.fijarComision({ user: s.admin, body: { porcentaje: 25 } }), { porcentaje: 25, porDefecto: false });
+  await guardarRegla(e.pool, s, { comision: { porcentaje: 25 } });
   assert.deepEqual(await e.funds.obtenerComision({ user: s.admin }), { porcentaje: 25, porDefecto: false });
 
   await e.pagos.registrar(s.cliente.ctx, pago(s));
   await iniciar(e, s);
   await finalizar(e, s);
-  await e.funds.fijarComision({ user: s.admin, body: { porcentaje: 5 } });
+  await guardarRegla(e.pool, s, { comision: { porcentaje: 5 } });
+  assert.equal((await e.funds.obtenerComision({ user: s.admin })).porcentaje, 5);
   const { cobros } = await e.funds.cobrosDelAliado({ user: s.aliado.ctx });
   assert.equal(cobros[0].liquidacion.porcentajeComision, 25);
   assert.equal(cobros[0].liquidacion.comision, 37500.13);
   assert.equal(cobros[0].liquidacion.montoNeto, 112500.37);
 });
 
-test('PG 893 C2: una comisión fuera de 0 a 100 se rechaza y la base también la impide', opts, async (t) => {
+test('PG 893: la regla de otro tenant no cambia la comisión; una regla en 0 % no descuenta nada', opts, async (t) => {
   const e = await entorno(t);
   const s = await sembrar(e.pool);
-  for (const porcentaje of [-1, 100.01, 'abc', null, NaN, 10.123]) {
-    await assert.rejects(e.funds.fijarComision({ user: s.admin, body: { porcentaje } }), (err) => err.code === 'MANI-FON-422' && err.statusCode === 422, String(porcentaje));
-  }
+  const otro = await sembrar(e.pool);
+  await guardarRegla(e.pool, otro, { comision: { porcentaje: 30 } });
   assert.deepEqual(await e.funds.obtenerComision({ user: s.admin }), { porcentaje: 10, porDefecto: true });
-  await assert.rejects(e.pool.query('INSERT INTO comision_tenant (tenant_id, porcentaje) VALUES ($1, 101)', [s.tenant]), (err) => err.code === '23514');
-  assert.equal((await e.funds.fijarComision({ user: s.admin, body: { porcentaje: 0 } })).porcentaje, 0);
-  assert.equal((await e.funds.fijarComision({ user: s.admin, body: { porcentaje: '12.5' } })).porcentaje, 12.5);
+
+  await guardarRegla(e.pool, s, { comision: { porcentaje: 0 } });
+  await e.pagos.registrar(s.cliente.ctx, pago(s));
+  await iniciar(e, s);
+  await finalizar(e, s);
+  const { cobros } = await e.funds.cobrosDelAliado({ user: s.aliado.ctx });
+  assert.equal(cobros[0].liquidacion.comision, 0);
+  assert.equal(cobros[0].liquidacion.montoNeto, 150000.5);
 });
 
-test('PG 893 C3: solo el administrador configura la comisión; cliente y aliado reciben 403', opts, async (t) => {
+test('PG 893 C2: una comisión inválida en la regla bloquea la liquidación y la retención sigue RETENIDA', opts, async (t) => {
+  const e = await entorno(t);
+  for (const invalida of [{ comision: { porcentaje: 30.01 } }, { comision: { porcentaje: 10.555 } }, { comision: { porcentaje: -1 } }, { comision: { porcentaje: 'abc' } }, { comision: {} }, { comision: null }]) {
+    const s = await sembrar(e.pool);
+    await guardarRegla(e.pool, s, invalida);
+    const { pago: p } = await e.pagos.registrar(s.cliente.ctx, pago(s));
+    await iniciar(e, s);
+    await finalizar(e, s);
+    assert.equal((await e.funds.retencion({ user: s.cliente.ctx, pagoId: p.id })).estado, 'RETENIDA', JSON.stringify(invalida));
+    assert.equal((await filas(e.pool, 'SELECT 1 FROM liquidacion WHERE pago_id = $1', [p.id])).length, 0, JSON.stringify(invalida));
+  }
+});
+
+test('PG 893 C3: solo el administrador consulta la comisión; cliente y aliado reciben 403', opts, async (t) => {
   const e = await entorno(t);
   const s = await sembrar(e.pool);
   for (const user of [s.cliente.ctx, s.aliado.ctx]) {
-    await assert.rejects(e.funds.fijarComision({ user, body: { porcentaje: 1 } }), (err) => err.statusCode === 403);
     await assert.rejects(e.funds.obtenerComision({ user }), (err) => err.statusCode === 403);
   }
 });
@@ -227,4 +255,30 @@ test('PG RLS: sin contexto de tenant mani_core_svc no ve filas; la liquidación 
   await assert.rejects(e.corePool.query('UPDATE liquidacion SET comision = 0'), (err) => err.code === '42501');
   await assert.rejects(e.corePool.query('DELETE FROM retencion_fondos'), (err) => err.code === '42501');
   await assert.rejects(e.pool.query('UPDATE liquidacion SET comision = comision + 1'), (err) => err.code === '23514', 'bruto = comisión + neto');
+});
+
+test('PG 892: un pago aprobado sobre una solicitud ya finalizada o cerrada libera y liquida al registrarse', opts, async (t) => {
+  const e = await entorno(t);
+  for (const estado of ['FINALIZADA', 'CERRADA']) {
+    const s = await sembrar(e.pool);
+    await e.pool.query('UPDATE solicitud SET estado = $1 WHERE id = $2', [estado, s.solicitud]);
+
+    const { pago: p } = await e.pagos.registrar(s.cliente.ctx, pago(s));
+
+    const ret = await e.funds.retencion({ user: s.cliente.ctx, pagoId: p.id });
+    assert.equal(ret.estado, 'LIBERADA', estado);
+    assert.ok(ret.liberadaEn);
+    const liq = await filas(e.pool, 'SELECT monto_bruto, comision, monto_neto FROM liquidacion WHERE pago_id = $1', [p.id]);
+    assert.equal(liq.length, 1, estado);
+    assert.deepEqual([Number(liq[0].monto_bruto), Number(liq[0].comision), Number(liq[0].monto_neto)], [150000.5, 15000.05, 135000.45]);
+  }
+});
+
+test('PG 892 C2: un pago rechazado sobre una solicitud finalizada no libera ni liquida', opts, async (t) => {
+  const e = await entorno(t);
+  const s = await sembrar(e.pool);
+  await e.pool.query("UPDATE solicitud SET estado = 'FINALIZADA' WHERE id = $1", [s.solicitud]);
+  const { pago: p } = await e.pagos.registrar(s.cliente.ctx, pago(s, { estado: 'RECHAZADO', motivo: 'x' }));
+  assert.equal((await filas(e.pool, 'SELECT 1 FROM retencion_fondos WHERE pago_id = $1', [p.id])).length, 0);
+  assert.equal((await filas(e.pool, 'SELECT 1 FROM liquidacion WHERE solicitud_id = $1', [s.solicitud])).length, 0);
 });

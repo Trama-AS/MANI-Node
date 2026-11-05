@@ -399,3 +399,91 @@ test('887 C3: el reporte es solo del administrador y solo de su tenant', opts, a
   assert.equal(deB.status, 200);
   assert.deepEqual(deB.body.totales, { cotizaciones: 0, evaluadas: 0, sinTarifa: 0, fueraDeRango: 0 });
 });
+
+// =============================================================== SCRUM-866 · HU-M06-02
+test('866 C1: el cliente dueño y el aliado asignado ven la alerta de una cotización fuera de banda; dentro de banda no hay alerta', opts, async (t) => {
+  const { pool, rules } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  await api('post', '/tarifas', a.jwt.admin).send(tarifaBase(a.categoria));
+  const encima = await cotizar(pool, a, { total: 300000 });
+  const debajo = await cotizar(pool, a, { total: 80000, version: 2 });
+  const dentro = await cotizar(pool, a, { total: 150000, version: 3 });
+
+  for (const jwtSesion of [a.jwt.cliente, a.jwt.aliado]) {
+    const r = await api('get', `/cotizaciones/${encima}/evaluacion-tarifa`, jwtSesion, 'corr-866');
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.resultado, 'POR_ENCIMA');
+    assert.equal(r.body.alerta, true);
+    assert.equal(r.body.desviacionPorcentaje, 50);
+    assert.equal(r.body.total, 300000);
+    assert.deepEqual(
+      [r.body.tarifa.valorMin, r.body.tarifa.valorTipico, r.body.tarifa.valorMax, r.body.tarifa.moneda],
+      [100000, 150000, 200000, 'COP']
+    );
+    assert.equal(r.body.reglasVersion, 'rates-v1');
+  }
+  const bajo = await api('get', `/cotizaciones/${debajo}/evaluacion-tarifa`, a.jwt.cliente);
+  assert.deepEqual([bajo.body.resultado, bajo.body.alerta, bajo.body.desviacionPorcentaje], ['POR_DEBAJO', true, 20]);
+  const ok = await api('get', `/cotizaciones/${dentro}/evaluacion-tarifa`, a.jwt.aliado);
+  assert.deepEqual([ok.body.resultado, ok.body.alerta], ['DENTRO_DE_RANGO', false]);
+
+  // Rules recibió un solo importe por consulta, con el tenant y la correlación de la sesión.
+  const enviado = rules.requests.find(
+    (x) => x.url === '/api/v1/rules/rates/evaluate' && x.headers['x-correlation-id'] === 'corr-866'
+  );
+  assert.equal(enviado.headers['x-tenant-id'], a.id);
+  assert.deepEqual(enviado.body.items, [{ id: encima, total: 300000, valorMin: 100000, valorTipico: 150000, valorMax: 200000 }]);
+
+  // La consulta no modifica la cotización (C1: «sin alterar la cotización»).
+  const fila = (await pool.query('SELECT valor_mano_obra, valor_materiales, estado FROM cotizacion WHERE id = $1', [encima])).rows[0];
+  assert.deepEqual([Number(fila.valor_mano_obra), Number(fila.valor_materiales), fila.estado], [300000, 0, 'PENDIENTE']);
+});
+
+test('866 C2: sin tarifa se indica SIN_TARIFA sin llamar a Rules; si Rules no responde es 503 sin evaluación inventada', opts, async (t) => {
+  const { pool, rules } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  const sinTarifa = await cotizar(pool, a, { solicitud: a.solicitudSinTarifa, total: 999999 });
+
+  const r = await api('get', `/cotizaciones/${sinTarifa}/evaluacion-tarifa`, a.jwt.cliente);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.resultado, r.body.alerta, r.body.tarifa, r.body.desviacionPorcentaje], ['SIN_TARIFA', false, null, null]);
+  assert.equal(rules.requests.filter((x) => x.url === '/api/v1/rules/rates/evaluate').length, 0);
+
+  await api('post', '/tarifas', a.jwt.admin).send(tarifaBase(a.categoria));
+  const conTarifa = await cotizar(pool, a, { total: 300000 });
+  rules.respondWith(() => ({ status: 503, body: {} }));
+  const caido = await api('get', `/cotizaciones/${conTarifa}/evaluacion-tarifa`, a.jwt.aliado);
+  assert.equal(caido.status, 503);
+  assert.equal(caido.body.code, 'RULES_SERVICE_UNAVAILABLE');
+  assert.equal(caido.body.resultado, undefined);
+  assert.equal(caido.body.alerta, undefined);
+});
+
+test('866 C3: otro cliente u otro tenant no ven la evaluación; plataforma la ve como admin (SCRUM-901); sin token o con token inválido es 401', opts, async (t) => {
+  const { pool } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  const b = await sembrarTenant(pool);
+  await api('post', '/tarifas', a.jwt.admin).send(tarifaBase(a.categoria));
+  const cotA = await cotizar(pool, a, { total: 300000 });
+
+  for (const jwtSesion of [a.jwt.otroCliente, b.jwt.cliente, b.jwt.aliado, b.jwt.admin]) {
+    const r = await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, jwtSesion);
+    assert.equal(r.status, 404, JSON.stringify(r.body));
+    assert.equal(r.body.code, 'MANI-TAR-404Q');
+    assert.equal(r.body.tarifa, undefined);
+  }
+  // SCRUM-901 (decisión del 5-nov-2026): el administrador de plataforma usa todas las funciones del sistema y, sin
+  // cabeceras de contexto, trabaja como administrador de su tenant. Cambia el C3 original de 866, que pedía 403.
+  assert.equal((await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, a.jwt.plataforma)).status, 200);
+  assert.equal((await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, a.jwt.admin)).status, 200, 'el administrador del tenant sí');
+
+  const claims = { sub: a.cliente.usuario, app_metadata: { tenant_id: a.id, user_role: 'cliente' } };
+  const expirado = `Bearer ${jwt.sign({ ...claims, exp: Math.floor(Date.now() / 1000) - 60 }, config.supabaseJwtSecret, { algorithm: 'HS256' })}`;
+  const otroSecreto = `Bearer ${jwt.sign(claims, 'secreto-que-no-es-el-del-ambiente-0123456789', { algorithm: 'HS256', expiresIn: '1h' })}`;
+  for (const jwtSesion of [expirado, otroSecreto]) {
+    const r = await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, jwtSesion);
+    assert.equal(r.status, 401);
+    assert.equal(r.body.resultado, undefined);
+  }
+  assert.equal((await request(app).get(`/api/v1/cotizaciones/${cotA}/evaluacion-tarifa`)).status, 401);
+});

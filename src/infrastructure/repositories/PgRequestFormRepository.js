@@ -43,7 +43,8 @@ class PgRequestFormRepository extends IRequestFormRepository {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
       const clienteId = await clienteActivo(client, ctx);
       const { rows } = await client.query(
-        `SELECT s.id, s.nombre, s.direccion, s.zona_id, z.nombre AS zona, zp.nombre AS zona_padre
+        `SELECT s.id, s.nombre, s.direccion, s.zona_id, s.latitud, s.longitud,
+                z.nombre AS zona, zp.nombre AS zona_padre
          FROM sitio s
          JOIN zona z ON z.id = s.zona_id
          LEFT JOIN zona zp ON zp.id = z.zona_padre_id
@@ -59,6 +60,11 @@ class PgRequestFormRepository extends IRequestFormRepository {
         zonaId: r.zona_id,
         zona: r.zona,
         zonaPadre: r.zona_padre,
+        // Ubicación declarada, para el mapa de HU-M04-07. `numeric` llega
+        // como cadena desde `pg`; se normaliza a número o a null, sin
+        // inventar un punto cuando la sede no lo tiene.
+        latitud: r.latitud === null || r.latitud === undefined ? null : Number(r.latitud),
+        longitud: r.longitud === null || r.longitud === undefined ? null : Number(r.longitud),
       }));
     });
   }

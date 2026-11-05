@@ -89,21 +89,8 @@ class PgFondosRepository {
   }
 
   async #configurada(client, ctx) {
-    const { rowCount } = await client.query('SELECT 1 FROM comision_tenant WHERE tenant_id = $1', [ctx.tenantId]);
+    const { rowCount } = await client.query("SELECT 1 FROM regla_tenant WHERE tenant_id = $1 AND estado = 'VIGENTE'", [ctx.tenantId]);
     return rowCount > 0;
-  }
-
-  /** Fija el porcentaje del tenant (0 a 100). Solo afecta las liquidaciones futuras: las ya generadas no cambian. */
-  fijarComision(ctx, porcentaje) {
-    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      await client.query(
-        `INSERT INTO comision_tenant (tenant_id, porcentaje, updated_by)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (tenant_id) DO UPDATE SET porcentaje = EXCLUDED.porcentaje, updated_at = now(), updated_by = EXCLUDED.updated_by`,
-        [ctx.tenantId, porcentaje, ctx.userId]
-      );
-      return { porcentaje, porDefecto: false };
-    });
   }
 }
 
