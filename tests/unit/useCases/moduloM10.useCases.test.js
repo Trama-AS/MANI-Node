@@ -207,3 +207,93 @@ test('887 C3: solo el administrador ve el reporte y el periodo se valida (fechas
   }
   assert.equal(llamadas.length, 0);
 });
+
+// ---------------------------------------------------------------- SCRUM-866
+const cotizacion866 = (total, conTarifa = true) => ({
+  id: ID,
+  solicitudId: ID,
+  version: 2,
+  total,
+  tarifa: conTarifa ? { id: ID, version: 1, valorMin: 100, valorTipico: 150, valorMax: 200, moneda: 'COP' } : null,
+});
+
+function rulesQueResponde(resultado, desviacionPorcentaje) {
+  const enviados = [];
+  return {
+    enviados,
+    evaluateRates: async (params) => {
+      enviados.push(params);
+      return { version: 'rates-v1', resultados: params.items.map((i) => ({ id: i.id, resultado, desviacionPorcentaje })) };
+    },
+  };
+}
+
+test('866 C1: fuera de banda (por encima o por debajo) devuelve alerta con la referencia y la desviación', async () => {
+  for (const [resultado, total] of [['POR_ENCIMA', 300], ['POR_DEBAJO', 50]]) {
+    const { repo } = espia({ cotizacionConTarifa: () => cotizacion866(total) });
+    const rules = rulesQueResponde(resultado, 50);
+    const r = await new TariffsUseCase({ tariffRepository: repo, ruleEvaluationService: rules }).evaluarCotizacion({
+      user: CLIENTE,
+      cotizacionId: ID,
+      correlationId: 'corr-866',
+    });
+    assert.equal(r.resultado, resultado);
+    assert.equal(r.alerta, true);
+    assert.equal(r.desviacionPorcentaje, 50);
+    assert.equal(r.total, total, 'la cotización no se modifica');
+    assert.deepEqual([r.tarifa.valorMin, r.tarifa.valorTipico, r.tarifa.valorMax], [100, 150, 200]);
+    assert.equal(r.reglasVersion, 'rates-v1');
+    assert.deepEqual(rules.enviados[0].items, [{ id: ID, total, valorMin: 100, valorTipico: 150, valorMax: 200 }]);
+    assert.equal(rules.enviados[0].tenantId, TENANT, 'el tenant sale de la sesión');
+    assert.equal(rules.enviados[0].correlationId, 'corr-866');
+  }
+});
+
+test('866 C1: dentro de banda no dispara una alerta falsa', async () => {
+  const { repo } = espia({ cotizacionConTarifa: () => cotizacion866(150) });
+  const r = await new TariffsUseCase({
+    tariffRepository: repo,
+    ruleEvaluationService: rulesQueResponde('DENTRO_DE_RANGO', 0),
+  }).evaluarCotizacion({ user: ALIADO, cotizacionId: ID });
+  assert.equal(r.resultado, 'DENTRO_DE_RANGO');
+  assert.equal(r.alerta, false);
+});
+
+test('866 C2: sin tarifa responde SIN_TARIFA sin llamar a Rules; si Rules cae el 503 sube sin resultado inventado', async () => {
+  let llamadas = 0;
+  const caido = {
+    evaluateRates: async () => {
+      llamadas += 1;
+      throw new DomainError('El servicio de reglas no está disponible', 'RULES_SERVICE_UNAVAILABLE', 503);
+    },
+  };
+  const sinTarifa = espia({ cotizacionConTarifa: () => cotizacion866(999, false) });
+  const r = await new TariffsUseCase({ tariffRepository: sinTarifa.repo, ruleEvaluationService: caido }).evaluarCotizacion({
+    user: CLIENTE,
+    cotizacionId: ID,
+  });
+  assert.deepEqual(
+    { resultado: r.resultado, alerta: r.alerta, tarifa: r.tarifa, desviacionPorcentaje: r.desviacionPorcentaje },
+    { resultado: 'SIN_TARIFA', alerta: false, tarifa: null, desviacionPorcentaje: null }
+  );
+  assert.equal(llamadas, 0);
+
+  const conTarifa = espia({ cotizacionConTarifa: () => cotizacion866(300) });
+  await assert.rejects(
+    () =>
+      new TariffsUseCase({ tariffRepository: conTarifa.repo, ruleEvaluationService: caido }).evaluarCotizacion({
+        user: CLIENTE,
+        cotizacionId: ID,
+      }),
+    codigo('RULES_SERVICE_UNAVAILABLE', 503)
+  );
+});
+
+test('866 C3: plataforma recibe 403, sin sesión 401 y un id mal formado 400, sin consultar el repositorio', async () => {
+  const { repo, llamadas } = espia();
+  const uc = new TariffsUseCase({ tariffRepository: repo, ruleEvaluationService: {} });
+  await assert.rejects(() => uc.evaluarCotizacion({ user: PLATAFORMA, cotizacionId: ID }), codigo('MANI-TAR-403', 403));
+  await assert.rejects(() => uc.evaluarCotizacion({ user: null, cotizacionId: ID }), (err) => err.statusCode === 401);
+  await assert.rejects(() => uc.evaluarCotizacion({ user: CLIENTE, cotizacionId: 'no-uuid' }), codigo('MANI-TAR-400', 400));
+  assert.equal(llamadas.length, 0);
+});

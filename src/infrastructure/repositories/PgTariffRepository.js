@@ -35,6 +35,55 @@ function toReferencia(row) {
   return Object.fromEntries(CAMPOS_REFERENCIA.map((campo) => [campo, tarifa[campo]]));
 }
 
+// La tarifa que regía cuando se emitió la cotización: la versión creada antes de la cotización, que aún no había sido
+// reemplazada en ese momento y cuya vigencia cubría la fecha (en Colombia) de la cotización. La usan el reporte de
+// SCRUM-887 y la alerta de una cotización de SCRUM-866, así ambos evalúan contra la misma referencia.
+const COTIZACIONES_CON_TARIFA = `
+  SELECT cot.id, cot.solicitud_id, cot.version AS cotizacion_version, cot.estado, cot.created_at,
+         (cot.valor_mano_obra + cot.valor_materiales) AS total,
+         s.categoria_id, c.nombre AS categoria_nombre, a.id AS aliado_id, a.nombre_razon_social AS aliado_nombre,
+         t.id AS tarifa_id, t.version AS tarifa_version, t.valor_min, t.valor_tipico, t.valor_max, t.moneda
+  FROM cotizacion cot
+  JOIN solicitud s ON s.id = cot.solicitud_id AND s.tenant_id = cot.tenant_id
+  JOIN categoria_servicio c ON c.id = s.categoria_id AND c.tenant_id = s.tenant_id
+  JOIN aliado a ON a.id = cot.aliado_id AND a.tenant_id = cot.tenant_id
+  LEFT JOIN LATERAL (
+    SELECT tr.* FROM tarifa_referencia tr
+    WHERE tr.tenant_id = cot.tenant_id AND tr.categoria_id = s.categoria_id
+      AND tr.created_at <= cot.created_at
+      AND tr.vigencia_desde <= (cot.created_at AT TIME ZONE 'America/Bogota')::date
+      AND (tr.vigencia_hasta IS NULL OR tr.vigencia_hasta >= (cot.created_at AT TIME ZONE 'America/Bogota')::date)
+      AND NOT EXISTS (
+        SELECT 1 FROM tarifa_referencia sig
+        WHERE sig.reemplaza_id = tr.id AND sig.tenant_id = tr.tenant_id AND sig.created_at <= cot.created_at
+      )
+    ORDER BY tr.version DESC LIMIT 1
+  ) t ON true`;
+
+function toCotizacionConTarifa(r) {
+  return {
+    id: r.id,
+    solicitudId: r.solicitud_id,
+    version: r.cotizacion_version,
+    estado: r.estado,
+    creadaEn: r.created_at,
+    total: Math.round(Number(r.total) * 100) / 100,
+    categoria: { id: r.categoria_id, nombre: r.categoria_nombre },
+    aliado: { id: r.aliado_id, nombre: r.aliado_nombre },
+    tarifa: r.tarifa_id
+      ? {
+          id: r.tarifa_id,
+          version: r.tarifa_version,
+          valorMin: Number(r.valor_min),
+          valorTipico: Number(r.valor_tipico),
+          valorMax: Number(r.valor_max),
+          moneda: r.moneda,
+        }
+      : null,
+  };
+}
+
+const cotizacionNoEncontrada = () => new NotFoundError('MANI-TAR-404Q: cotización no encontrada', 'MANI-TAR-404Q');
 const categoriaNoEncontrada = () =>
   new NotFoundError('MANI-TAR-404C: la categoría no existe en el tenant', 'MANI-TAR-404C');
 const tarifaNoEncontrada = () => new NotFoundError('MANI-TAR-404: tarifa no encontrada', 'MANI-TAR-404');
@@ -191,55 +240,35 @@ class PgTariffRepository extends ITariffRepository {
 
   async cotizacionesConTarifa(ctx, { desde, hasta }) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
-      // La tarifa que regía cuando se emitió la cotización: la versión creada antes de la cotización, que aún no había
-      // sido reemplazada en ese momento y cuya vigencia cubría la fecha (en Colombia) de la cotización.
       const { rows } = await client.query(
-        `SELECT cot.id, cot.solicitud_id, cot.version AS cotizacion_version, cot.estado, cot.created_at,
-                (cot.valor_mano_obra + cot.valor_materiales) AS total,
-                s.categoria_id, c.nombre AS categoria_nombre, a.id AS aliado_id, a.nombre_razon_social AS aliado_nombre,
-                t.id AS tarifa_id, t.version AS tarifa_version, t.valor_min, t.valor_tipico, t.valor_max, t.moneda
-         FROM cotizacion cot
-         JOIN solicitud s ON s.id = cot.solicitud_id AND s.tenant_id = cot.tenant_id
-         JOIN categoria_servicio c ON c.id = s.categoria_id AND c.tenant_id = s.tenant_id
-         JOIN aliado a ON a.id = cot.aliado_id AND a.tenant_id = cot.tenant_id
-         LEFT JOIN LATERAL (
-           SELECT tr.* FROM tarifa_referencia tr
-           WHERE tr.tenant_id = cot.tenant_id AND tr.categoria_id = s.categoria_id
-             AND tr.created_at <= cot.created_at
-             AND tr.vigencia_desde <= (cot.created_at AT TIME ZONE 'America/Bogota')::date
-             AND (tr.vigencia_hasta IS NULL OR tr.vigencia_hasta >= (cot.created_at AT TIME ZONE 'America/Bogota')::date)
-             AND NOT EXISTS (
-               SELECT 1 FROM tarifa_referencia sig
-               WHERE sig.reemplaza_id = tr.id AND sig.tenant_id = tr.tenant_id AND sig.created_at <= cot.created_at
-             )
-           ORDER BY tr.version DESC LIMIT 1
-         ) t ON true
+        `${COTIZACIONES_CON_TARIFA}
          WHERE cot.tenant_id = $1
            AND cot.created_at >= ($2::date::timestamp AT TIME ZONE 'America/Bogota')
            AND cot.created_at < (($3::date + 1)::timestamp AT TIME ZONE 'America/Bogota')
          ORDER BY cot.created_at DESC, cot.id`,
         [ctx.tenantId, desde, hasta]
       );
-      return rows.map((r) => ({
-        id: r.id,
-        solicitudId: r.solicitud_id,
-        version: r.cotizacion_version,
-        estado: r.estado,
-        creadaEn: r.created_at,
-        total: Math.round(Number(r.total) * 100) / 100,
-        categoria: { id: r.categoria_id, nombre: r.categoria_nombre },
-        aliado: { id: r.aliado_id, nombre: r.aliado_nombre },
-        tarifa: r.tarifa_id
-          ? {
-              id: r.tarifa_id,
-              version: r.tarifa_version,
-              valorMin: Number(r.valor_min),
-              valorTipico: Number(r.valor_tipico),
-              valorMax: Number(r.valor_max),
-              moneda: r.moneda,
-            }
-          : null,
-      }));
+      return rows.map(toCotizacionConTarifa);
+    });
+  }
+
+  async cotizacionConTarifa(ctx, { cotizacionId }) {
+    return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
+      const cot = await client.query('SELECT solicitud_id FROM cotizacion WHERE id = $1 AND tenant_id = $2', [
+        cotizacionId,
+        ctx.tenantId,
+      ]);
+      if (cot.rows.length === 0) throw cotizacionNoEncontrada();
+      // SCRUM-866 C3: el cliente dueño y el aliado asignado; el administrador, cualquiera de su tenant. A los demás
+      // se les responde como si no existiera, sin revelar que hay una cotización ajena con ese id.
+      if (ctx.role !== 'ADMIN') {
+        await solicitudVisible(client, ctx, cot.rows[0].solicitud_id, cotizacionNoEncontrada);
+      }
+      const { rows } = await client.query(`${COTIZACIONES_CON_TARIFA} WHERE cot.id = $1 AND cot.tenant_id = $2`, [
+        cotizacionId,
+        ctx.tenantId,
+      ]);
+      return toCotizacionConTarifa(rows[0]);
     });
   }
 }

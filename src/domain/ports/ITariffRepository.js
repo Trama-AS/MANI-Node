@@ -33,6 +33,14 @@ class ITariffRepository {
   async cotizacionesConTarifa(_ctx, _periodo) {
     throw new Error('Método cotizacionesConTarifa() no implementado en ITariffRepository');
   }
+
+  /**
+   * Una cotización visible a la sesión (cliente dueño, aliado asignado o administrador del tenant) con la tarifa que
+   * regía al emitirla, en la misma forma que `cotizacionesConTarifa`. Lanza MANI-TAR-404Q si no la puede ver.
+   */
+  async cotizacionConTarifa(_ctx, _datos) {
+    throw new Error('Método cotizacionConTarifa() no implementado en ITariffRepository');
+  }
 }
 
 module.exports = ITariffRepository;

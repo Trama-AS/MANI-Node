@@ -57,6 +57,19 @@ async function getRequestReferenceTariff(req, res, next) {
   }
 }
 
+async function getQuoteRateEvaluation(req, res, next) {
+  try {
+    const evaluacion = await container.tariffsUseCase.evaluarCotizacion({
+      user: req.user,
+      cotizacionId: req.params.id,
+      correlationId: req.correlationId || null,
+    });
+    res.set('Cache-Control', 'no-store').json({ ...evaluacion, correlationId: correlationOf(req) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getOutOfRangeQuotesReport(req, res, next) {
   try {
     const reporte = await container.tariffsUseCase.reporteFueraDeRango({
@@ -76,5 +89,6 @@ module.exports = {
   listTariffs,
   getTariffHistory,
   getRequestReferenceTariff,
+  getQuoteRateEvaluation,
   getOutOfRangeQuotesReport,
 };
