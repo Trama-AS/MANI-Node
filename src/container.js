@@ -5,6 +5,7 @@ const SupabaseProfileRepository = require('./infrastructure/repositories/Supabas
 const InMemoryCatalogRepository = require('./infrastructure/repositories/InMemoryCatalogRepository');
 const SupabaseCatalogRepository = require('./infrastructure/repositories/SupabaseCatalogRepository');
 const InMemoryZoneRepository = require('./infrastructure/repositories/InMemoryZoneRepository');
+const PgZoneRepository = require('./infrastructure/repositories/PgZoneRepository');
 const SupabaseZoneRepository = require('./infrastructure/repositories/SupabaseZoneRepository');
 const InMemoryUsuarioRepository = require('./infrastructure/repositories/InMemoryUsuarioRepository');
 const InMemoryAliadoRepository = require('./infrastructure/repositories/InMemoryAliadoRepository');
@@ -231,7 +232,13 @@ class Container {
       this.profileRepository = new InMemoryProfileRepository();
       this.tenantRepository = new InMemoryTenantRepository();
       this.catalogRepository = new InMemoryCatalogRepository();
-      this.zoneRepository = new InMemoryZoneRepository();
+      // El catálogo geográfico sí tiene lectura por `pg`: con DATABASE_URL se
+      // leen las zonas y sus límites reales de la base (migración 0036), que es
+      // lo mismo que verá QA. La fixture en memoria dibuja un cuadrado
+      // sintético y solo debe usarse cuando no hay base ninguna (SCRUM-1396).
+      this.zoneRepository = this.pgPoolFactory.isConfigured()
+        ? new PgZoneRepository({ pgPoolFactory: this.pgPoolFactory })
+        : new InMemoryZoneRepository();
       this.usuarioRepository = new InMemoryUsuarioRepository();
       this.aliadoRepository = new InMemoryAliadoRepository();
       this.aliadoCategoriaRepository = new InMemoryAliadoCategoriaRepository();
