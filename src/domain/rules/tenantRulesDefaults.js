@@ -8,6 +8,20 @@ const REGLAS_POR_OMISION = Object.freeze({
 
 const COMISION_MAXIMA = 30;
 
+/**
+ * La columna liquidacion.porcentaje_comision guarda 2 decimales: con más, el porcentaje guardado no cuadraría con la
+ * comisión calculada. Lo usan quien guarda la regla y quien liquida.
+ */
+function comisionValida(valor) {
+  return (
+    typeof valor === 'number' &&
+    Number.isFinite(valor) &&
+    valor >= 0 &&
+    valor <= COMISION_MAXIMA &&
+    Number(valor.toFixed(2)) === valor
+  );
+}
+
 const CRITERIOS_ORDEN_VALIDOS = new Set(['CALIFICACION', 'COBERTURA']);
 
 const esObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -50,13 +64,10 @@ function validarReglasOperativas(reglas, invalidoFn) {
   );
 
   // 3. comision (RNF-10)
-  const comPct = numero(
-    seccion(reglas, 'comision', invalidoFn).porcentaje,
-    0,
-    COMISION_MAXIMA,
-    `comision.porcentaje debe ser un número entre 0 y ${COMISION_MAXIMA}`,
-    invalidoFn
-  );
+  const comPct = seccion(reglas, 'comision', invalidoFn).porcentaje;
+  if (!comisionValida(comPct)) {
+    throw invalidoFn(`comision.porcentaje debe ser un número entre 0 y ${COMISION_MAXIMA}, con máximo 2 decimales`);
+  }
 
   // 4. cancelacion (RNF-10)
   const canc = seccion(reglas, 'cancelacion', invalidoFn);
@@ -93,6 +104,7 @@ function validarReglasOperativas(reglas, invalidoFn) {
 
 module.exports = {
   COMISION_MAXIMA,
+  comisionValida,
   REGLAS_POR_OMISION,
   CRITERIOS_ORDEN_VALIDOS,
   validarReglasOperativas

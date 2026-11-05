@@ -194,7 +194,7 @@ test('PG 893: la regla de otro tenant no cambia la comisión; una regla en 0 % n
 
 test('PG 893 C2: una comisión inválida en la regla bloquea la liquidación y la retención sigue RETENIDA', opts, async (t) => {
   const e = await entorno(t);
-  for (const invalida of [{ comision: { porcentaje: 30.01 } }, { comision: { porcentaje: -1 } }, { comision: { porcentaje: 'abc' } }, { comision: {} }, { comision: null }]) {
+  for (const invalida of [{ comision: { porcentaje: 30.01 } }, { comision: { porcentaje: 10.555 } }, { comision: { porcentaje: -1 } }, { comision: { porcentaje: 'abc' } }, { comision: {} }, { comision: null }]) {
     const s = await sembrar(e.pool);
     await guardarRegla(e.pool, s, invalida);
     const { pago: p } = await e.pagos.registrar(s.cliente.ctx, pago(s));

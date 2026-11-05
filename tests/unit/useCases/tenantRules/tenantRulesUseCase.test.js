@@ -133,6 +133,12 @@ test('C2: Rechaza reglas con criterios inválidos o fuera de rango con 400 sin a
     /MANI-RGL-400/
   );
 
+  // Comisión con más de 2 decimales: la liquidación solo guarda 2 y el desglose no cuadraría
+  await assert.rejects(
+    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, comision: { porcentaje: 10.555 } } } }),
+    /MANI-RGL-400/
+  );
+
   // Penalización > 0 con ventana = 0
   await assert.rejects(
     () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, cancelacion: { ventanaHoras: 0, penalizacionPorcentaje: 20 } } } }),
