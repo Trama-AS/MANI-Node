@@ -7,8 +7,9 @@ const ACTIVE_STATES = new Set(['ACTIVE', 'ACTIVO']);
  * Solicitud de recuperación de contraseña (HU-M02-10, RF-04). Pre-autenticación: el tenant se resuelve por
  * X-Tenant-Slug (ADR-0018) y la contraseña la gestiona el proveedor de identidad; Core solo orquesta.
  *
- * No revela si el correo está registrado: con o sin cuenta (o con la cuenta inactiva, o con el envío limitado por el
- * proveedor) el resultado es el mismo y el correo solo sale cuando la cuenta existe y está activa en ese tenant.
+ * No revela si el correo está registrado: con o sin cuenta (o con la cuenta inactiva, o con el envío limitado o
+ * fallido en el proveedor) el resultado es el mismo y el correo solo sale cuando la cuenta existe y está activa en
+ * ese tenant.
  */
 class RequestPasswordRecoveryUseCase {
   constructor({
@@ -41,14 +42,16 @@ class RequestPasswordRecoveryUseCase {
     const eligible = Boolean(usuario) && ACTIVE_STATES.has(String(usuario.estado).toUpperCase());
 
     let limitado = false;
+    let errorProveedor = null;
     if (eligible) {
       try {
         await this.authIdentityService.requestPasswordRecovery({ email: cleanEmail, redirectTo: this.redirectTo });
       } catch (err) {
-        // El proveedor solo limita los envíos de cuentas que existen; responder 429 delataría qué correos están
-        // registrados. Se audita y se responde igual que en los demás casos. Cualquier otro fallo sí se propaga.
-        if (err?.code !== 'RATE_LIMITED') throw err;
+        // El proveedor solo intenta el envío con cuentas que existen: cualquier fallo suyo (límite, dominio
+        // rechazado, SMTP caído) respondido distinto delataría qué correos están registrados (C3 de SCRUM-1378). Se
+        // audita con su código y se responde igual que en los demás casos.
         limitado = true;
+        errorProveedor = err?.code || 'DESCONOCIDO';
       }
     }
 
@@ -59,6 +62,7 @@ class RequestPasswordRecoveryUseCase {
       usuario_id: eligible ? usuario.id : null,
       correo_enviado: eligible && !limitado,
       limitado_por_proveedor: limitado,
+      error_proveedor: errorProveedor,
       correlation_id: correlationId,
     });
 

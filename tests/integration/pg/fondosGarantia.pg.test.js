@@ -256,3 +256,29 @@ test('PG RLS: sin contexto de tenant mani_core_svc no ve filas; la liquidación 
   await assert.rejects(e.corePool.query('DELETE FROM retencion_fondos'), (err) => err.code === '42501');
   await assert.rejects(e.pool.query('UPDATE liquidacion SET comision = comision + 1'), (err) => err.code === '23514', 'bruto = comisión + neto');
 });
+
+test('PG 892: un pago aprobado sobre una solicitud ya finalizada o cerrada libera y liquida al registrarse', opts, async (t) => {
+  const e = await entorno(t);
+  for (const estado of ['FINALIZADA', 'CERRADA']) {
+    const s = await sembrar(e.pool);
+    await e.pool.query('UPDATE solicitud SET estado = $1 WHERE id = $2', [estado, s.solicitud]);
+
+    const { pago: p } = await e.pagos.registrar(s.cliente.ctx, pago(s));
+
+    const ret = await e.funds.retencion({ user: s.cliente.ctx, pagoId: p.id });
+    assert.equal(ret.estado, 'LIBERADA', estado);
+    assert.ok(ret.liberadaEn);
+    const liq = await filas(e.pool, 'SELECT monto_bruto, comision, monto_neto FROM liquidacion WHERE pago_id = $1', [p.id]);
+    assert.equal(liq.length, 1, estado);
+    assert.deepEqual([Number(liq[0].monto_bruto), Number(liq[0].comision), Number(liq[0].monto_neto)], [150000.5, 15000.05, 135000.45]);
+  }
+});
+
+test('PG 892 C2: un pago rechazado sobre una solicitud finalizada no libera ni liquida', opts, async (t) => {
+  const e = await entorno(t);
+  const s = await sembrar(e.pool);
+  await e.pool.query("UPDATE solicitud SET estado = 'FINALIZADA' WHERE id = $1", [s.solicitud]);
+  const { pago: p } = await e.pagos.registrar(s.cliente.ctx, pago(s, { estado: 'RECHAZADO', motivo: 'x' }));
+  assert.equal((await filas(e.pool, 'SELECT 1 FROM retencion_fondos WHERE pago_id = $1', [p.id])).length, 0);
+  assert.equal((await filas(e.pool, 'SELECT 1 FROM liquidacion WHERE solicitud_id = $1', [s.solicitud])).length, 0);
+});
