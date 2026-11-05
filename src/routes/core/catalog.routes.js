@@ -27,5 +27,8 @@ router.patch('/catalog/categories/:id/deactivate', authenticate, requireAdmin, c
 // porque es la única forma de no confiar en un tenant enviado por el cliente.
 router.get('/catalog/zones', authenticate, catalogController.listZoneCatalog);
 router.get('/catalog/zones/:id', authenticate, catalogController.getZone);
+// Va en `/catalog/geometrias` y no en `/catalog/zones/geometrias` para no
+// chocar con `/catalog/zones/:id`, que capturaría «geometrias» como id.
+router.get('/catalog/geometrias', authenticate, catalogController.getZoneGeometries);
 
 module.exports = router;

@@ -50,14 +50,46 @@ const FIXTURES = [
   },
 ];
 
+// Geometría de DEV. **No son límites reales**: es un cuadrado sintético de
+// cuatro vértices alrededor de Chicó Norte, suficiente para ejercitar el
+// contrato y el dibujo sin depender de la base. Los límites reales viven en
+// `supabase/seed/geometrias/` de MANI-APIGateway y los carga DevOps; esta
+// fixture nunca debe llegar a QA ni a producción (SCRUM-1396).
+//
+// Solo una de las zonas tiene geometría, a propósito: así el caso de uso
+// tiene que distinguir «zona sin geometría» de «zona inexistente», que es lo
+// que pide C2.
+const GEOMETRY_FIXTURES = [
+  {
+    zoneId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-74.0520, 4.6760],
+        [-74.0420, 4.6760],
+        [-74.0420, 4.6820],
+        [-74.0520, 4.6820],
+        [-74.0520, 4.6760],
+      ]],
+    },
+    source: 'FIXTURE DE DESARROLLO — no es un límite real',
+    sourceCode: null,
+    licence: 'N/A',
+    attribution: 'Geometría sintética de desarrollo',
+    sourceDate: null,
+    updatedAt: '2026-11-03T00:00:00.000Z',
+  },
+];
+
 function byLevelThenName(a, b) {
   return a.level.localeCompare(b.level) || a.name.localeCompare(b.name);
 }
 
 class InMemoryZoneRepository extends IZoneRepository {
-  constructor(seed = FIXTURES) {
+  constructor(seed = FIXTURES, geometrySeed = GEOMETRY_FIXTURES) {
     super();
     this.zones = seed.map((z) => new Zone(z));
+    this.geometries = geometrySeed.map((g) => ({ ...g }));
   }
 
   async findAll({ onlyActive = false } = {}) {
@@ -68,7 +100,14 @@ class InMemoryZoneRepository extends IZoneRepository {
   async findById(zoneId) {
     return this.zones.find((z) => z.id === zoneId) ?? null;
   }
+
+  async findGeometriesByZoneIds(zoneIds) {
+    if (!Array.isArray(zoneIds) || zoneIds.length === 0) return [];
+    const pedidas = new Set(zoneIds);
+    return this.geometries.filter((g) => pedidas.has(g.zoneId));
+  }
 }
 
 module.exports = InMemoryZoneRepository;
 module.exports.FIXTURES = FIXTURES;
+module.exports.GEOMETRY_FIXTURES = GEOMETRY_FIXTURES;

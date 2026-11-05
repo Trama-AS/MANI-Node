@@ -22,6 +22,26 @@ class IZoneRepository {
   async findById(_zoneId) {
     throw new Error('Método findById() no implementado en IZoneRepository');
   }
+
+  /**
+   * Límites geográficos de las zonas pedidas, como GeoJSON (SCRUM-1396).
+   *
+   * Va en una consulta aparte y no en `findAll` porque la geometría es
+   * opcional y pesada: el catálogo se lee en cada listado y formulario, y
+   * arrastrarla ahí degradaría respuestas que ya están validadas.
+   *
+   * Devuelve solo las zonas que tienen geometría. Las que no la tienen se
+   * omiten, y distinguir «sin geometría» de «zona inexistente» le
+   * corresponde al caso de uso, que sí conoce el catálogo (criterio C2).
+   *
+   * @param {string[]} _zoneIds
+   * @returns {Promise<Array<{zoneId: string, geometry: object, source: string,
+   *   sourceCode: string|null, licence: string, attribution: string,
+   *   sourceDate: string|null, updatedAt: string}>>}
+   */
+  async findGeometriesByZoneIds(_zoneIds) {
+    throw new Error('Método findGeometriesByZoneIds() no implementado en IZoneRepository');
+  }
 }
 
 module.exports = IZoneRepository;

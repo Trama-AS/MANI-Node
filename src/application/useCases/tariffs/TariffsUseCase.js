@@ -47,6 +47,7 @@ function tarifaValida(body = {}) {
  *   * SCRUM-885: el administrador del tenant carga, edita (versión nueva), consulta y ve el historial.
  *   * SCRUM-886: el cliente dueño y el aliado asignado ven la tarifa vigente de la categoría al cotizar.
  *   * SCRUM-887: el administrador ve las cotizaciones del periodo que Rules evaluó fuera de rango.
+ *   * SCRUM-866: el cliente dueño y el aliado asignado ven si una cotización quedó fuera del rango (alerta bidireccional).
  */
 class TariffsUseCase {
   constructor({ tariffRepository, ruleEvaluationService }) {
@@ -85,6 +86,40 @@ class TariffsUseCase {
       solicitudId: uuid(solicitudId, 'el id de la solicitud'),
       fecha: hoyEnBogota(),
     });
+  }
+
+  /**
+   * SCRUM-866 (HU-M06-02, RF-16): evalúa una cotización contra la tarifa que regía al emitirla, con Rules real.
+   *   * C1: fuera de banda devuelve `alerta: true` con la referencia y el motivo; dentro de banda, `alerta: false`.
+   *   * C2: sin tarifa se dice `SIN_TARIFA` sin llamar a Rules; si Rules falla, el 503 sube tal cual (T2). Nunca se
+   *     inventa un resultado ni se toca la cotización: esta consulta solo lee.
+   *   * C3: solo el cliente dueño, el aliado asignado y el administrador del tenant del JWT.
+   */
+  async evaluarCotizacion({ user, cotizacionId, correlationId = null }) {
+    const ctx = sesion(user, ['CLIENT', 'ALLY', 'ADMIN'], 'tu rol no consulta la evaluación de cotizaciones');
+    const c = await this.tariffRepository.cotizacionConTarifa(ctx, {
+      cotizacionId: uuid(cotizacionId, 'el id de la cotización'),
+    });
+    const base = { cotizacionId: c.id, solicitudId: c.solicitudId, version: c.version, total: c.total };
+    if (!c.tarifa) {
+      return { ...base, resultado: 'SIN_TARIFA', alerta: false, desviacionPorcentaje: null, tarifa: null, reglasVersion: null };
+    }
+
+    const { version, resultados } = await this.ruleEvaluationService.evaluateRates({
+      tenantId: ctx.tenantId,
+      role: ctx.role,
+      correlationId,
+      items: [{ id: c.id, total: c.total, valorMin: c.tarifa.valorMin, valorTipico: c.tarifa.valorTipico, valorMax: c.tarifa.valorMax }],
+    });
+    const r = resultados[0];
+    return {
+      ...base,
+      resultado: r.resultado,
+      alerta: r.resultado !== 'DENTRO_DE_RANGO',
+      desviacionPorcentaje: r.desviacionPorcentaje,
+      tarifa: c.tarifa,
+      reglasVersion: version,
+    };
   }
 
   async reporteFueraDeRango({ user, query = {}, correlationId = null }) {
