@@ -1,15 +1,23 @@
+const { COMISION_MAXIMA, REGLAS_POR_OMISION } = require('../../domain/rules/tenantRulesDefaults');
 const { registrarPagoEnBitacora } = require('./bitacoraPago');
 
-// Supuesto de la comisión mientras la PO no configure otra: 10 % (SCRUM-893). Se puede cambiar por tenant.
-const COMISION_POR_DEFECTO = 10;
+// La comisión tiene una sola fuente: las reglas del tenant (SCRUM-1366). Sin reglas guardadas rige el valor por omisión.
+const COMISION_POR_DEFECTO = REGLAS_POR_OMISION.comision.porcentaje;
 
 const aCentavos = (valor) => Math.round(Number(valor) * 100);
 const aPesos = (centavos) => centavos / 100;
 
-/** Porcentaje vigente del tenant, o el valor por defecto si no se configuró. */
+/**
+ * Porcentaje de la regla VIGENTE del tenant, o el valor por omisión si no tiene reglas guardadas. Una regla sin
+ * porcentaje da NaN, no 0: quien liquida la trata como inválida y no cobra una comisión que nadie configuró.
+ */
 async function comisionVigente(client, tenantId) {
-  const { rows } = await client.query('SELECT porcentaje FROM comision_tenant WHERE tenant_id = $1', [tenantId]);
-  return rows.length === 0 ? COMISION_POR_DEFECTO : Number(rows[0].porcentaje);
+  const { rows } = await client.query(
+    "SELECT reglas -> 'comision' ->> 'porcentaje' AS porcentaje FROM regla_tenant WHERE tenant_id = $1 AND estado = 'VIGENTE'",
+    [tenantId]
+  );
+  if (rows.length === 0) return COMISION_POR_DEFECTO;
+  return rows[0].porcentaje === null ? NaN : Number(rows[0].porcentaje);
 }
 
 /** Descuenta la comisión en centavos, sin errores de punto flotante: bruto = comisión + neto. */
@@ -59,9 +67,9 @@ async function liberarYLiquidar(client, ctx, solicitudId) {
   const liquidaciones = [];
   for (const ret of rows) {
     const porcentaje = await comisionVigente(client, ctx.tenantId);
-    // Una configuración fuera de 0 a 100 no debería existir (la tabla lo impide); si apareciera, no se liquida y la
+    // Una regla fuera de rango no debería existir (se valida al guardarla); si apareciera, no se liquida y la
     // retención se queda retenida, en lugar de liberar con un cálculo inválido (C2 de 893).
-    if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) continue;
+    if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > COMISION_MAXIMA) continue;
 
     await client.query(
       "UPDATE retencion_fondos SET estado = 'LIBERADA', liberada_at = now() WHERE id = $1 AND tenant_id = $2",

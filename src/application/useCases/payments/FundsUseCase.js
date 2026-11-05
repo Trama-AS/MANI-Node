@@ -1,4 +1,4 @@
-const { DomainError, ForbiddenError, UnauthorizedError } = require('../../../domain/errors/DomainError');
+const { ForbiddenError, UnauthorizedError } = require('../../../domain/errors/DomainError');
 const { UUID_RE, contextoDeSesion, uuidValido } = require('./paymentAccess');
 
 function contextoDeRol(user, rol, mensaje, codigo) {
@@ -36,21 +36,6 @@ class FundsUseCase {
     return this.fondosRepository.obtenerComision(
       contextoDeRol(user, 'ADMIN', 'solo el administrador del tenant consulta la comisión', 'MANI-FON-403')
     );
-  }
-
-  /** Fija la comisión del tenant. Un valor fuera de 0 a 100 se rechaza y no cambia nada (C2 de 893). */
-  async fijarComision({ user, body = {} }) {
-    const ctx = contextoDeRol(user, 'ADMIN', 'solo el administrador del tenant configura la comisión', 'MANI-FON-403');
-    const crudo = body.porcentaje;
-    const porcentaje = typeof crudo === 'string' && crudo.trim() !== '' ? Number(crudo) : crudo;
-    if (typeof porcentaje !== 'number' || !Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
-      throw new DomainError('MANI-FON-422: el porcentaje de comisión debe ser un número entre 0 y 100', 'MANI-FON-422', 422);
-    }
-    // Hasta dos decimales, como la columna: no se redondea en silencio un valor que el usuario escribió.
-    if (Math.round(porcentaje * 100) / 100 !== porcentaje) {
-      throw new DomainError('MANI-FON-422: el porcentaje admite hasta dos decimales', 'MANI-FON-422', 422);
-    }
-    return this.fondosRepository.fijarComision(ctx, porcentaje);
   }
 }
 
