@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgServiceRequestRepository = require('../../../src/infrastructure/repositories/PgServiceRequestRepository');
 
 const url = process.env.TEST_DATABASE_URL;
@@ -53,9 +54,11 @@ const eventosDe = async (pool, id) =>
 
 test('PG cancelación: el cliente cancela antes de la ejecución, queda persistido y el aliado asignado recibe el aviso', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceRequestRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceRequestRepository({ pgPoolFactory: core });
 
   const s = await seedTenant(pool);
   const ana = await addCliente(pool, s);
@@ -91,9 +94,11 @@ test('PG cancelación: el cliente cancela antes de la ejecución, queda persisti
 
 test('PG cancelación: ni otro cliente del tenant ni otro tenant pueden cancelar la solicitud ajena (C3)', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceRequestRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceRequestRepository({ pgPoolFactory: core });
 
   const s = await seedTenant(pool);
   const ana = await addCliente(pool, s);

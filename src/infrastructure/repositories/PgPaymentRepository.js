@@ -3,7 +3,7 @@ const { ConflictError, ForbiddenError, NotFoundError } = require('../../domain/e
 const { runInTenantContext } = require('../db/runInTenantContext');
 const { clienteActivoDeSesion } = require('./sesionActores');
 const { registrarEventoTransaccion } = require('./transaccionEvento');
-const { retenerPago } = require('./fondosEnGarantia');
+const { retenerPago, liberarYLiquidar } = require('./fondosEnGarantia');
 const { construirPagoRegistrado } = require('../../domain/events/pagoRegistrado');
 const { escribirEnOutbox } = require('../events/outboxEventos');
 const { ADICIONES_ACEPTADAS_SQL } = require('./totalVigente');
@@ -123,7 +123,19 @@ class PgPaymentRepository extends IPaymentRepository {
           correlationId: datos.correlationId,
         });
         // SCRUM-891: un pago aprobado retiene su monto en garantía, en la misma transacción.
-        await retenerPago(client, ctx, pago);
+        const retencionId = await retenerPago(client, ctx, pago);
+        // SCRUM-892: si el cliente paga cuando el servicio ya terminó, la condición de cierre ya se cumplió y no habrá
+        // otra transición a FINALIZADA que libere la retención: se libera y liquida aquí, en la misma transacción.
+        if (retencionId) {
+          const { rows: sol } = await client.query(
+            `SELECT s.id, s.estado FROM solicitud s JOIN cotizacion c ON c.solicitud_id = s.id AND c.tenant_id = s.tenant_id
+             WHERE c.id = $1 AND c.tenant_id = $2`,
+            [datos.cotizacionId, ctx.tenantId]
+          );
+          if (sol.length > 0 && ['FINALIZADA', 'CERRADA'].includes(sol[0].estado)) {
+            await liberarYLiquidar(client, ctx, sol[0].id);
+          }
+        }
         // SCRUM-889: el evento `PagoRegistrado` va al outbox en la misma transacción (ADR-0029); el relay lo publica.
         const { rows: agregados } = await client.query(
           'SELECT solicitud_id, aliado_id FROM cotizacion WHERE id = $1 AND tenant_id = $2',

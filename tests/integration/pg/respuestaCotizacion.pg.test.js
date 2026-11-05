@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgQuoteRepository = require('../../../src/infrastructure/repositories/PgQuoteRepository');
 const { DECISIONES } = require('../../../src/application/useCases/quotes/RespondQuoteUseCase');
 
@@ -47,9 +48,11 @@ const decidir = (repo, ctx, cotizacionId, accion, detalle = '') =>
 
 test('PG respuesta: ajuste → nueva versión → aceptación, con evento y aviso al aliado', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgQuoteRepository({ pgPoolFactory: factory });
+  const repo = new PgQuoteRepository({ pgPoolFactory: core });
   const s = await seed(pool);
   const aliado = { tenantId: s.tenant, userId: s.usuarioAliado, role: 'ALLY' };
   const cliente = { tenantId: s.tenant, userId: s.usuarioCliente, role: 'CLIENT' };
@@ -91,9 +94,11 @@ test('PG respuesta: ajuste → nueva versión → aceptación, con evento y avis
 
 test('PG respuesta: el rechazo cierra la solicitud y otro tenant no puede responder', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgQuoteRepository({ pgPoolFactory: factory });
+  const repo = new PgQuoteRepository({ pgPoolFactory: core });
   const s = await seed(pool);
   const otro = await seed(pool);
   const v1 = await repo.emitir(

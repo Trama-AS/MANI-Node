@@ -4,18 +4,42 @@ const PostgresSiteRepository = require('../../../src/infrastructure/repositories
 const Site = require('../../../src/domain/entities/Site');
 const SiteRules = require('../../../src/domain/entities/SiteRules');
 
+const CONTROL = /^(BEGIN|COMMIT|ROLLBACK)$/;
+
+/**
+ * Pool falso con transacciones (SCRUM-1468: cada consulta corre en una transacción con app.set_context).
+ * `queries` guarda solo las sentencias de datos; `todas` también BEGIN/COMMIT/ROLLBACK; `contextos`, los parámetros
+ * de cada app.set_context.
+ */
 function createMockPgPool(queryHandler) {
   const queries = [];
-  const mockPool = {
+  const todas = [];
+  const contextos = [];
+  let clientReleased = false;
+
+  const mockClient = {
     query: async (sql, params) => {
+      const texto = sql.trim();
+      if (texto.startsWith('SELECT app.set_context')) {
+        contextos.push(params);
+        return { rows: [] };
+      }
+      todas.push({ sql, params });
+      if (CONTROL.test(texto)) return { rows: [] };
       queries.push({ sql, params });
       if (queryHandler) {
         return queryHandler(sql, params);
       }
       return { rows: [] };
     },
+    release: () => {
+      clientReleased = true;
+    },
   };
-  return { mockPool, queries };
+
+  const mockPool = { connect: async () => mockClient };
+
+  return { mockPool, queries, todas, contextos, isClientReleased: () => clientReleased };
 }
 
 describe('PostgresSiteRepository (SQL Path Coverage)', () => {
@@ -23,21 +47,21 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
     const { mockPool, queries } = createMockPgPool(() => ({ rows: [{ '?column?': 1 }] }));
     const repo = new PostgresSiteRepository({ pgPool: mockPool });
 
-    const resultado = await repo.hasRequestInSite('sitio-1', 'tenant-1', ['sol-1', 'sol-2']);
+    const resultado = await repo.hasRequestInSite('sitio-1', '11111111-1111-4111-8111-111111111111', ['sol-1', 'sol-2']);
 
     assert.equal(resultado, true);
     assert.equal(queries.length, 1);
     assert.match(queries[0].sql, /FROM solicitud/);
     assert.match(queries[0].sql, /tenant_id = \$1 AND sitio_id = \$2 AND id = ANY\(\$3::uuid\[\]\)/);
-    assert.deepEqual(queries[0].params, ['tenant-1', 'sitio-1', ['sol-1', 'sol-2']]);
+    assert.deepEqual(queries[0].params, ['11111111-1111-4111-8111-111111111111', 'sitio-1', ['sol-1', 'sol-2']]);
   });
 
   it('hasRequestInSite sin solicitudes no consulta la base y responde false', async () => {
     const { mockPool, queries } = createMockPgPool();
     const repo = new PostgresSiteRepository({ pgPool: mockPool });
 
-    assert.equal(await repo.hasRequestInSite('sitio-1', 'tenant-1', []), false);
-    assert.equal(await repo.hasRequestInSite('sitio-1', 'tenant-1', undefined), false);
+    assert.equal(await repo.hasRequestInSite('sitio-1', '11111111-1111-4111-8111-111111111111', []), false);
+    assert.equal(await repo.hasRequestInSite('sitio-1', '11111111-1111-4111-8111-111111111111', undefined), false);
     assert.equal(queries.length, 0);
   });
 
@@ -45,7 +69,7 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
     const { mockPool } = createMockPgPool(() => ({ rows: [] }));
     const repo = new PostgresSiteRepository({ pgPool: mockPool });
 
-    assert.equal(await repo.hasRequestInSite('sitio-1', 'tenant-1', ['sol-otra']), false);
+    assert.equal(await repo.hasRequestInSite('sitio-1', '11111111-1111-4111-8111-111111111111', ['sol-otra']), false);
   });
 
   it('findById consulta con siteId y tenantId y mapea a Site con SiteRules', async () => {
@@ -70,7 +94,7 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
     });
 
     const repo = new PostgresSiteRepository({ pgPool: mockPool });
-    const site = await repo.findById('site-1', 'tenant-1');
+    const site = await repo.findById('site-1', '11111111-1111-4111-8111-111111111111');
 
     assert.ok(site);
     assert.strictEqual(site.id, 'site-1');
@@ -78,7 +102,7 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
     assert.ok(site.reglas instanceof SiteRules);
     assert.strictEqual(site.reglas.horario.inicio, '08:00');
     assert.strictEqual(queries[0].params[0], 'site-1');
-    assert.strictEqual(queries[0].params[1], 'tenant-1');
+    assert.strictEqual(queries[0].params[1], '11111111-1111-4111-8111-111111111111');
   });
 
   it('updateRules actualiza reglas JSONB en PostgreSQL y retorna entidad actualizada', async () => {
@@ -108,13 +132,13 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
       permisosRequeridos: ['ARL'],
     });
 
-    const updated = await repo.updateRules('site-1', 'tenant-1', newRules);
+    const updated = await repo.updateRules('site-1', '11111111-1111-4111-8111-111111111111', newRules);
 
     assert.ok(updated);
     assert.strictEqual(updated.id, 'site-1');
     assert.ok(/UPDATE\s+sitio\s+SET\s+reglas\s*=\s*\$1::jsonb/i.test(queries[0].sql));
     assert.strictEqual(queries[0].params[1], 'site-1');
-    assert.strictEqual(queries[0].params[2], 'tenant-1');
+    assert.strictEqual(queries[0].params[2], '11111111-1111-4111-8111-111111111111');
   });
 
   it('create inserta una nueva fila en tabla sitio', async () => {
@@ -138,7 +162,7 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
     const repo = new PostgresSiteRepository({ pgPool: mockPool });
     const site = new Site({
       id: 'site-nuevo-1',
-      tenantId: 'tenant-1',
+      tenantId: '11111111-1111-4111-8111-111111111111',
       clienteId: 'client-1',
       zonaId: 'zona-1',
       direccion: 'Carrera 7 # 32-10',
@@ -150,8 +174,8 @@ describe('PostgresSiteRepository (SQL Path Coverage)', () => {
     assert.ok(queries[0].sql.includes('INSERT INTO sitio'));
   });
 
-  it('lanza DomainError si no hay pool configurado', () => {
+  it('lanza DomainError si no hay pool configurado', async () => {
     const repo = new PostgresSiteRepository({});
-    assert.throws(() => repo._getPool(), /DATABASE_URL no configurada/);
+    await assert.rejects(() => repo.findById('s', '11111111-1111-4111-8111-111111111111'), /DATABASE_URL no configurada/);
   });
 });

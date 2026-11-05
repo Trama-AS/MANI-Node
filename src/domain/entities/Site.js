@@ -30,6 +30,8 @@ class Site {
     contactoNombre = null,
     contactoTelefono = null,
     reglas = null,
+    latitud = null,
+    longitud = null,
     creadoEn = new Date(),
   }) {
     this.id = id;
@@ -41,7 +43,29 @@ class Site {
     this.contactoNombre = contactoNombre ? contactoNombre.trim() : null;
     this.contactoTelefono = contactoTelefono ? contactoTelefono.trim() : null;
     this.reglas = reglas && typeof reglas === 'object' ? reglas : null;
+    // Ubicación declarada de la sede, para la visualización cartográfica
+    // (HU-M04-07). Las dos van juntas o ninguna: un punto a medias no se
+    // puede dibujar y esconde un error de captura. Una sede sin coordenadas
+    // no se completa a partir de la dirección ni del centroide de su zona.
+    this.latitud = Site.#aCoordenada(latitud);
+    this.longitud = Site.#aCoordenada(longitud);
+    if (this.latitud === null || this.longitud === null) {
+      this.latitud = null;
+      this.longitud = null;
+    }
     this.creadoEn = creadoEn;
+  }
+
+  static #aCoordenada(valor) {
+    if (valor === null || valor === undefined || valor === '') return null;
+    // PostgreSQL devuelve `numeric` como cadena, así que se normaliza acá.
+    const n = typeof valor === 'number' ? valor : Number(valor);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** `true` si la sede se puede ubicar en un mapa. */
+  tieneCoordenadas() {
+    return this.latitud !== null && this.longitud !== null;
   }
 
   get clientId() {
@@ -62,6 +86,14 @@ class Site {
     if (!this.zonaId) {
       throw new ValidationError('zonaId es requerida (RF-09: todo sitio debe pertenecer a una zona del catálogo)', 'VALIDATION_ERROR');
     }
+    // Rangos de WGS84. No se valida que el punto caiga en Colombia: el
+    // catálogo es de plataforma y un tenant podría operar en otro país.
+    if (this.latitud !== null && (this.latitud < -90 || this.latitud > 90)) {
+      throw new ValidationError('latitud debe estar entre -90 y 90', 'VALIDATION_ERROR');
+    }
+    if (this.longitud !== null && (this.longitud < -180 || this.longitud > 180)) {
+      throw new ValidationError('longitud debe estar entre -180 y 180', 'VALIDATION_ERROR');
+    }
     return true;
   }
 
@@ -76,6 +108,8 @@ class Site {
       contactoNombre: this.contactoNombre,
       contactoTelefono: this.contactoTelefono,
       reglas: this.reglas,
+      latitud: this.latitud,
+      longitud: this.longitud,
       creadoEn: this.creadoEn,
     };
   }

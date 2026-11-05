@@ -97,12 +97,27 @@ test('solicitud: el límite de envíos del proveedor no delata la cuenta: se res
   assert.equal(calls.audit[0].limitado_por_proveedor, true);
 });
 
-test('solicitud: cualquier otro fallo del proveedor se propaga (no se oculta como éxito)', async () => {
-  const { deps } = setup();
-  deps.authIdentityService.requestPasswordRecovery = async () => {
-    throw Object.assign(new Error('x'), { statusCode: 500, code: 'INTERNAL_ERROR' });
-  };
-  await assert.rejects(() => new RequestPasswordRecoveryUseCase(deps).execute({ tenantSlug: 'acme', email: 'a@mani.test' }), (e) => e.code === 'INTERNAL_ERROR');
+test('solicitud: cualquier fallo del proveedor responde igual que una cuenta inexistente y se audita (C3 de SCRUM-1378)', async () => {
+  const fallos = [
+    { statusCode: 500, code: 'INTERNAL_ERROR' },
+    { statusCode: 400, code: 'email_address_invalid' },
+    { statusCode: 429, code: 'RATE_LIMITED' },
+    {},
+  ];
+  const { deps: sinCuenta } = setup({ usuario: null });
+  const esperado = await new RequestPasswordRecoveryUseCase(sinCuenta).execute({ tenantSlug: 'acme', email: 'a@mani.test' });
+
+  for (const fallo of fallos) {
+    const { deps, calls } = setup();
+    deps.authIdentityService.requestPasswordRecovery = async () => {
+      throw Object.assign(new Error('x'), fallo);
+    };
+    const result = await new RequestPasswordRecoveryUseCase(deps).execute({ tenantSlug: 'acme', email: 'a@mani.test' });
+
+    assert.deepEqual(result, esperado, 'la respuesta no distingue cuenta existente de inexistente');
+    assert.equal(calls.audit[0].correo_enviado, false);
+    assert.equal(calls.audit[0].error_proveedor, fallo.code || 'DESCONOCIDO');
+  }
 });
 
 // ---- restablecimiento ----
@@ -153,4 +168,22 @@ test('restablecer: valida slug, token y contraseña (mínimo 8) antes de tocar n
   }
   assert.equal(calls.lookups.length, 0);
   assert.equal(calls.update.length, 0);
+});
+
+test('restablecer: el enlace sirve una sola vez; el segundo uso con el mismo token responde INVALID_RECOVERY_TOKEN (C3 de SCRUM-1618)', async () => {
+  const InMemoryAuthIdentityService = require('../../../../src/infrastructure/security/InMemoryAuthIdentityService');
+  const identidad = new InMemoryAuthIdentityService({ jwtSecret: 'secreto-de-prueba' });
+  const { userId } = await identidad.createUser({ tenantId: 'tenant-1', email: 'ana@mani.test', password: 'ClaveVieja123', role: 'CLIENTE' });
+  const { deps } = setup({ usuario: { id: userId, estado: 'ACTIVO' } });
+  deps.authIdentityService = identidad;
+
+  await new RequestPasswordRecoveryUseCase(deps).execute({ tenantSlug: 'acme', email: 'ana@mani.test' });
+  const { token } = identidad.sentRecoveries[0];
+  const uc = new ResetPasswordUseCase(deps);
+
+  assert.deepEqual(await reset(uc, { accessToken: token }), { reset: true });
+  await assert.rejects(
+    () => reset(uc, { accessToken: token, newPassword: 'OtraClave45678' }),
+    (e) => e.statusCode === 401 && e.code === 'INVALID_RECOVERY_TOKEN'
+  );
 });

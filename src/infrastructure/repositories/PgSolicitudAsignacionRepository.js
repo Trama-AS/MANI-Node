@@ -38,12 +38,16 @@ const OFERTA_SQL = `
 
 // Misma forma que `_sol_json` de la RPC 005, en camelCase: la dirección y la fecha de asignación solo se ven
 // cuando la solicitud es del aliado.
+// SCRUM-1388 (C3): en la oferta el aliado ve solo los requisitos del sitio (horario, permisos, protección);
+// el contacto de acceso y las instrucciones de ingreso se quitan hasta que la solicitud sea suya.
 const BANDEJA_SQL = `
   SELECT s.id, s.estado, (s.aliado_id IS NOT DISTINCT FROM $3) AS es_mia,
          c.nombre AS categoria, c.flujo_operativo, s.descripcion,
          (SELECT count(*)::int FROM solicitud_foto f WHERE f.solicitud_id = s.id AND f.tenant_id = s.tenant_id) AS fotos,
          z.nombre AS zona, zp.nombre AS zona_padre,
-         COALESCE(si.reglas, '{}'::jsonb) AS reglas_sitio,
+         CASE WHEN s.aliado_id = $3 THEN COALESCE(si.reglas, '{}'::jsonb)
+              ELSE COALESCE(si.reglas, '{}'::jsonb) - 'contactoAcceso' - 'instruccionesIngreso'
+         END AS reglas_sitio,
          CASE WHEN s.aliado_id = $3 THEN si.direccion END AS direccion,
          s.created_at,
          CASE WHEN s.aliado_id = $3 THEN s.updated_at END AS asignada_at

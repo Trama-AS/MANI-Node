@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgServiceRequestRepository = require('../../../src/infrastructure/repositories/PgServiceRequestRepository');
 
 const url = process.env.TEST_DATABASE_URL;
@@ -43,9 +44,11 @@ async function addSolicitud(pool, s, c, { estado = 'PENDIENTE', actualizada = 'n
 
 test('PG seguimiento: el cliente ve solo sus solicitudes, con estado y zona declarada, sin cruzar clientes ni tenants', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceRequestRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceRequestRepository({ pgPoolFactory: core });
 
   const s = await seedTenant(pool);
   const ana = await addCliente(pool, s);

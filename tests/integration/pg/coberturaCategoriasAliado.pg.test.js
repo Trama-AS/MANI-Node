@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
 const PgCoberturaRepository = require('../../../src/infrastructure/repositories/PgCoberturaRepository');
-const TransactionalAliadoCategoriaRepository = require('../../../src/infrastructure/repositories/TransactionalAliadoCategoriaRepository');
+const PgAliadoCategoriaRepository = require('../../../src/infrastructure/repositories/PgAliadoCategoriaRepository');
 const DeclareAllyCoverageUseCase = require('../../../src/application/useCases/profiles/DeclareAllyCoverageUseCase');
 const GetAllyCoverageUseCase = require('../../../src/application/useCases/profiles/GetAllyCoverageUseCase');
 
@@ -30,7 +30,7 @@ function entorno(t) {
     cobertura,
     declarar: new DeclareAllyCoverageUseCase({ coberturaRepository: cobertura }),
     obtener: new GetAllyCoverageUseCase({ coberturaRepository: cobertura }),
-    categorias: new TransactionalAliadoCategoriaRepository({ pgPoolFactory: core, delegate: {} }),
+    categorias: new PgAliadoCategoriaRepository({ pgPoolFactory: core }),
   };
 }
 
