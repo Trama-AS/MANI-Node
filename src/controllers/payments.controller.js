@@ -63,13 +63,4 @@ async function getCommission(req, res, next) {
   }
 }
 
-async function setCommission(req, res, next) {
-  try {
-    const comision = await container.fundsUseCase.fijarComision({ user: req.user, body: req.body || {} });
-    res.json({ comision, correlationId: correlationOf(req) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports = { createPayment, getPayment, getReceipt, getRetention, listAllyCollections, getCommission, setCommission };
+module.exports = { createPayment, getPayment, getReceipt, getRetention, listAllyCollections, getCommission };

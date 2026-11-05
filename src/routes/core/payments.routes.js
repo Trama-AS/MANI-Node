@@ -10,7 +10,6 @@ router.post('/pagos', authenticate, paymentsController.createPayment);
 // SCRUM-894 y SCRUM-893: rutas fijas antes de `/pagos/:id`, para que `aliado` y `comision` no se lean como un id.
 router.get('/pagos/aliado', authenticate, paymentsController.listAllyCollections);
 router.get('/pagos/comision', authenticate, requireRole('ADMIN'), paymentsController.getCommission);
-router.put('/pagos/comision', authenticate, requireRole('ADMIN'), paymentsController.setCommission);
 router.get('/pagos/:id', authenticate, paymentsController.getPayment);
 router.get('/pagos/:id/comprobante', authenticate, paymentsController.getReceipt);
 // SCRUM-891: retención en garantía del pago, solo para el cliente que pagó.

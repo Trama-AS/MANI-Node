@@ -1,10 +1,12 @@
 const REGLAS_POR_OMISION = Object.freeze({
   ordenListado: { criterio: 'CALIFICACION' },
   alertaTarifa: { toleranciaPorcentaje: 10 },
-  comision: { porcentaje: 15 },
+  comision: { porcentaje: 10 },
   cancelacion: { ventanaHoras: 2, penalizacionPorcentaje: 20 },
   oferta: { minutosParaAceptar: 15 }
 });
+
+const COMISION_MAXIMA = 30;
 
 const CRITERIOS_ORDEN_VALIDOS = new Set(['CALIFICACION', 'COBERTURA']);
 
@@ -51,8 +53,8 @@ function validarReglasOperativas(reglas, invalidoFn) {
   const comPct = numero(
     seccion(reglas, 'comision', invalidoFn).porcentaje,
     0,
-    30,
-    'comision.porcentaje debe ser un número entre 0 y 30',
+    COMISION_MAXIMA,
+    `comision.porcentaje debe ser un número entre 0 y ${COMISION_MAXIMA}`,
     invalidoFn
   );
 
@@ -90,6 +92,7 @@ function validarReglasOperativas(reglas, invalidoFn) {
 }
 
 module.exports = {
+  COMISION_MAXIMA,
   REGLAS_POR_OMISION,
   CRITERIOS_ORDEN_VALIDOS,
   validarReglasOperativas
