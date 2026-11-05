@@ -17,6 +17,7 @@ const url = process.env.TEST_DATABASE_URL;
 const opts = { skip: url ? false : 'TEST_DATABASE_URL no configurada' };
 const uuid = () => crypto.randomUUID();
 const MIGRACION_0037 = path.join(__dirname, '../../../db/migrations/0037_retirar_politicas_to_public.sql');
+const MIGRACION_0038 = path.join(__dirname, '../../../db/migrations/0038_retirar_politica_documento_legal_heredada.sql');
 
 /** Dos tenants con un usuario aliado, su aliado, un cliente con sede y una solicitud cada uno. */
 async function sembrarDosTenants(pool) {
@@ -214,5 +215,26 @@ test('R-06: la 0037 elimina la tenant_isolation_* heredada si hay canónica y re
     ]);
   } finally {
     await pool.query(`DROP TABLE IF EXISTS ${tabla}, ${otra}`);
+  }
+});
+
+test('R-06: la 0038 retira la política TO public que la 0004 deja en documento_legal', opts, async (t) => {
+  const { pool } = fabricasPg(t, url);
+  const heredada = 'Lectura de documentos legales del tenant o globales';
+
+  try {
+    // Solo existe donde hay auth.jwt(), como en QA. USING (false) para no ampliar lo que ven las pruebas en paralelo.
+    await pool.query(`DROP POLICY IF EXISTS "${heredada}" ON documento_legal`);
+    await pool.query(`CREATE POLICY "${heredada}" ON documento_legal FOR SELECT USING (false)`);
+
+    await pool.query(fs.readFileSync(MIGRACION_0038, 'utf8'));
+
+    const { rows } = await pool.query(
+      `SELECT policyname FROM pg_policies WHERE tablename = 'documento_legal' AND policyname IN ($1, 'documento_legal_lectura')`,
+      [heredada]
+    );
+    assert.deepEqual(rows, [{ policyname: 'documento_legal_lectura' }]);
+  } finally {
+    await pool.query(`DROP POLICY IF EXISTS "${heredada}" ON documento_legal`);
   }
 });
