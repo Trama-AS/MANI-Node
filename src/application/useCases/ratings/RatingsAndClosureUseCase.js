@@ -1,5 +1,9 @@
 const { DomainError, ForbiddenError, UnauthorizedError, ValidationError } = require('../../../domain/errors/DomainError');
 const { entregarAviso } = require('../notifications/entregarAviso');
+const {
+  aplicarPrivacidadResumen,
+  aplicarPrivacidadHistorial,
+} = require('../../../domain/rules/privacidadCalificaciones');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_COMENTARIO = 500;
@@ -107,7 +111,7 @@ class RatingsAndClosureUseCase {
     });
 
     await entregarAviso(this.notificador, ctx, notificacionId, correlationId);
-    return resultado;
+    return aplicarPrivacidadResumen(resultado, ctx.role);
   }
 
   async consultarCalificacionesYCierre({ user, solicitudId }) {
@@ -116,7 +120,8 @@ class RatingsAndClosureUseCase {
       throw new ForbiddenError('MANI-CAL-403: rol no autorizado para consultar el cierre del servicio', 'MANI-CAL-403');
     }
     const idValido = exigirUuid(solicitudId, 'el id de la solicitud', 'MANI-CAL-400');
-    return this.ratingsRepository.consultarCalificacionesYCierre(ctx, idValido);
+    const resumen = await this.ratingsRepository.consultarCalificacionesYCierre(ctx, idValido);
+    return aplicarPrivacidadResumen(resumen, ctx.role);
   }
 
   async cerrarSolicitud({ user, solicitudId }) {
@@ -125,7 +130,8 @@ class RatingsAndClosureUseCase {
       throw new ForbiddenError('MANI-CAL-403: solo los participantes o el administrador del tenant pueden verificar el cierre', 'MANI-CAL-403');
     }
     const idValido = exigirUuid(solicitudId, 'el id de la solicitud', 'MANI-CAL-400');
-    return this.ratingsRepository.cerrarSolicitud(ctx, idValido);
+    const resumen = await this.ratingsRepository.cerrarSolicitud(ctx, idValido);
+    return aplicarPrivacidadResumen(resumen, ctx.role);
   }
 
   async listarReputacionAliados({ user, query = {} }) {
@@ -237,7 +243,7 @@ class RatingsAndClosureUseCase {
     }
     const estado = validarFiltroEstado(query.estado, 'MANI-HIS-400');
     const historial = await this.ratingsRepository.listarHistorialCliente(ctx, { estado });
-    return { historial, totalCount: historial.length };
+    return { historial: aplicarPrivacidadHistorial(historial, ctx.role), totalCount: historial.length };
   }
 
   async listarHistorialAliado({ user, query = {} }) {
@@ -247,7 +253,7 @@ class RatingsAndClosureUseCase {
     }
     const estado = validarFiltroEstado(query.estado, 'MANI-HIS-400');
     const trabajos = await this.ratingsRepository.listarHistorialAliado(ctx, { estado });
-    return { trabajos, totalCount: trabajos.length };
+    return { trabajos: aplicarPrivacidadHistorial(trabajos, ctx.role), totalCount: trabajos.length };
   }
 
   async obtenerTrabajoAliado({ user, solicitudId }) {
@@ -256,7 +262,8 @@ class RatingsAndClosureUseCase {
       throw new ForbiddenError('MANI-HIS-403A: solo el aliado consulta el detalle de sus trabajos', 'MANI-HIS-403A');
     }
     const idValido = exigirUuid(solicitudId, 'el id del trabajo', 'MANI-HIS-400');
-    return this.ratingsRepository.obtenerTrabajoAliado(ctx, idValido);
+    const trabajo = await this.ratingsRepository.obtenerTrabajoAliado(ctx, idValido);
+    return aplicarPrivacidadHistorial([trabajo], ctx.role)[0];
   }
 }
 

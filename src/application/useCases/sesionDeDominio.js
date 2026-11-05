@@ -1,4 +1,5 @@
 const { ForbiddenError, UnauthorizedError, ValidationError } = require('../../domain/errors/DomainError');
+const { tienePermisoPlataforma, ROLES_DE_PLATAFORMA } = require('../security/contextoPlataforma');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,6 +18,10 @@ function dominio(prefijo) {
     }
     // El claim del administrador llega como ADMIN; ADMIN_TENANT se acepta por compatibilidad con el middleware.
     const role = user.role === 'ADMIN_TENANT' ? 'ADMIN' : user.role;
+    // Las operaciones de plataforma aceptan el permiso aunque la sesión actúe como otro rol (SCRUM-901).
+    if (roles.some((r) => ROLES_DE_PLATAFORMA.has(r)) && tienePermisoPlataforma(user)) {
+      return { tenantId: user.tenantId, userId: user.actor?.userId || user.userId, role: 'PLATFORM_ADMIN' };
+    }
     if (!roles.includes(role)) throw new ForbiddenError(`${prefijo}-403: ${mensaje}`, `${prefijo}-403`);
     return { tenantId: user.tenantId, userId: user.userId, role };
   }

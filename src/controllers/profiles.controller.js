@@ -1,5 +1,15 @@
 const container = require('../container');
 
+/**
+ * Tenant donde vive el perfil de la sesión. El administrador de plataforma que administra otro tenant sigue
+ * viendo su propio perfil, que está en su tenant de origen (SCRUM-901); si actúa como un usuario, es el de ese
+ * usuario y su tenant.
+ */
+function tenantDelPerfil(session) {
+  const actor = session.actor;
+  return actor && session.userId === actor.userId ? actor.tenantId : session.tenantId;
+}
+
 async function getOwnProfile(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -13,7 +23,7 @@ async function getOwnProfile(req, res, next) {
     const session = req.user || (await container.tokenService.verifyToken(authHeader));
     const profile = await container.getOwnProfileUseCase.execute({
       userId: session.userId,
-      tenantId: session.tenantId,
+      tenantId: tenantDelPerfil(session),
     });
 
     res.status(200).json({
@@ -39,7 +49,7 @@ async function getAllyCategories(req, res, next) {
     const session = req.user || (await container.tokenService.verifyToken(authHeader));
     const categories = await container.getAllyCategoriesUseCase.execute({
       userId: session.userId,
-      tenantId: session.tenantId,
+      tenantId: tenantDelPerfil(session),
       role: session.role,
     });
 
@@ -74,7 +84,7 @@ async function declareAllyCategories(req, res, next) {
 
     const categories = await container.declareAllyCategoriesUseCase.execute({
       userId: session.userId,
-      tenantId: session.tenantId,
+      tenantId: tenantDelPerfil(session),
       role: session.role,
       categoryIds: rawCategories,
     });
@@ -112,7 +122,7 @@ async function updateOwnProfile(req, res, next) {
 
     const profile = await container.updateOwnProfileUseCase.execute({
       userId: session.userId,
-      tenantId: session.tenantId,
+      tenantId: tenantDelPerfil(session),
       targetUserId: req.params?.id || null,
       payload: req.body || {},
       photoFile: fileCandidate,
@@ -154,7 +164,7 @@ async function listAvailableAllyCategories(req, res, next) {
     const session = req.user || (await container.tokenService.verifyToken(authHeader));
     const categories = await container.listAvailableAllyCategoriesUseCase.execute({
       userId: session.userId,
-      tenantId: session.tenantId,
+      tenantId: tenantDelPerfil(session),
       role: session.role,
     });
 
