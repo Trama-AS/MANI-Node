@@ -186,10 +186,23 @@ test('PG bandeja del aliado: ofertas pendientes y asignadas propias, sin direcci
   assert.equal(bandeja[0].categoria, 'Plomeria');
   assert.equal(bandeja[0].zona, 'Chapinero');
   assert.equal(bandeja[0].zonaPadre, 'Bogotá');
+  assert.deepEqual(bandeja[0].reglasSitio, {}, 'sitio sin reglas: objeto vacío, no error');
+
+  // SCRUM-1388 C3: en la oferta van los requisitos, no el contacto ni las instrucciones de ingreso.
+  const requisitos = { horario: { inicio: '08:00', fin: '17:00', diasPermitidos: ['LUN'] }, elementosProteccion: ['Casco'], permisosRequeridos: ['ARL'] };
+  await pool.query('UPDATE sitio SET reglas = $2::jsonb WHERE id = $1', [
+    s.sitio,
+    JSON.stringify({ ...requisitos, contactoAcceso: { nombre: 'Portería', telefono: '3000000000' }, instruccionesIngreso: 'Pedir llave en recepción' }),
+  ]);
+  bandeja = await repo.ofertasDelAliado(ana.ctx);
+  assert.deepEqual(bandeja[0].reglasSitio, requisitos, 'antes de asignarse no ve contacto ni instrucciones de ingreso');
+  assert.deepEqual((await repo.ofertasDelAliado(beto.ctx))[0].reglasSitio, requisitos);
 
   await repo.asignar(ana.ctx, s.solicitud);
   bandeja = await repo.ofertasDelAliado(ana.ctx);
   assert.equal(bandeja[0].esMia, true);
+  assert.equal(bandeja[0].reglasSitio.instruccionesIngreso, 'Pedir llave en recepción', 'asignado: ve las instrucciones');
+  assert.deepEqual(bandeja[0].reglasSitio.contactoAcceso, { nombre: 'Portería', telefono: '3000000000' });
   assert.equal(bandeja[0].direccion, 'Calle 1 # 2-3');
   assert.ok(bandeja[0].asignadaEn instanceof Date);
   assert.deepEqual(await repo.ofertasDelAliado(beto.ctx), [], 'tomada por otro, desaparece de la bandeja');
