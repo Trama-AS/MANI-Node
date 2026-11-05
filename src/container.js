@@ -141,6 +141,8 @@ const PgOperationalMetricsRepository = require('./infrastructure/repositories/Pg
 const OperationalMetricsUseCase = require('./application/useCases/metrics/OperationalMetricsUseCase');
 const PgTenantStatusRepository = require('./infrastructure/repositories/PgTenantStatusRepository');
 const TenantStatusUseCase = require('./application/useCases/tenants/TenantStatusUseCase');
+const PgContextoPlataformaRepository = require('./infrastructure/repositories/PgContextoPlataformaRepository');
+const { ContextoPlataformaService } = require('./application/security/contextoPlataforma');
 const RatingsAndClosureUseCase = require('./application/useCases/ratings/RatingsAndClosureUseCase');
 
 const config = require('./config');
@@ -429,6 +431,12 @@ class Container {
     this.operationalMetricsUseCase = new OperationalMetricsUseCase({ metricsRepository: this.metricsRepository });
     this.tenantStatusRepository = new PgTenantStatusRepository({ pgPoolFactory: this.pgPoolFactory });
     this.tenantStatusUseCase = new TenantStatusUseCase({ tenantStatusRepository: this.tenantStatusRepository });
+    // Contexto efectivo del administrador de plataforma (SCRUM-901): tenant elegido y usuario con el que actúa.
+    // Sin DATABASE_URL las cabeceras responden 503; sin cabeceras la sesión sigue igual.
+    this.contextoPlataformaRepository = this.pgPoolFactory.isConfigured()
+      ? new PgContextoPlataformaRepository({ pgPoolFactory: this.pgPoolFactory })
+      : null;
+    this.contextoPlataforma = new ContextoPlataformaService({ repositorio: this.contextoPlataformaRepository });
 
     // Cobertura del aliado (SCRUM-1380): sin DATABASE_URL responde 503, como el resto de repositorios pg.
     this.coberturaRepository = new PgCoberturaRepository({ pgPoolFactory: this.pgPoolFactory });

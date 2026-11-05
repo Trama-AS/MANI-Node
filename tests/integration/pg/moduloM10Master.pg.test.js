@@ -459,7 +459,7 @@ test('866 C2: sin tarifa se indica SIN_TARIFA sin llamar a Rules; si Rules no re
   assert.equal(caido.body.alerta, undefined);
 });
 
-test('866 C3: otro cliente, otro tenant o plataforma no ven la evaluación; sin token o con token inválido es 401', opts, async (t) => {
+test('866 C3: otro cliente u otro tenant no ven la evaluación; plataforma la ve como admin (SCRUM-901); sin token o con token inválido es 401', opts, async (t) => {
   const { pool } = await entorno(t);
   const a = await sembrarTenant(pool);
   const b = await sembrarTenant(pool);
@@ -472,7 +472,9 @@ test('866 C3: otro cliente, otro tenant o plataforma no ven la evaluación; sin 
     assert.equal(r.body.code, 'MANI-TAR-404Q');
     assert.equal(r.body.tarifa, undefined);
   }
-  assert.equal((await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, a.jwt.plataforma)).status, 403);
+  // SCRUM-901 (decisión del 5-nov-2026): el administrador de plataforma usa todas las funciones del sistema y, sin
+  // cabeceras de contexto, trabaja como administrador de su tenant. Cambia el C3 original de 866, que pedía 403.
+  assert.equal((await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, a.jwt.plataforma)).status, 200);
   assert.equal((await api('get', `/cotizaciones/${cotA}/evaluacion-tarifa`, a.jwt.admin)).status, 200, 'el administrador del tenant sí');
 
   const claims = { sub: a.cliente.usuario, app_metadata: { tenant_id: a.id, user_role: 'cliente' } };

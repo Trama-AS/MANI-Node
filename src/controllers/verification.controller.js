@@ -9,7 +9,13 @@ async function extractSession(req) {
     err.code = 'MANI-VER-401';
     throw err;
   }
-  return container.tokenService.verifyToken(authHeader);
+  // SCRUM-901: misma sesión efectiva que `authenticate` (tenant elegido o actuar como, para plataforma).
+  const verificada = await container.tokenService.verifyToken(authHeader);
+  return container.contextoPlataforma.resolver(verificada, req.headers, {
+    correlationId: req.correlationId || null,
+    metodo: req.method,
+    ruta: req.originalUrl,
+  });
 }
 
 async function listAlliesVerification(req, res, next) {

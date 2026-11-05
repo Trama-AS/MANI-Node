@@ -10,7 +10,14 @@ function requireAuthorization(req, res) {
 }
 
 async function resolveSession(req) {
-  const session = req.user || (await container.tokenService.verifyToken(req.headers.authorization));
+  // SCRUM-901: misma sesión efectiva que `authenticate` (tenant elegido o actuar como, para plataforma).
+  const session =
+    req.user ||
+    (await container.contextoPlataforma.resolver(
+      await container.tokenService.verifyToken(req.headers.authorization),
+      req.headers,
+      { correlationId: req.correlationId || null, metodo: req.method, ruta: req.originalUrl }
+    ));
   return { userId: session.userId, tenantId: session.tenantId, role: session.role };
 }
 
