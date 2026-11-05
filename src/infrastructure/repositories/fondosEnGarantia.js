@@ -1,4 +1,4 @@
-const { COMISION_MAXIMA, REGLAS_POR_OMISION } = require('../../domain/rules/tenantRulesDefaults');
+const { comisionValida, REGLAS_POR_OMISION } = require('../../domain/rules/tenantRulesDefaults');
 const { registrarPagoEnBitacora } = require('./bitacoraPago');
 
 // La comisión tiene una sola fuente: las reglas del tenant (SCRUM-1366). Sin reglas guardadas rige el valor por omisión.
@@ -67,9 +67,9 @@ async function liberarYLiquidar(client, ctx, solicitudId) {
   const liquidaciones = [];
   for (const ret of rows) {
     const porcentaje = await comisionVigente(client, ctx.tenantId);
-    // Una regla fuera de rango no debería existir (se valida al guardarla); si apareciera, no se liquida y la
+    // Una regla inválida no debería existir (se valida al guardarla); si apareciera, no se liquida y la
     // retención se queda retenida, en lugar de liberar con un cálculo inválido (C2 de 893).
-    if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > COMISION_MAXIMA) continue;
+    if (!comisionValida(porcentaje)) continue;
 
     await client.query(
       "UPDATE retencion_fondos SET estado = 'LIBERADA', liberada_at = now() WHERE id = $1 AND tenant_id = $2",
