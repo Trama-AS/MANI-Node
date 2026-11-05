@@ -174,6 +174,55 @@ test('TEC-21: con el filtro desactivado, mani_dispatch_svc solo ve las solicitud
   );
 });
 
+test('TEC-21: el contexto funciona aunque el rol de servicio no tenga USAGE sobre el esquema auth, como en Supabase', opts, async (t) => {
+  const { pool } = fabricasPg(t, url);
+  const { a, b } = await sembrarDosTenants(pool);
+  const cliente = await pool.connect();
+
+  try {
+    await cliente.query('BEGIN');
+    // En CI el esquema auth es de postgres y el GRANT de la 0006 sí aplica; en Supabase no. ROLLBACK lo devuelve al final.
+    await cliente.query('REVOKE USAGE ON SCHEMA auth FROM mani_core_svc, PUBLIC');
+    const permiso = await cliente.query("SELECT has_schema_privilege('mani_core_svc', 'auth', 'USAGE') AS usa_auth");
+    assert.equal(permiso.rows[0].usa_auth, false);
+
+    await cliente.query('SET LOCAL ROLE mani_core_svc');
+    await cliente.query('SELECT app.set_context($1, $2, $3)', [a.tenant, a.usuarioAliado, 'ALIADO']);
+    const contexto = await cliente.query('SELECT app.tenant_id() AS tenant, app.user_id() AS usuario, app.user_role() AS rol');
+    assert.deepEqual(contexto.rows[0], { tenant: a.tenant, usuario: a.usuarioAliado, rol: 'aliado' });
+
+    const usuarios = await cliente.query('SELECT tenant_id FROM usuario WHERE tenant_id IN ($1, $2)', [a.tenant, b.tenant]);
+    assert.ok(usuarios.rows.length > 0);
+    assert.ok(usuarios.rows.every((f) => f.tenant_id === a.tenant));
+  } finally {
+    await cliente.query('ROLLBACK');
+    cliente.release();
+  }
+});
+
+test('TEC-21: los lectores del contexto fallan cerrado sin contexto o con un claim malformado', opts, async (t) => {
+  const { core } = fabricasPg(t, url);
+  const leer = 'SELECT app.tenant_id() AS tenant, app.user_id() AS usuario, app.user_role() AS rol';
+  const nulos = { tenant: null, usuario: null, rol: null };
+
+  const sinContexto = await core.getPool().query(leer);
+  assert.deepEqual(sinContexto.rows[0], nulos);
+
+  const cliente = await core.getPool().connect();
+  try {
+    await cliente.query('BEGIN');
+    for (const claims of ['no es json', '{"sub":"no-es-uuid","app_metadata":{"tenant_id":"no-es-uuid"}}']) {
+      await cliente.query("SELECT set_config('request.jwt.claims', $1, true)", [claims]);
+      const { rows } = await cliente.query(leer);
+      assert.equal(rows[0].tenant, null, claims);
+      assert.equal(rows[0].usuario, null, claims);
+    }
+  } finally {
+    await cliente.query('ROLLBACK');
+    cliente.release();
+  }
+});
+
 test('R-06: ninguna política de una tabla con tenant_id queda TO public', opts, async (t) => {
   const { pool } = fabricasPg(t, url);
   const { rows } = await pool.query(
