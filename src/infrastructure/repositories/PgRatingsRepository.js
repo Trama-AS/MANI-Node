@@ -192,7 +192,9 @@ class PgRatingsRepository extends IRatingsRepository {
       await client.query(
         `INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, descripcion)
          VALUES ($1, $2, $3, $4, $5)`,
-        [ctx.tenantId, solicitudId, autorId, tipoEvento, `Calificación registrada (${puntaje}/5).`]
+        // Sin el puntaje: la línea de tiempo la ven ambos participantes y la
+        // calificación es privada entre ellos (privacidadCalificaciones).
+        [ctx.tenantId, solicitudId, autorId, tipoEvento, 'Calificación registrada.']
       );
 
       // SCRUM-1418: comprobar si ya están las dos calificaciones (cliente -> aliado y aliado -> cliente).
