@@ -12,6 +12,8 @@ router.put('/tarifas/:id', authenticate, tariffsController.updateTariff);
 router.get('/tarifas/categorias/:categoriaId/historial', authenticate, tariffsController.getTariffHistory);
 // SCRUM-886: tarifa vigente de la categoría de la solicitud, para el cliente dueño y el aliado asignado.
 router.get('/solicitudes/:id/tarifa-referencia', authenticate, tariffsController.getRequestReferenceTariff);
+// SCRUM-866: alerta de tarifa de una cotización (fuera de rango, en rango o sin tarifa) para cliente dueño y aliado.
+router.get('/cotizaciones/:id/evaluacion-tarifa', authenticate, tariffsController.getQuoteRateEvaluation);
 // SCRUM-887: cotizaciones del periodo que Rules evaluó fuera del rango de su tarifa.
 router.get('/reportes/cotizaciones-fuera-de-rango', authenticate, tariffsController.getOutOfRangeQuotesReport);
 
