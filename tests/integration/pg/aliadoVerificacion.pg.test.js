@@ -4,8 +4,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
-const TransactionalAliadoRepository = require('../../../src/infrastructure/repositories/TransactionalAliadoRepository');
+const PgAliadoRepository = require('../../../src/infrastructure/repositories/PgAliadoRepository');
+const { fabricasPg } = require('../../helpers/pgPruebas');
 
 const url = process.env.TEST_DATABASE_URL;
 const opts = { skip: url ? false : 'TEST_DATABASE_URL no configurada' };
@@ -44,10 +44,9 @@ async function readVerification(pool, aliado) {
 }
 
 test('PG CA-5: aprobar deja verificado_por y fecha en la base; una segunda decisión no lo sobrescribe', opts, async (t) => {
-  const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
-  const pool = factory.getPool();
-  const repo = new TransactionalAliadoRepository({ pgPoolFactory: factory, delegate: {} });
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const { core, pool } = fabricasPg(t, url);
+  const repo = new PgAliadoRepository({ pgPoolFactory: core });
   const s = await seed(pool);
 
   const fecha = new Date().toISOString();
@@ -79,10 +78,9 @@ test('PG CA-5: aprobar deja verificado_por y fecha en la base; una segunda decis
 });
 
 test('PG CA-5: rechazar guarda motivo y verificado_por; otro tenant no puede resolver', opts, async (t) => {
-  const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
-  const pool = factory.getPool();
-  const repo = new TransactionalAliadoRepository({ pgPoolFactory: factory, delegate: {} });
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const { core, pool } = fabricasPg(t, url);
+  const repo = new PgAliadoRepository({ pgPoolFactory: core });
   const s = await seed(pool);
   const otro = await seed(pool);
 

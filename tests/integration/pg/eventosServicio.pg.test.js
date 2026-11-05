@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const PgPoolFactory = require('../../../src/infrastructure/db/PgPoolFactory');
+const { comoRol } = require('../../helpers/pgPruebas');
 const PgServiceEventRepository = require('../../../src/infrastructure/repositories/PgServiceEventRepository');
 
 const url = process.env.TEST_DATABASE_URL;
@@ -43,9 +44,11 @@ async function seed(pool, estado = 'EN_EJECUCION') {
 
 test('PG eventos: secuencia ordenada con autor y evidencia, idempotente por clave y aislada', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceEventRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceEventRepository({ pgPoolFactory: core });
   const s = await seed(pool);
   const aliado = { tenantId: s.tenant, userId: s.usuarioAliado, role: 'ALLY' };
   const clave = uuid();
@@ -78,9 +81,11 @@ test('PG eventos: secuencia ordenada con autor y evidencia, idempotente por clav
 
 test('PG eventos: fuera de la ejecución no se registra (C2)', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceEventRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceEventRepository({ pgPoolFactory: core });
   const s = await seed(pool, 'FINALIZADA');
   await assert.rejects(
     repo.registrar(
@@ -103,9 +108,11 @@ async function marcar(pool, s, tipo, hora) {
 
 test('PG eventos sin conexión: la hora de captura es la oficial y debe caer dentro de la ejecución (SCRUM-873)', opts, async (t) => {
   const factory = new PgPoolFactory({ databaseUrl: url });
-  t.after(() => factory.close());
+  // El repositorio corre como mani_core_svc (sin BYPASSRLS), como en QA; la siembra, como postgres (SCRUM-1468).
+  const core = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_core_svc') });
+  t.after(() => Promise.all([factory.close(), core.close()]));
   const pool = factory.getPool();
-  const repo = new PgServiceEventRepository({ pgPoolFactory: factory });
+  const repo = new PgServiceEventRepository({ pgPoolFactory: core });
   const minutos = (n) => new Date(Date.now() + n * 60 * 1000);
   const datos = (s, extra) => ({ solicitudId: s.solicitud, tipo: 'EJECUCION_AVANCE', observacion: 'Sin señal', evidenciaRuta: null, claveIdempotencia: null, ...extra });
 

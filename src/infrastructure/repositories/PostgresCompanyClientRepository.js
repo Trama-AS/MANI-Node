@@ -3,6 +3,7 @@ const CompanyClient = require('../../domain/entities/CompanyClient');
 const Site = require('../../domain/entities/Site');
 const ICompanyClientRepository = require('../../domain/ports/ICompanyClientRepository');
 const { DomainError, ValidationError } = require('../../domain/errors/DomainError');
+const { enContextoTenant } = require('../db/enContextoTenant');
 
 // Códigos de PostgreSQL de una zona inexistente (FK) o con formato inválido: son datos del cliente, no fallos del servicio.
 const PG_ZONA_INVALIDA = new Set(['23503', '22P02']);
@@ -30,9 +31,14 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     this.pgPool = pgPool;
   }
 
-  _getPool() {
-    if (this.pgPool) return this.pgPool;
-    if (this.pgPoolFactory) return this.pgPoolFactory.getPool();
+  /**
+   * Ejecuta `trabajo(client)` en una transacción con app.set_context del tenant (SCRUM-1468): Core se conecta como
+   * mani_core_svc, sin BYPASSRLS, y las políticas `cliente_tenant`, `usuario_tenant` y `sitio_tenant` (0007) solo
+   * dejan ver y escribir filas del tenant fijado.
+   */
+  _enTenant(tenantId, trabajo) {
+    if (this.pgPool) return enContextoTenant({ getPool: () => this.pgPool }, tenantId, trabajo);
+    if (this.pgPoolFactory) return enContextoTenant(this.pgPoolFactory, tenantId, trabajo);
     throw new DomainError('DATABASE_URL no configurada: se requiere conexión PostgreSQL.', 'DATABASE_NOT_CONFIGURED', 500);
   }
 
@@ -45,12 +51,7 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
    * @returns {Promise<{ client: CompanyClient, sites: Site[] }>}
    */
   async save(companyClient, sites, { userId } = {}) {
-    const pool = this._getPool();
-    const clientConn = await pool.connect();
-
-    try {
-      await clientConn.query('BEGIN');
-
+    return this._enTenant(companyClient.tenantId, async (clientConn) => {
       const effectiveUserId = userId || crypto.randomUUID();
       const clientId = crypto.randomUUID();
 
@@ -116,8 +117,6 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
         );
       }
 
-      await clientConn.query('COMMIT');
-
       const savedClient = new CompanyClient({
         id: clientId,
         tenantId: companyClient.tenantId,
@@ -132,17 +131,12 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
       savedClient.usuarioId = effectiveUserId;
 
       return { client: savedClient, sites: savedSites };
-    } catch (err) {
-      await clientConn.query('ROLLBACK');
-      throw err;
-    } finally {
-      clientConn.release();
-    }
+    });
   }
 
   async findById(id, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._consultar(
+      tenantId,
       `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
@@ -155,8 +149,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async findByUsuarioId(usuarioId, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._consultar(
+      tenantId,
       `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
@@ -169,8 +163,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async findByNitAndTenant(nit, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._consultar(
+      tenantId,
       `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
@@ -183,8 +177,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async findByEmailAndTenant(email, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._consultar(
+      tenantId,
       `SELECT c.id, c.tenant_id, c.usuario_id, c.razon_social, c.nit, c.telefono, c.nombre_representante, c.tipo, u.email, u.estado
        FROM cliente c
        JOIN usuario u ON u.id = c.usuario_id
@@ -197,12 +191,12 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async addSite(clienteId, tenantId, site) {
-    const pool = this._getPool();
     const siteId = site.id || crypto.randomUUID();
     const reglasJson = site.reglas ? JSON.stringify(site.reglas) : null;
 
     try {
-      await pool.query(
+      await this._consultar(
+        tenantId,
         `INSERT INTO sitio (id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
         [
@@ -235,8 +229,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async findSitesByClientId(clienteId, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._consultar(
+      tenantId,
       `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, latitud, longitud, created_at
        FROM sitio
        WHERE cliente_id = $1 AND tenant_id = $2
@@ -248,8 +242,8 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async findSiteById(clienteId, siteId, tenantId) {
-    const pool = this._getPool();
-    const { rows } = await pool.query(
+    const { rows } = await this._consultar(
+      tenantId,
       `SELECT id, tenant_id, cliente_id, zona_id, direccion, nombre, reglas, contacto_nombre, contacto_telefono, latitud, longitud, created_at
        FROM sitio
        WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3`,
@@ -259,9 +253,9 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
   }
 
   async updateSite(clienteId, tenantId, site) {
-    const pool = this._getPool();
     try {
-      const { rows } = await pool.query(
+      const { rows } = await this._consultar(
+        tenantId,
         `UPDATE sitio
          SET nombre = $4, direccion = $5, zona_id = $6, contacto_nombre = $7, contacto_telefono = $8
          WHERE id = $1 AND cliente_id = $2 AND tenant_id = $3
@@ -281,6 +275,10 @@ class PostgresCompanyClientRepository extends ICompanyClientRepository {
     } catch (err) {
       throw traducirZonaInvalida(err);
     }
+  }
+
+  _consultar(tenantId, sql, params) {
+    return this._enTenant(tenantId, (client) => client.query(sql, params));
   }
 
   _rowToClient(row) {
