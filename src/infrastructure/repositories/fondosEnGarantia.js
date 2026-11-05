@@ -17,7 +17,7 @@ async function comisionVigente(client, tenantId) {
     [tenantId]
   );
   if (rows.length === 0) return COMISION_POR_DEFECTO;
-  return rows[0].porcentaje === null ? NaN : Number(rows[0].porcentaje);
+  return rows[0].porcentaje === null ? Number.NaN : Number(rows[0].porcentaje);
 }
 
 /** Descuenta la comisión en centavos, sin errores de punto flotante: bruto = comisión + neto. */
