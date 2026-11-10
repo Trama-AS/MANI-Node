@@ -15,7 +15,7 @@ function enContextoTenant(pgPoolFactory, tenantId, trabajo) {
   const propia = identidad && identidad.tenantId === tenantId;
   return runInTenantContext(
     pgPoolFactory,
-    { tenantId, userId: propia ? identidad.userId : null, role: propia ? identidad.role : null },
+    { tenantId, userId: propia ? identidad.userId : null, role: propia ? identidad.role : null, correlationId: identidad?.correlationId ?? null },
     trabajo
   );
 }
