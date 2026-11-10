@@ -43,6 +43,23 @@ function positiveIntFromEnv(name, fallback) {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
+// Entero mayor o igual que cero (0 es un valor válido); ausente, vacío o inválido usa el de por omisión.
+function nonNegativeIntFromEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || String(raw).trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
+// Falla inyectable del push (SCRUM-1662): `siempre` (o vacío) falla siempre; un entero N falla los N primeros intentos
+// de cada notificación y el siguiente entrega.
+function pushMockFallasFromEnv() {
+  const raw = String(process.env.PUSH_MOCK_FALLAS ?? '').trim().toLowerCase();
+  if (raw === '' || raw === 'siempre') return Number.POSITIVE_INFINITY;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : Number.POSITIVE_INFINITY;
+}
+
 function normalizeEnvironment(rawEnv) {
   const value = (rawEnv || 'development').trim().toLowerCase();
   if (!ENVIRONMENTS[value]) {
@@ -93,6 +110,17 @@ const config = {
   // Tiempo máximo de espera de cada proveedor externo (SCRUM-1240). Las credenciales de un proveedor real también
   // se leen aquí, desde process.env, y nunca se registran ni se devuelven.
   pushProviderTimeoutMs: positiveIntFromEnv('PUSH_PROVIDER_TIMEOUT_MS', 5000),
+  // Reintentos de la entrega push de los eventos del servicio ante una falla pasajera (SCRUM-1662). La clave de
+  // idempotencia es el id de la notificación, así que reintentar no duplica el aviso. 0 los desactiva.
+  pushProviderRetries: nonNegativeIntFromEnv('PUSH_PROVIDER_RETRIES', 1),
+  // Solo con PUSH_PROVIDER=mock_falla (ver FalibleMockPushProvider).
+  pushMockFallas: pushMockFallasFromEnv(),
+  // Falla inyectable del Storage de KYC (SCRUM-1662): lista de operaciones que fallan y cuántas llamadas funcionan antes.
+  storageFalla: (process.env.STORAGE_FALLA || '')
+    .split(',')
+    .map((op) => op.trim())
+    .filter(Boolean),
+  storageFallaDespuesDe: nonNegativeIntFromEnv('STORAGE_FALLA_DESPUES_DE', 0),
   paymentProviderTimeoutMs: positiveIntFromEnv('PAYMENT_PROVIDER_TIMEOUT_MS', 10000),
   // Kafka (ADR-0029, SCRUM-889). Lista separada por comas de `host:puerto`. Sin ella el relay del outbox no arranca y los
   // eventos quedan pendientes en `outbox_evento`.
@@ -124,6 +152,16 @@ function assertValid() {
     throw new ConfigurationError(
       `Faltan variables de entorno requeridas para el ambiente "${config.envLabel}": ${missing.join(', ')}.`
     );
+  }
+
+  // Las fallas inyectadas existen para probar en DEV, QA y CI: en producción detienen el arranque (SCRUM-1662).
+  if (config.environment === 'production') {
+    if (String(config.pushProvider).trim().toLowerCase() === 'mock_falla') {
+      throw new ConfigurationError('PUSH_PROVIDER=mock_falla provoca fallas a propósito y no se permite en producción.');
+    }
+    if (config.storageFalla.length > 0) {
+      throw new ConfigurationError('STORAGE_FALLA provoca fallas a propósito y no se permite en producción.');
+    }
   }
 }
 

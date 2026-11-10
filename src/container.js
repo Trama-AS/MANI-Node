@@ -26,6 +26,7 @@ const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
 const InMemoryFileStorageService = require('./infrastructure/security/InMemoryFileStorageService');
+const FalibleFileStorageService = require('./infrastructure/security/FalibleFileStorageService');
 const SupabaseFileStorageService = require('./infrastructure/security/SupabaseFileStorageService');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
@@ -182,6 +183,14 @@ class Container {
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
     }
+    // Falla inyectable del Storage de KYC (SCRUM-1662); config.assertValid la prohíbe en producción.
+    if (config.storageFalla.length > 0) {
+      this.fileStorageService = new FalibleFileStorageService({
+        interno: this.fileStorageService,
+        operaciones: config.storageFalla,
+        despuesDe: config.storageFallaDespuesDe,
+      });
+    }
 
     // Datos: con DATABASE_URL todo va por `pg` como mani_core_svc, sin BYPASSRLS, y cada operación fija
     // app.set_context (SCRUM-1468, ADR-0032): las políticas RLS aíslan los tenants aunque una consulta olvidara
@@ -274,7 +283,7 @@ class Container {
     });
     this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
     // Proveedor push por ambiente (PUSH_PROVIDER, por omisión el mock de HU-M09-06): sin FCM ni APNs reales.
-    this.pushProvider = createPushProvider(config.pushProvider);
+    this.pushProvider = createPushProvider(config.pushProvider, { environment: config.environment, fallas: config.pushMockFallas });
     const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
     this.publishNotificationUseCase = new PublishNotificationUseCase({
       ...notificationDeps,
@@ -306,7 +315,7 @@ class Container {
     // hacer esperar a quien origina el evento.
     this.notificarEventoServicioUseCase = new NotificarEventoServicioUseCase({
       ...notificationDeps,
-      politica: { timeoutMs: Math.min(config.pushProviderTimeoutMs, 2000), retries: 0 },
+      politica: { timeoutMs: Math.min(config.pushProviderTimeoutMs, 2000), retries: config.pushProviderRetries, baseDelayMs: 50 },
     });
     this.messagesUseCase = new MessagesUseCase({
       messageRepository: this.messageRepository,
