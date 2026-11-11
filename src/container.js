@@ -315,7 +315,7 @@ class Container {
     // hacer esperar a quien origina el evento.
     this.notificarEventoServicioUseCase = new NotificarEventoServicioUseCase({
       ...notificationDeps,
-      politica: { timeoutMs: Math.min(config.pushProviderTimeoutMs, 2000), retries: config.pushProviderRetries, baseDelayMs: 50 },
+      politica: NotificarEventoServicioUseCase.politicaDe({ timeoutMs: config.pushProviderTimeoutMs, retries: config.pushProviderRetries }),
     });
     this.messagesUseCase = new MessagesUseCase({
       messageRepository: this.messageRepository,

@@ -76,3 +76,15 @@ test('C2: sin reintentos, una falla pasajera queda FALLIDA (retries = 0 los desa
   const { uc } = notificador(new FalibleMockPushProvider({ fallas: 1 }), { timeoutMs: 200, retries: 0 });
   assert.equal((await uc.execute(sesion, evento)).estado, 'FALLIDA');
 });
+
+test('la política de eventos reparte el techo de 2 s entre los intentos: reintentar no alarga la espera (SCRUM-1662)', () => {
+  const politica = NotificarEventoServicioUseCase.politicaDe;
+  assert.deepEqual(politica({ timeoutMs: 5000, retries: 0 }), { timeoutMs: 2000, retries: 0, baseDelayMs: 50 });
+  assert.deepEqual(politica({ timeoutMs: 5000, retries: 1 }), { timeoutMs: 1000, retries: 1, baseDelayMs: 50 });
+  assert.deepEqual(politica({ timeoutMs: 5000, retries: 3 }), { timeoutMs: 500, retries: 3, baseDelayMs: 50 });
+  // Un timeout configurado menor que el techo manda; y nunca baja de 250 ms por intento.
+  assert.equal(politica({ timeoutMs: 600, retries: 1 }).timeoutMs, 300);
+  assert.equal(politica({ timeoutMs: 5000, retries: 20 }).timeoutMs, 250);
+  // Valores inválidos de reintentos se tratan como 0.
+  assert.equal(politica({ timeoutMs: 5000, retries: -1 }).retries, 0);
+});
