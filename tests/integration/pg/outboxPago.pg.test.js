@@ -147,9 +147,12 @@ test('PG relay: publica los pendientes de todos los tenants con el sobre complet
   assert.deepEqual(Object.keys(sobre).sort(), ['correlation_id', 'data', 'event_id', 'event_type', 'event_version', 'occurred_at', 'partition_key', 'tenant_id']);
   assert.equal(await pendientesDe(e.pool, [a.tenant, b.tenant]), 0);
 
-  const antes = enviados.length;
+  // Solo los eventos propios: otros archivos de prueba registran pagos a la vez y el relay publica los de todos, así que
+  // contar todo lo enviado haría fallar la prueba al azar (56 !== 55 en CI).
+  const propios = () => enviados.filter((m) => [a.tenant, b.tenant].includes(JSON.parse(m.value).tenant_id)).length;
+  const antes = propios();
   await vaciar(relay);
-  assert.equal(enviados.length, antes, 'lo ya publicado no sale de nuevo');
+  assert.equal(propios(), antes, 'lo ya publicado no sale de nuevo');
 });
 
 test('PG relay: si Kafka falla el evento sigue pendiente, cuenta el intento y el siguiente intento lo publica', opts, async (t) => {

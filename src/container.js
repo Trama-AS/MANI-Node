@@ -157,7 +157,12 @@ class Container {
       supabaseUrl: config.supabaseUrl,
       supabaseServiceRoleKey: config.supabaseServiceRoleKey,
     });
-    this.pgPoolFactory = new PgPoolFactory({ databaseUrl: config.databaseUrl });
+    this.pgPoolFactory = new PgPoolFactory({
+      databaseUrl: config.databaseUrl,
+      max: config.databasePoolMax,
+      connectionTimeoutMs: config.databasePoolConnectionTimeoutMs,
+      idleTimeoutMs: config.databasePoolIdleTimeoutMs,
+    });
     this.supabaseConnectionChecker = new SupabaseConnectionChecker({
       supabaseClientFactory: this.supabaseClientFactory,
     });

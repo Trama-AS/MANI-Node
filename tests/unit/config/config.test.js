@@ -258,3 +258,34 @@ test('en producción el arranque se detiene si hay una falla inyectada (SCRUM-16
   withEnv({ ...base, STORAGE_FALLA: 'upload' }, (config) => assert.throws(() => config.assertValid(), /STORAGE_FALLA/));
   withEnv({ ...base, PUSH_PROVIDER: 'mock' }, (config) => assert.doesNotThrow(() => config.assertValid()));
 });
+
+test('el pool de PostgreSQL usa 5 conexiones, 10 s de espera y 30 s de inactividad por omisión (SCRUM-1651)', () => {
+  withEnv(
+    { DATABASE_POOL_MAX: undefined, DATABASE_POOL_CONNECTION_TIMEOUT_MS: undefined, DATABASE_POOL_IDLE_TIMEOUT_MS: undefined },
+    (config) => {
+      assert.equal(config.databasePoolMax, 5);
+      assert.equal(config.databasePoolConnectionTimeoutMs, 10000);
+      assert.equal(config.databasePoolIdleTimeoutMs, 30000);
+    }
+  );
+});
+
+test('el pool de PostgreSQL toma el tamaño y las esperas de las variables de entorno (SCRUM-1651)', () => {
+  withEnv(
+    { DATABASE_POOL_MAX: '12', DATABASE_POOL_CONNECTION_TIMEOUT_MS: '4000', DATABASE_POOL_IDLE_TIMEOUT_MS: '15000' },
+    (config) => {
+      assert.equal(config.databasePoolMax, 12);
+      assert.equal(config.databasePoolConnectionTimeoutMs, 4000);
+      assert.equal(config.databasePoolIdleTimeoutMs, 15000);
+    }
+  );
+});
+
+test('un valor inválido del pool (vacío, cero, negativo o texto) usa el de por omisión (SCRUM-1651)', () => {
+  for (const valor of ['', '0', '-3', 'muchas', 'abc12']) {
+    withEnv({ DATABASE_POOL_MAX: valor, DATABASE_POOL_CONNECTION_TIMEOUT_MS: valor }, (config) => {
+      assert.equal(config.databasePoolMax, 5, `DATABASE_POOL_MAX="${valor}"`);
+      assert.equal(config.databasePoolConnectionTimeoutMs, 10000, `timeout="${valor}"`);
+    });
+  }
+});

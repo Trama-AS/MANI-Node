@@ -94,6 +94,13 @@ const config = {
   // Conexión directa a PostgreSQL (pg). Solo para operaciones que necesitan una
   // transacción real, como el reemplazo atómico de categorías del aliado (SCRUM-1071).
   databaseUrl: process.env.DATABASE_URL,
+  // Pool de conexiones de Core (SCRUM-1651). El máximo es POR instancia de Core: la suma de todas las instancias y de
+  // los demás servicios que usan la base debe caber en `max_connections` (60 en QA). La espera por una conexión libre
+  // (connectionTimeout) es el techo que debe respetar el timeout de Dispatch hacia Core: el de Dispatch tiene que ser
+  // mayor o igual. Ver docs/arquitectura/POOL_DE_CONEXIONES.md.
+  databasePoolMax: positiveIntFromEnv('DATABASE_POOL_MAX', 5),
+  databasePoolConnectionTimeoutMs: positiveIntFromEnv('DATABASE_POOL_CONNECTION_TIMEOUT_MS', 10000),
+  databasePoolIdleTimeoutMs: positiveIntFromEnv('DATABASE_POOL_IDLE_TIMEOUT_MS', 30000),
   // El respaldo de desarrollo es el MISMO que usa config/jwtSecret.js, que es
   // con el que /auth/validate-token verifica para el Gateway. Cuando eran dos
   // valores distintos, el Gateway aceptaba el token y el middleware

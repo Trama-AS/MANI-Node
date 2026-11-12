@@ -1,6 +1,7 @@
 const { DomainError } = require('../../domain/errors/DomainError');
 const { withTenantContext } = require('./withTenantContext');
 const { domainRoleToClaim } = require('../security/claimRoleMap');
+const { identidadActual } = require('../../application/context/contextoIdentidad');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,6 +22,8 @@ async function runInTenantContext(pgPoolFactory, ctx = {}, work) {
       tenantId: ctx.tenantId,
       userId: ctx.userId && UUID_RE.test(String(ctx.userId)) ? ctx.userId : null,
       role: ctx.role ? domainRoleToClaim(ctx.role) : null,
+      // SCRUM-1657: el de la petición en curso, si el llamador no lo trae.
+      correlationId: ctx.correlationId ?? identidadActual()?.correlationId ?? null,
     },
     work
   );

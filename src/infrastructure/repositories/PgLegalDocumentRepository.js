@@ -1,6 +1,6 @@
 const ILegalDocumentRepository = require('../../domain/ports/ILegalDocumentRepository');
 const LegalDocument = require('../../domain/entities/LegalDocument');
-const { enContextoTenant, tenantDeLaIdentidad, consultaGlobal, fallaDeBase } = require('../db/enContextoTenant');
+const { enContextoTenant, tenantDeLaIdentidad, fallaDeBase } = require('../db/enContextoTenant');
 
 const COLUMNAS = 'id, tenant_id, tipo, version, contenido, is_active, created_at';
 
@@ -17,9 +17,10 @@ function toDomain(row) {
 }
 
 /**
- * Documentos legales (habeas data, SCRUM-856) por `pg` como `mani_core_svc` (SCRUM-1468). Los globales
- * (`tenant_id IS NULL`) se leen sin contexto; los de un tenant, con su app.set_context. La política
- * `documento_legal_lectura` (0007) solo deja ver los activos del tenant fijado o los globales.
+ * Documentos legales (habeas data, SCRUM-856) por `pg` como `mani_core_svc` (SCRUM-1468). Se leen siempre con el
+ * app.set_context de un tenant: desde la 0040 (SCRUM-1659) la política `documento_legal_lectura` solo deja ver los
+ * documentos activos del tenant fijado, y los globales (`tenant_id IS NULL`) no los ve ningún rol de servicio. Sin
+ * tenant no hay nada que mostrar.
  */
 class PgLegalDocumentRepository extends ILegalDocumentRepository {
   constructor({ pgPoolFactory }) {
@@ -29,12 +30,10 @@ class PgLegalDocumentRepository extends ILegalDocumentRepository {
   }
 
   async getActiveDocuments(tenantId) {
+    if (!tenantId) return [];
     try {
-      const sql = `SELECT ${COLUMNAS} FROM documento_legal
-                    WHERE is_active = true AND (tenant_id IS NULL OR tenant_id = $1)`;
-      const { rows } = tenantId
-        ? await enContextoTenant(this.pgPoolFactory, tenantId, (client) => client.query(sql, [tenantId]))
-        : await consultaGlobal(this.pgPoolFactory, sql, [null]);
+      const sql = `SELECT ${COLUMNAS} FROM documento_legal WHERE is_active = true AND tenant_id = $1`;
+      const { rows } = await enContextoTenant(this.pgPoolFactory, tenantId, (client) => client.query(sql, [tenantId]));
       return rows.map(toDomain);
     } catch (err) {
       throw fallaDeBase('Error consultando documentos legales', err);
@@ -44,11 +43,10 @@ class PgLegalDocumentRepository extends ILegalDocumentRepository {
   /** El puerto no recibe el tenant: se usa el de la identidad vigente (el registro o la petición autenticada). */
   async findById(id) {
     const tenantId = tenantDeLaIdentidad();
+    if (!tenantId) return null;
     try {
       const sql = `SELECT ${COLUMNAS} FROM documento_legal WHERE id::text = $1`;
-      const { rows } = tenantId
-        ? await enContextoTenant(this.pgPoolFactory, tenantId, (client) => client.query(sql, [String(id)]))
-        : await consultaGlobal(this.pgPoolFactory, sql, [String(id)]);
+      const { rows } = await enContextoTenant(this.pgPoolFactory, tenantId, (client) => client.query(sql, [String(id)]));
       return rows[0] ? toDomain(rows[0]) : null;
     } catch (err) {
       throw fallaDeBase('Error consultando documento legal', err);

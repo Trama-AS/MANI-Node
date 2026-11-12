@@ -17,10 +17,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *      el error a `client.release(releaseError)`.
  *
  * @param {object} pool Pool de `pg` (con método `.connect()`).
- * @param {object} context Contexto verificado (`{ tenantId, userId = null, role = null }`).
+ * @param {object} context Contexto verificado (`{ tenantId, userId = null, role = null, correlationId = null }`).
+ *        `correlationId` queda en `app.correlation_id` (local a la transacción) para la trazabilidad (SCRUM-1657).
  * @param {(client: object) => Promise<any>} work Función que recibe el `client` transaccional.
  */
-async function withTenantContext(pool, { tenantId, userId = null, role = null } = {}, work) {
+async function withTenantContext(pool, { tenantId, userId = null, role = null, correlationId = null } = {}, work) {
   if (!pool || typeof pool.connect !== 'function') {
     throw new DomainError('Pool de PostgreSQL no configurado para withTenantContext', 'INTERNAL_ERROR', 500);
   }
@@ -41,6 +42,10 @@ async function withTenantContext(pool, { tenantId, userId = null, role = null } 
   try {
     await client.query('BEGIN');
     await client.query('SELECT app.set_context($1, $2, $3)', [tenantId, userId ?? null, normalizedRole]);
+    if (correlationId) {
+      // is_local = true: muere con la transacción, igual que el contexto de identidad.
+      await client.query("SELECT set_config('app.correlation_id', $1, true)", [String(correlationId).slice(0, 128)]);
+    }
     const result = await work(client);
     await client.query('COMMIT');
     return result;
