@@ -226,6 +226,39 @@ test('assertValid pasa en development cuando SUPABASE_URL y SUPABASE_JWT_SECRET 
   );
 });
 
+test('las fallas inyectables y los reintentos push tienen valores por omisión seguros (SCRUM-1662)', () => {
+  withEnv({ PUSH_PROVIDER: undefined, PUSH_MOCK_FALLAS: undefined, PUSH_PROVIDER_RETRIES: undefined, STORAGE_FALLA: undefined, STORAGE_FALLA_DESPUES_DE: undefined }, (config) => {
+    assert.equal(config.pushProvider, 'mock');
+    assert.equal(config.pushMockFallas, Number.POSITIVE_INFINITY);
+    assert.equal(config.pushProviderRetries, 1);
+    assert.deepEqual(config.storageFalla, []);
+    assert.equal(config.storageFallaDespuesDe, 0);
+  });
+});
+
+test('se leen las fallas inyectables y los reintentos de las variables de entorno (SCRUM-1662)', () => {
+  withEnv({ PUSH_MOCK_FALLAS: '2', PUSH_PROVIDER_RETRIES: '0', STORAGE_FALLA: 'upload, delete', STORAGE_FALLA_DESPUES_DE: '1' }, (config) => {
+    assert.equal(config.pushMockFallas, 2);
+    assert.equal(config.pushProviderRetries, 0, '0 es un valor válido y desactiva los reintentos');
+    assert.deepEqual(config.storageFalla, ['upload', 'delete']);
+    assert.equal(config.storageFallaDespuesDe, 1);
+  });
+  withEnv({ PUSH_MOCK_FALLAS: 'basura', PUSH_PROVIDER_RETRIES: '-1' }, (config) => {
+    assert.equal(config.pushMockFallas, Number.POSITIVE_INFINITY);
+    assert.equal(config.pushProviderRetries, 1);
+  });
+});
+
+test('en producción el arranque se detiene si hay una falla inyectada (SCRUM-1662)', () => {
+  const base = {
+    NODE_ENV: 'production', SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k', SUPABASE_JWT_SECRET: 's',
+    SUPABASE_ANON_KEY: 'a', DATABASE_URL: 'postgres://u:p@h/d', RULES_SERVICE_URL: 'http://rules',
+  };
+  withEnv({ ...base, PUSH_PROVIDER: 'mock_falla' }, (config) => assert.throws(() => config.assertValid(), /mock_falla/));
+  withEnv({ ...base, STORAGE_FALLA: 'upload' }, (config) => assert.throws(() => config.assertValid(), /STORAGE_FALLA/));
+  withEnv({ ...base, PUSH_PROVIDER: 'mock' }, (config) => assert.doesNotThrow(() => config.assertValid()));
+});
+
 test('el pool de PostgreSQL usa 5 conexiones, 10 s de espera y 30 s de inactividad por omisión (SCRUM-1651)', () => {
   withEnv(
     { DATABASE_POOL_MAX: undefined, DATABASE_POOL_CONNECTION_TIMEOUT_MS: undefined, DATABASE_POOL_IDLE_TIMEOUT_MS: undefined },

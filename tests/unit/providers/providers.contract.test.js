@@ -20,7 +20,9 @@ describe('Contratos de adaptadores de proveedores', () => {
 
   describe('push', () => {
     for (const [nombre, crear] of Object.entries(PUSH_PROVIDERS)) {
-      contratoDeProveedorPush(nombre, crear);
+      // SCRUM-1662: un adaptador con falla inyectable (mock_falla) cumple el contrato con la falla desactivada (`fallas: 0`);
+      // los demás ignoran el argumento. Su comportamiento con falla va en sus propias pruebas.
+      contratoDeProveedorPush(nombre, () => crear({ fallas: 0 }));
     }
   });
 });
