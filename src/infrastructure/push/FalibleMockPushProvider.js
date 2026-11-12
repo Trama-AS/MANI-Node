@@ -11,6 +11,9 @@ const PushProviderError = require('../../domain/errors/PushProviderError');
  *   - un entero (`PUSH_MOCK_FALLAS=1`): falla pasajera; el primer intento falla y el reintento entrega.
  * La clave es la `idempotencyKey` (el id de la notificación), igual que la del contrato común de proveedores.
  */
+// Tope de notificaciones recordadas: el contador es solo para pruebas y no debe crecer sin límite.
+const MAX_CLAVES = 1000;
+
 class FalibleMockPushProvider extends MockPushProvider {
   constructor({ fallas = Number.POSITIVE_INFINITY, ...opciones } = {}) {
     super(opciones);
@@ -26,6 +29,7 @@ class FalibleMockPushProvider extends MockPushProvider {
     const clave = mensaje.idempotencyKey ?? mensaje.notificacionId ?? 'sin-clave';
     const intento = (this.intentos.get(clave) ?? 0) + 1;
     this.intentos.set(clave, intento);
+    if (this.intentos.size > MAX_CLAVES) this.intentos.delete(this.intentos.keys().next().value);
     if (intento <= this.fallas) {
       throw new PushProviderError('UNAVAILABLE', `Falla inyectada de PUSH_PROVIDER=mock_falla (intento ${intento})`);
     }
