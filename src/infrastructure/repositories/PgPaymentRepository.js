@@ -35,6 +35,18 @@ const sinPerfil = () => new ForbiddenError('MANI-PAG-403C: solo un cliente activ
 const noEncontrado = () => new NotFoundError('MANI-PAG-404: pago o cotización no encontrados', 'MANI-PAG-404');
 const yaAprobado = () =>
   new ConflictError('MANI-PAG-409A: la cotización ya tiene un pago aprobado', 'MANI-PAG-409A');
+// SCRUM-1653: la misma clave con otro contenido no es un reintento.
+const claveReutilizada = () =>
+  new ConflictError(
+    'MANI-PAG-409K: la clave de idempotencia ya se usó con otra cotización o con otro escenario',
+    'MANI-PAG-409K'
+  );
+
+// Una fila sin huella (anterior a la 0041) se compara solo por cotización; con huella, el cuerpo entero debe coincidir.
+function exigirMismoCuerpo(previo, datos) {
+  if (previo.cotizacion_id !== datos.cotizacionId) throw claveReutilizada();
+  if (previo.huella_idempotencia && datos.huella && previo.huella_idempotencia !== datos.huella) throw claveReutilizada();
+}
 
 /**
  * Pagos del sandbox sobre `pg`, dentro de transacciones con withTenantContext (ADR-0032). El proveedor se llama
@@ -53,12 +65,17 @@ class PgPaymentRepository extends IPaymentRepository {
       const clienteId = await clienteActivoDeSesion(client, ctx, sinPerfil);
 
       if (datos.claveIdempotencia) {
+        // La clave es del cliente: se busca por clave y no por cotización, para detectar que se reutilizó con otra.
         const previo = await client.query(
-          `SELECT ${COLUMNAS} FROM pago
-           WHERE tenant_id = $1 AND cotizacion_id = $2 AND clave_idempotencia = $3 AND cliente_id = $4`,
-          [ctx.tenantId, datos.cotizacionId, datos.claveIdempotencia, clienteId]
+          `SELECT ${COLUMNAS}, huella_idempotencia FROM pago
+           WHERE tenant_id = $1 AND clave_idempotencia = $2 AND cliente_id = $3
+           ORDER BY created_at LIMIT 1`,
+          [ctx.tenantId, datos.claveIdempotencia, clienteId]
         );
-        if (previo.rows.length > 0) return { existente: toPayment(previo.rows[0]) };
+        if (previo.rows.length > 0) {
+          exigirMismoCuerpo(previo.rows[0], datos);
+          return { existente: toPayment(previo.rows[0]) };
+        }
       }
 
       // El monto es el total vigente (SCRUM-872): la cotización aceptada más sus adiciones aceptadas.
@@ -94,8 +111,8 @@ class PgPaymentRepository extends IPaymentRepository {
       return await runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
         const creado = await client.query(
           `INSERT INTO pago (tenant_id, cotizacion_id, cliente_id, monto, moneda, estado, proveedor, simulado,
-                             referencia_proveedor, motivo, correlation_id, clave_idempotencia)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                             referencia_proveedor, motivo, correlation_id, clave_idempotencia, huella_idempotencia)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            RETURNING ${COLUMNAS}`,
           [
             ctx.tenantId,
@@ -110,6 +127,7 @@ class PgPaymentRepository extends IPaymentRepository {
             datos.motivo || null,
             datos.correlationId || null,
             datos.claveIdempotencia,
+            datos.claveIdempotencia ? datos.huella || null : null,
           ]
         );
         const pago = toPayment(creado.rows[0]);
@@ -159,7 +177,11 @@ class PgPaymentRepository extends IPaymentRepository {
       const { existente } = await this.prepararCobro(ctx, {
         cotizacionId: datos.cotizacionId,
         claveIdempotencia: datos.claveIdempotencia,
-      }).catch(() => ({}));
+        huella: datos.huella,
+      }).catch((e) => {
+        if (e.code === 'MANI-PAG-409K') throw e;
+        return {};
+      });
       if (existente) return { pago: existente, creado: false };
       throw err;
     }

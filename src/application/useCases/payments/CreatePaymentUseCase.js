@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const { DomainError, ValidationError } = require('../../../domain/errors/DomainError');
 const PaymentProviderError = require('../../../domain/errors/PaymentProviderError');
 const callProvider = require('../../providers/callProvider');
@@ -23,6 +24,14 @@ function desenlaceValido(resultado) {
       typeof resultado.referencia === 'string' &&
       resultado.referencia.trim() !== ''
   );
+}
+
+/**
+ * Huella de lo que el cliente pidió cobrar (SCRUM-1653): la misma cotización y el mismo escenario dan la misma huella.
+ * Con la misma clave, otra huella no es un reintento sino otra petición.
+ */
+function huellaDe({ cotizacionId, escenario }) {
+  return crypto.createHash('sha256').update(JSON.stringify({ cotizacionId, escenario })).digest('hex');
 }
 
 /**
@@ -59,7 +68,9 @@ class CreatePaymentUseCase {
     const claveIdempotencia = body.claveIdempotencia ? uuidValido(body.claveIdempotencia, 'claveIdempotencia') : null;
     const escenario = body.escenario === undefined ? 'APROBADO' : String(body.escenario);
 
-    const preparado = await this.paymentRepository.prepararCobro(ctx, { cotizacionId, claveIdempotencia });
+    const huella = claveIdempotencia ? huellaDe({ cotizacionId, escenario }) : null;
+
+    const preparado = await this.paymentRepository.prepararCobro(ctx, { cotizacionId, claveIdempotencia, huella });
     if (preparado.existente) return { pago: preparado.existente, creado: false };
     const { cobro } = preparado;
 
@@ -99,6 +110,7 @@ class CreatePaymentUseCase {
       motivo: resultado.motivo,
       correlationId,
       claveIdempotencia,
+      huella,
     });
 
     this.auditLogger({

@@ -192,3 +192,51 @@ test('C3: solo el cliente consulta; un id inválido responde 400 sin consultar',
   await assert.rejects(() => useCase.obtener({ user: cliente, pagoId: 'x' }), (err) => err.statusCode === 400);
   assert.equal(calls.length, 0);
 });
+
+// ---- SCRUM-1653: la misma clave con otro cuerpo no es un reintento ----
+
+test('SCRUM-1653: con clave de idempotencia el caso de uso envía una huella que depende de la cotización y el escenario', async () => {
+  const huellas = new Set();
+  for (const escenario of ['APROBADO', 'RECHAZADO', 'PENDIENTE']) {
+    const { useCase, calls } = setup();
+    await pagar(useCase, { escenario, claveIdempotencia: CLAVE });
+    const huella = calls.preparar[0][1].huella;
+    assert.match(huella, /^[0-9a-f]{64}$/);
+    assert.equal(calls.registrar[0][1].huella, huella, 'se guarda la misma huella con la que se consultó');
+    huellas.add(huella);
+  }
+  assert.equal(huellas.size, 3, 'otro escenario da otra huella');
+
+  const otraCotizacion = setup();
+  await otraCotizacion.useCase.execute({
+    user: cliente,
+    body: { cotizacionId: '55555555-5555-4555-8555-555555555555', claveIdempotencia: CLAVE },
+    correlationId: 'corr-2',
+  });
+  assert.ok(!huellas.has(otraCotizacion.calls.preparar[0][1].huella), 'otra cotización da otra huella');
+});
+
+test('SCRUM-1653: la misma petición dos veces da la misma huella; sin clave no hay huella', async () => {
+  const a = setup();
+  const b = setup();
+  await pagar(a.useCase, { claveIdempotencia: CLAVE });
+  await pagar(b.useCase, { claveIdempotencia: CLAVE });
+  assert.equal(a.calls.preparar[0][1].huella, b.calls.preparar[0][1].huella);
+
+  const sinClave = setup();
+  await pagar(sinClave.useCase);
+  assert.equal(sinClave.calls.preparar[0][1].huella, null);
+});
+
+test('SCRUM-1653: un 409 del repositorio por clave reutilizada se propaga y no llama al proveedor', async () => {
+  const { ConflictError } = require('../../../../src/domain/errors/DomainError');
+  let cobrado = 0;
+  const provider = { name: 'mock', simulated: true, charge: async () => { cobrado += 1; return { estado: 'APROBADO', referencia: 'r' }; } };
+  const { useCase } = setup({ provider });
+  useCase.paymentRepository.prepararCobro = async () => {
+    throw new ConflictError('MANI-PAG-409K: clave reutilizada', 'MANI-PAG-409K');
+  };
+
+  await assert.rejects(() => pagar(useCase, { claveIdempotencia: CLAVE }), (e) => e.code === 'MANI-PAG-409K' && e.statusCode === 409);
+  assert.equal(cobrado, 0, 'no se cobra nada');
+});
