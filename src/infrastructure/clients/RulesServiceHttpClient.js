@@ -1,6 +1,8 @@
 const IRuleEvaluationService = require('../../domain/ports/IRuleEvaluationService');
 const RuleEvaluationResult = require('../../domain/entities/RuleEvaluationResult');
 const { DomainError } = require('../../domain/errors/DomainError');
+const CircuitBreaker = require('../../application/providers/CircuitBreaker');
+const { resolveCorrelationId } = require('../observability/logger');
 
 const EVALUATE_PATH = '/api/v1/rules/categories/evaluate';
 const RATES_PATH = '/api/v1/rules/rates/evaluate';
@@ -19,21 +21,35 @@ function unavailable(detail) {
 }
 
 /**
- * Adaptador HTTP real de IRuleEvaluationService contra MANI-Java (US-03.1.1-M6).
- * Llama por la red interna (RULES_SERVICE_URL), no a través del Gateway, propagando el tenant y
- * el rol ya verificados en el JWT como X-Tenant-Id / X-User-Role, igual que hace el Gateway.
+ * Adaptador HTTP real de IRuleEvaluationService contra MANI-Java (US-03.1.1-M6, SCRUM-1658, SCRUM-1663).
+ * Llama por la red interna (RULES_SERVICE_URL), no a través del Gateway, propagando el tenant,
+ * el rol y el X-Correlation-ID de la petición en curso.
  *
- * Falla cerrado: si Rules no responde, la operación se rechaza con 503 en vez de aplicar las
- * reglas antiguas en Core. La evaluación es idempotente, así que se reintenta una vez ante
- * errores de red o 502/503/504.
+ * Falla cerrado: si Rules no responde o el circuit breaker está abierto, la operación se rechaza con 503.
  */
 class RulesServiceHttpClient extends IRuleEvaluationService {
-  constructor({ baseUrl, timeoutMs = 3000, retries = 1, fetchImpl = globalThis.fetch } = {}) {
+  constructor({
+    baseUrl,
+    timeoutMs = 3000,
+    retries = 1,
+    fetchImpl = globalThis.fetch,
+    circuitBreaker = null,
+    failureThreshold = 5,
+    resetTimeoutMs = 10000,
+  } = {}) {
     super();
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
     this.retries = retries;
     this.fetchImpl = fetchImpl;
+    this.circuitBreaker =
+      circuitBreaker ||
+      new CircuitBreaker(null, {
+        name: 'mani-rules-java',
+        failureThreshold,
+        resetTimeoutMs,
+        errorFilter: (err) => !(err instanceof DomainError),
+      });
   }
 
   async evaluateCategoryRules({ tenantId, categoryId = null, context, role, correlationId } = {}) {
@@ -81,28 +97,36 @@ class RulesServiceHttpClient extends IRuleEvaluationService {
       throw unavailable('RULES_SERVICE_URL no está configurada');
     }
 
+    const cid = resolveCorrelationId({ correlationId });
     const request = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Id': tenantId,
         'X-User-Role': role,
-        'X-Correlation-ID': correlationId || 'none',
+        'X-Correlation-ID': cid,
       },
       body: JSON.stringify(payload),
     };
 
-    let lastError;
-    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
-      try {
-        return await this._send(path, request);
-      } catch (err) {
-        if (err instanceof DomainError) throw err;
-        lastError = err;
-        if (!err.retryable) break;
-      }
+    try {
+      return await this.circuitBreaker.execute(async () => {
+        let lastError;
+        for (let attempt = 0; attempt <= this.retries; attempt += 1) {
+          try {
+            return await this._send(path, request);
+          } catch (err) {
+            if (err instanceof DomainError) throw err;
+            lastError = err;
+            if (!err.retryable) break;
+          }
+        }
+        throw lastError;
+      });
+    } catch (err) {
+      if (err instanceof DomainError) throw err;
+      throw unavailable(err.message);
     }
-    throw unavailable(lastError.message);
   }
 
   async _send(path, request) {

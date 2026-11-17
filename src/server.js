@@ -1,11 +1,12 @@
 require('dotenv').config();
 
 const config = require('./config');
+const { logger } = require('./infrastructure/observability/logger');
 
 try {
   config.assertValid();
 } catch (err) {
-  console.error(`❌ Configuración inválida: ${err.message}`);
+  logger.error({ event: 'startup_config_error', message: `Configuración inválida: ${err.message}` });
   process.exit(1);
 }
 
@@ -21,7 +22,12 @@ async function arrancar() {
   });
 
   const server = app.listen(config.port, '0.0.0.0', () => {
-    console.log(`🚀 MANI-Core-Node [${config.envLabel}] corriendo en el puerto ${config.port}`);
+    logger.info({
+      event: 'server_started',
+      port: config.port,
+      environment: config.envLabel,
+      message: `MANI-Core-Node [${config.envLabel}] corriendo en el puerto ${config.port}`,
+    });
   });
 
   // Relay del outbox (SCRUM-889, ADR-0029): solo corre con KAFKA_BROKERS y DATABASE_URL; si no, los eventos esperan.
@@ -37,6 +43,6 @@ async function arrancar() {
 }
 
 arrancar().catch((err) => {
-  console.error(`❌ No se pudo arrancar: ${err.message}`);
+  logger.error({ event: 'startup_fatal_error', message: `No se pudo arrancar: ${err.message}` });
   process.exit(1);
 });

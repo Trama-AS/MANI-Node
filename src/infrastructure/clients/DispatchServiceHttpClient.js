@@ -1,5 +1,7 @@
 const IDispatchAssignmentService = require('../../domain/ports/IDispatchAssignmentService');
 const { DomainError } = require('../../domain/errors/DomainError');
+const CircuitBreaker = require('../../application/providers/CircuitBreaker');
+const { resolveCorrelationId } = require('../observability/logger');
 
 const ASSIGNMENTS_PATH = '/api/v1/dispatch/assignments/me';
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
@@ -9,21 +11,35 @@ function unavailable(detail) {
 }
 
 /**
- * Adaptador HTTP de IDispatchAssignmentService contra MANI-Dispatch (SCRUM-853).
- * Llama por la red interna (DISPATCH_SERVICE_URL), no a través del Gateway, reenviando el JWT del aliado:
- * Dispatch lo resuelve con Core y devuelve solo sus asignaciones.
+ * Adaptador HTTP de IDispatchAssignmentService contra MANI-Dispatch (SCRUM-853, SCRUM-1658, SCRUM-1663).
+ * Llama por la red interna (DISPATCH_SERVICE_URL), no a través del Gateway, reenviando el JWT del aliado
+ * y el X-Correlation-ID de la petición en curso.
  *
- * Falla cerrado (criterio T2): si Dispatch no responde, la consulta se rechaza con 503 en vez de suponer que el
- * aliado está o no asignado. La consulta es de solo lectura, así que se reintenta una vez ante errores de red o
- * 502/503/504.
+ * Falla cerrado (criterio T2): si Dispatch no responde o el circuit breaker está abierto, la consulta se rechaza con 503.
  */
 class DispatchServiceHttpClient extends IDispatchAssignmentService {
-  constructor({ baseUrl, timeoutMs = 3000, retries = 1, fetchImpl = globalThis.fetch } = {}) {
+  constructor({
+    baseUrl,
+    timeoutMs = 3000,
+    retries = 1,
+    fetchImpl = globalThis.fetch,
+    circuitBreaker = null,
+    failureThreshold = 5,
+    resetTimeoutMs = 10000,
+  } = {}) {
     super();
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
     this.retries = retries;
     this.fetchImpl = fetchImpl;
+    this.circuitBreaker =
+      circuitBreaker ||
+      new CircuitBreaker(null, {
+        name: 'mani-dispatch-dotnet',
+        failureThreshold,
+        resetTimeoutMs,
+        errorFilter: (err) => !(err instanceof DomainError),
+      });
   }
 
   async listMyAssignedRequestIds({ authorization, correlationId } = {}) {
@@ -31,26 +47,34 @@ class DispatchServiceHttpClient extends IDispatchAssignmentService {
       throw unavailable('DISPATCH_SERVICE_URL no está configurada');
     }
 
+    const cid = resolveCorrelationId({ correlationId });
     const request = {
       method: 'GET',
       headers: {
         Accept: 'application/json',
         Authorization: authorization || '',
-        'X-Correlation-ID': correlationId || 'none',
+        'X-Correlation-ID': cid,
       },
     };
 
-    let lastError;
-    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
-      try {
-        return await this._send(request);
-      } catch (err) {
-        if (err instanceof DomainError) throw err;
-        lastError = err;
-        if (!err.retryable) break;
-      }
+    try {
+      return await this.circuitBreaker.execute(async () => {
+        let lastError;
+        for (let attempt = 0; attempt <= this.retries; attempt += 1) {
+          try {
+            return await this._send(request);
+          } catch (err) {
+            if (err instanceof DomainError) throw err;
+            lastError = err;
+            if (!err.retryable) break;
+          }
+        }
+        throw lastError;
+      });
+    } catch (err) {
+      if (err instanceof DomainError) throw err;
+      throw unavailable(err.message);
     }
-    throw unavailable(lastError.message);
   }
 
   async _send(request) {

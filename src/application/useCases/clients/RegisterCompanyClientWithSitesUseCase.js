@@ -155,7 +155,12 @@ class RegisterCompanyClientWithSitesUseCase {
         try {
           await this.authIdentityService.deleteUser(userId);
         } catch (cleanupErr) {
-          console.error('[RegisterCompanyClientWithSitesUseCase] Error en compensación de usuario en Auth:', cleanupErr);
+          const { logger } = require('../../../infrastructure/observability/logger');
+          logger.error({
+            event: 'company_client_compensation_error',
+            component: 'RegisterCompanyClientWithSitesUseCase',
+            message: cleanupErr?.message || String(cleanupErr),
+          });
         }
       }
       throw saveErr;
