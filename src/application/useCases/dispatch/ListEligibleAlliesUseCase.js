@@ -1,21 +1,11 @@
-const { ValidationError } = require('../../../domain/errors/DomainError');
 const {
   requireDispatchSession,
   requireUuid,
   uuidList,
-  TIPOS_ALIADO,
-  MAX_PAGE_SIZE,
+  tipoOpcional,
+  paginaElegibles,
   MAX_EXCLUIDOS,
 } = require('./dispatchAccess');
-
-function positiveInt(value, field, fallback, max) {
-  if (value === undefined || value === null || value === '') return fallback;
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || (max && n > max)) {
-    throw new ValidationError(`MANI-DSP-400: ${field} debe ser un entero entre 1 y ${max || 'el máximo'}`, 'MANI-DSP-400');
-  }
-  return n;
-}
 
 class ListEligibleAlliesUseCase {
   constructor({ elegibilidadRepository }) {
@@ -32,21 +22,8 @@ class ListEligibleAlliesUseCase {
     // son del dominio de Dispatch, que los manda resueltos en `excludeAllyIds` (ADR-0030).
     if (query.requestId) requireUuid(query.requestId, 'requestId');
     const excludeAllyIds = uuidList(query.excludeAllyIds, 'excludeAllyIds', MAX_EXCLUIDOS);
-
-    let tipo = null;
-    const tipoPedido = query.tipo === undefined || query.tipo === null ? '' : String(query.tipo).trim();
-    if (tipoPedido !== '') {
-      tipo = tipoPedido.toUpperCase();
-      if (!TIPOS_ALIADO.includes(tipo)) {
-        throw new ValidationError(
-          `MANI-DSP-400: tipo debe ser uno de ${TIPOS_ALIADO.join(', ')}`,
-          'MANI-DSP-400'
-        );
-      }
-    }
-
-    const page = positiveInt(query.page, 'page', 1);
-    const pageSize = positiveInt(query.pageSize, 'pageSize', 20, MAX_PAGE_SIZE);
+    const tipo = tipoOpcional(query.tipo);
+    const { page, pageSize } = paginaElegibles(query);
 
     return this.elegibilidadRepository.findEligible(ctx, { categoriaId, zonaId, excludeAllyIds, tipo, page, pageSize });
   }
