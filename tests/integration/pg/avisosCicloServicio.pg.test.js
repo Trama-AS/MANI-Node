@@ -114,15 +114,17 @@ test('PG C1: el aliado inicia y finaliza la ejecución y el cliente recibe cada 
   assert.equal(e.push.sentTo(s.tenant, s.usuarioCliente).length, 3);
 });
 
-test('PG C1: el cliente cancela y el aliado asignado recibe el aviso y el push; repetir la cancelación no repite nada', opts, async (t) => {
+test('PG C1: el cliente cancela y el aliado asignado recibe el aviso y el push; repetir la cancelación responde 409 y no repite nada', opts, async (t) => {
   const e = await entorno(t);
   const s = await sembrarTenant(e.pool);
 
   const primera = await e.cancelar.execute({ user: s.cliente.user, solicitudId: s.solicitud, body: { motivo: 'Ya no lo necesito' }, correlationId: 'corr-c' });
-  const repetida = await e.cancelar.execute({ user: s.cliente.user, solicitudId: s.solicitud, body: {} });
+  await assert.rejects(
+    () => e.cancelar.execute({ user: s.cliente.user, solicitudId: s.solicitud, body: {} }),
+    (err) => err.statusCode === 409 && err.code === 'MANI-SOL-409C'
+  );
 
   assert.equal(primera.cancelada, true);
-  assert.equal(repetida.cancelada, false);
   assert.equal('notificacionId' in primera, false);
   const filas = await bandeja(e.pool, s.tenant, s.usuarioAliado);
   assert.deepEqual(filas.map((f) => [f.tipo, f.canal]), [['SOLICITUD_CANCELADA', 'PUSH']]);

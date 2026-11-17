@@ -214,7 +214,8 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
   /**
    * Cancela la solicitud propia del cliente antes de la ejecución (US-04.5.1 / SCRUM-877) y evalúa
    * la penalización por cancelación tardía según la política vigente del tenant (US-04.5.2 / SCRUM-878).
-   * La fila se bloquea con FOR UPDATE. Repetir la cancelación es idempotente (`cancelada` false).
+   * La fila se bloquea con FOR UPDATE. Cancelar una solicitud ya cancelada responde 409 MANI-SOL-409C
+   * sin cambiar el estado (SCRUM-1654 / T-17).
    */
   async cancelar(ctx, { solicitudId, motivo }) {
     return runInTenantContext(this.pgPoolFactory, ctx, async (client) => {
@@ -230,99 +231,52 @@ class PgServiceRequestRepository extends IServiceRequestRepository {
       const fila = actual.rows[0];
       const { estado, aliado_id: aliadoId } = fila;
       let aviso = {};
-      let penalizacion;
 
-      if (estado !== 'CANCELADA') {
-        if (!ESTADOS_CANCELABLES.includes(estado)) {
-          throw new ConflictError(`MANI-SOL-409C: una solicitud ${estado} ya no se puede cancelar`, 'MANI-SOL-409C');
-        }
+      if (!ESTADOS_CANCELABLES.includes(estado)) {
+        throw new ConflictError(`MANI-SOL-409C: una solicitud ${estado} ya no se puede cancelar`, 'MANI-SOL-409C');
+      }
 
-        penalizacion = await calcularPenalizacionCancelacion(client, ctx.tenantId, fila);
+      const penalizacion = await calcularPenalizacionCancelacion(client, ctx.tenantId, fila);
 
-        try {
+      await client.query(
+        `UPDATE solicitud
+         SET estado = 'CANCELADA',
+             penalizacion_aplicada = $3,
+             penalizacion_monto = $4,
+             penalizacion_motivo = $5,
+             updated_at = now()
+         WHERE id = $1 AND tenant_id = $2`,
+        [
+          solicitudId,
+          ctx.tenantId,
+          Boolean(penalizacion.aplicaPenalizacion),
+          Number(penalizacion.montoPenalizacion || 0),
+          penalizacion.razon || null,
+        ]
+      );
+
+      // QS-12: la cancelación queda en la línea de tiempo del servicio con el motivo del cliente.
+      await client.query(
+        `INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, descripcion)
+         VALUES ($1, $2, $3, 'SOLICITUD_CANCELADA', $4)`,
+        [ctx.tenantId, solicitudId, ctx.userId, motivo || MOTIVO_CANCELACION]
+      );
+
+      // El aliado asignado se entera en su bandeja, igual que con SOLICITUD_ASIGNADA (migración 005).
+      if (aliadoId) {
+        aviso = avisoDeNotificacion(
           await client.query(
-            `UPDATE solicitud
-             SET estado = 'CANCELADA',
-                 penalizacion_aplicada = $3,
-                 penalizacion_monto = $4,
-                 penalizacion_motivo = $5,
-                 updated_at = now()
-             WHERE id = $1 AND tenant_id = $2`,
-            [
-              solicitudId,
-              ctx.tenantId,
-              Boolean(penalizacion.aplicaPenalizacion),
-              Number(penalizacion.montoPenalizacion || 0),
-              penalizacion.razon || null,
-            ]
-          );
-        } catch (err) {
-          // Compatibilidad si una base de pruebas corrió sin la migración 0026:
-          if (err && err.code === '42703') {
-            await client.query("UPDATE solicitud SET estado = 'CANCELADA', updated_at = now() WHERE id = $1 AND tenant_id = $2", [
-              solicitudId,
-              ctx.tenantId,
-            ]);
-          } else {
-            throw err;
-          }
-        }
-
-        // QS-12: la cancelación queda en la línea de tiempo del servicio con el motivo del cliente.
-        await client.query(
-          `INSERT INTO evento_servicio (tenant_id, solicitud_id, actor_id, tipo_evento, descripcion)
-           VALUES ($1, $2, $3, 'SOLICITUD_CANCELADA', $4)`,
-          [ctx.tenantId, solicitudId, ctx.userId, motivo || MOTIVO_CANCELACION]
+            `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
+             SELECT $1, a.usuario_id, 'SOLICITUD_CANCELADA', 'PUSH', $3::jsonb
+             FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1
+             RETURNING id`,
+            [ctx.tenantId, aliadoId, JSON.stringify({ requestId: solicitudId })]
+          )
         );
-
-        // El aliado asignado se entera en su bandeja, igual que con SOLICITUD_ASIGNADA (migración 005).
-        if (aliadoId) {
-          aviso = avisoDeNotificacion(
-            await client.query(
-              `INSERT INTO notificacion (tenant_id, usuario_id, tipo, canal, payload)
-               SELECT $1, a.usuario_id, 'SOLICITUD_CANCELADA', 'PUSH', $3::jsonb
-               FROM aliado a WHERE a.id = $2 AND a.tenant_id = $1
-               RETURNING id`,
-              [ctx.tenantId, aliadoId, JSON.stringify({ requestId: solicitudId })]
-            )
-          );
-        }
-      } else {
-        try {
-          const prev = await client.query(
-            `SELECT penalizacion_aplicada, penalizacion_monto, penalizacion_motivo
-             FROM solicitud WHERE id = $1 AND tenant_id = $2`,
-            [solicitudId, ctx.tenantId]
-          );
-          const pr = prev.rows[0] || {};
-          penalizacion = {
-            solicitudId,
-            estadoActual: 'CANCELADA',
-            aplicaPenalizacion: Boolean(pr.penalizacion_aplicada),
-            montoPenalizacion: Number(pr.penalizacion_monto || 0),
-            moneda: 'COP',
-            razon: pr.penalizacion_motivo || 'SIN_POLITICA_VIGENTE',
-            politicaActiva: Boolean(pr.penalizacion_aplicada),
-          };
-        } catch (err) {
-          if (err && err.code === '42703') {
-            penalizacion = {
-              solicitudId,
-              estadoActual: 'CANCELADA',
-              aplicaPenalizacion: false,
-              montoPenalizacion: 0,
-              moneda: 'COP',
-              razon: 'SIN_POLITICA_VIGENTE',
-              politicaActiva: false,
-            };
-          } else {
-            throw err;
-          }
-        }
       }
 
       const { rows } = await client.query(`${SEGUIMIENTO_SQL} AND s.id = $3`, [ctx.userId, ctx.tenantId, solicitudId]);
-      return { solicitud: seguimiento(rows[0]), cancelada: estado !== 'CANCELADA', penalizacion, ...aviso };
+      return { solicitud: seguimiento(rows[0]), cancelada: true, penalizacion, ...aviso };
     });
   }
 }

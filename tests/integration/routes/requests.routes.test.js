@@ -283,14 +283,20 @@ test('PATCH /solicitudes/me/:id/cancelar responde 200 con la solicitud cancelada
   }
 ));
 
-test('PATCH /solicitudes/me/:id/cancelar repetido responde 200 con cancelada=false', conCancelacion(
-  async () => ({ solicitud: { id: SOL, estado: 'CANCELADA' }, cancelada: false }),
-  async () => {
-    const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({});
-    assert.equal(res.status, 200);
-    assert.equal(res.body.cancelada, false);
-  }
-));
+test('SCRUM-1654 (T-17): PATCH /solicitudes/me/:id/cancelar repetido sobre una solicitud ya CANCELADA responde 409 MANI-SOL-409C', async () => {
+  const { ConflictError } = require('../../../src/domain/errors/DomainError');
+  await conCancelacion(
+    async () => {
+      throw new ConflictError('MANI-SOL-409C: una solicitud CANCELADA ya no se puede cancelar', 'MANI-SOL-409C');
+    },
+    async () => {
+      const res = await request(app).patch(rutaCancelar()).set('Authorization', `Bearer ${token()}`).send({});
+      assert.equal(res.status, 409);
+      assert.equal(res.body.code, 'MANI-SOL-409C');
+      assert.ok(res.body.error && res.body.correlationId);
+    }
+  )();
+});
 
 test('PATCH /solicitudes/me/:id/cancelar propaga 404 de una ajena y 409 de una en ejecución con el formato de error único', async () => {
   const { NotFoundError, ConflictError } = require('../../../src/domain/errors/DomainError');
