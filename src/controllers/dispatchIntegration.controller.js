@@ -12,6 +12,20 @@ async function listEligibleAllies(req, res, next) {
   }
 }
 
+// SCRUM-1652: contexto, elegibles y criterio de orden de una solicitud en una sola lectura.
+async function listEligibleAlliesForRequest(req, res, next) {
+  try {
+    const result = await container.getEligibleAlliesForRequestUseCase.execute({
+      session: req.user,
+      solicitudId: req.params.id,
+      query: req.query,
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getSolicitudContext(req, res, next) {
   try {
     const context = await container.getSolicitudContextUseCase.execute({ session: req.user, solicitudId: req.params.id });
@@ -64,6 +78,7 @@ async function listOwnOffers(req, res, next) {
 
 module.exports = {
   listEligibleAllies,
+  listEligibleAlliesForRequest,
   getSolicitudContext,
   getOwnAllyProfile,
   listOwnOffers,

@@ -92,6 +92,7 @@ const PgSolicitudContextRepository = require('./infrastructure/repositories/PgSo
 const PgNotificacionRepository = require('./infrastructure/repositories/PgNotificacionRepository');
 const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListEligibleAlliesUseCase');
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
+const GetEligibleAlliesForRequestUseCase = require('./application/useCases/dispatch/GetEligibleAlliesForRequestUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
 const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
@@ -283,6 +284,9 @@ class Container {
     this.solicitudContextRepository = new PgSolicitudContextRepository({ pgPoolFactory: this.pgPoolFactory });
     this.notificacionRepository = new PgNotificacionRepository({ pgPoolFactory: this.pgPoolFactory });
     this.listEligibleAlliesUseCase = new ListEligibleAlliesUseCase({ elegibilidadRepository: this.elegibilidadRepository });
+    this.getEligibleAlliesForRequestUseCase = new GetEligibleAlliesForRequestUseCase({
+      elegibilidadRepository: this.elegibilidadRepository,
+    });
     this.getSolicitudContextUseCase = new GetSolicitudContextUseCase({
       solicitudContextRepository: this.solicitudContextRepository,
     });
