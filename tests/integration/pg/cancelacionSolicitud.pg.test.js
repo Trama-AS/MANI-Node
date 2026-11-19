@@ -75,8 +75,12 @@ test('PG cancelación: el cliente cancela antes de la ejecución, queda persisti
   assert.equal(await estadoDe(pool, pendiente), 'CANCELADA');
   assert.deepEqual(await eventosDe(pool, pendiente), [{ descripcion: 'Ya no lo necesito' }]);
 
-  // Repetir es idempotente: no hay un segundo evento.
-  assert.equal((await repo.cancelar(ctxAna, { solicitudId: pendiente })).cancelada, false);
+  // SCRUM-1654 (T-17): cancelar una solicitud ya cancelada responde 409 MANI-SOL-409C, no cambia el estado ni agrega eventos.
+  await assert.rejects(
+    () => repo.cancelar(ctxAna, { solicitudId: pendiente }),
+    (e) => e.statusCode === 409 && e.code === 'MANI-SOL-409C'
+  );
+  assert.equal(await estadoDe(pool, pendiente), 'CANCELADA');
   assert.equal((await eventosDe(pool, pendiente)).length, 1);
 
   // Con aliado asignado, la notificación queda en la bandeja del aliado.
