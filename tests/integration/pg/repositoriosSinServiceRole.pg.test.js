@@ -296,7 +296,7 @@ test('ausencias del aliado: alta, solapamiento 409, edición y borrado dentro de
   assert.equal(await r.ausencias.delete(s.tenant, reg.aliado.id, creada.id), true);
 });
 
-test('directorio de tenants y documentos legales: globales sin contexto, los del tenant solo con su identidad', opts, async (t) => {
+test('directorio de tenants y documentos legales: cada tenant ve solo los suyos y los del tenant solo con su identidad', opts, async (t) => {
   const { pool, core } = fabricasPg(t, url);
   const r = repositorios(core);
   const s = await sembrarTenant(pool);
@@ -306,12 +306,11 @@ test('directorio de tenants y documentos legales: globales sin contexto, los del
   assert.equal(await r.tenants.findById('no-es-uuid'), null);
   assert.ok((await r.tenants.findAll()).some((tenant) => tenant.id === s.tenant));
 
+  // SCRUM-1659: desde la 0040 cada tenant solo ve sus propios documentos; los globales no los ve ningún rol de servicio.
   const delTenant = await r.legales.getActiveDocuments(s.tenant);
   assert.ok(delTenant.some((d) => d.id === s.legalTenant));
-  assert.ok(delTenant.some((d) => d.id === s.legalGlobal));
-  const soloGlobales = await r.legales.getActiveDocuments(null);
-  assert.ok(soloGlobales.some((d) => d.id === s.legalGlobal));
-  assert.ok(!soloGlobales.some((d) => d.id === s.legalTenant));
+  assert.ok(!delTenant.some((d) => d.id === s.legalGlobal));
+  assert.deepEqual(await r.legales.getActiveDocuments(null), [], 'sin tenant no hay documentos que mostrar');
 
   assert.equal(await r.legales.findById(s.legalTenant), null, 'sin identidad, un documento de tenant no se ve');
   await ejecutarComo({ tenantId: s.tenant, userId: s.admin, role: 'ADMIN' }, async () => {

@@ -408,3 +408,80 @@ test('perfil de aliado: sin fila responde 404; un cliente, un admin o sin tenant
 test('perfil de aliado: exige el repositorio', () => {
   assert.throws(() => new GetOwnAllyProfileUseCase({}), /aliadoRepository/);
 });
+
+// SCRUM-1652: contexto, elegibles y criterio de orden de una solicitud en una sola lectura.
+const GetEligibleAlliesForRequestUseCase = require('../../../../src/application/useCases/dispatch/GetEligibleAlliesForRequestUseCase');
+
+function porSolicitudUseCase(resultado) {
+  const calls = [];
+  const useCase = new GetEligibleAlliesForRequestUseCase({
+    elegibilidadRepository: {
+      findEligibleForRequest: async (ctx, criteria) => {
+        calls.push({ ctx, criteria });
+        return resultado;
+      },
+    },
+  });
+  return { useCase, calls };
+}
+
+const lecturaPorSolicitud = (extra = {}) => ({
+  solicitud: { id: SOLICITUD, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PENDIENTE' },
+  tieneReglaPropia: false,
+  criterioOrdenListado: null,
+  allies: [{ id: ALLY, nombreRazonSocial: 'Ana' }],
+  totalCount: 1,
+  ...extra,
+});
+
+test('por solicitud: sin regla propia del tenant rige el criterio por omisión (CALIFICACION)', async () => {
+  const { useCase, calls } = porSolicitudUseCase(lecturaPorSolicitud());
+
+  const r = await useCase.execute({ session: client, solicitudId: SOLICITUD });
+
+  assert.equal(r.criterioOrdenListado, 'CALIFICACION');
+  assert.deepEqual(r.solicitud, { id: SOLICITUD, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PENDIENTE' });
+  assert.equal(r.totalCount, 1);
+  assert.deepEqual(calls[0].ctx, { tenantId: TENANT, userId: 'u1', role: 'CLIENT' });
+  assert.deepEqual(calls[0].criteria, { solicitudId: SOLICITUD, tipo: null, page: 1, pageSize: 20 });
+});
+
+test('por solicitud: con regla propia devuelve su criterio, y null si la regla no lo trae (Dispatch no inventa orden)', async () => {
+  const propio = await porSolicitudUseCase(lecturaPorSolicitud({ tieneReglaPropia: true, criterioOrdenListado: 'COBERTURA' }))
+    .useCase.execute({ session: admin, solicitudId: SOLICITUD });
+  assert.equal(propio.criterioOrdenListado, 'COBERTURA');
+
+  const sinCriterio = await porSolicitudUseCase(lecturaPorSolicitud({ tieneReglaPropia: true, criterioOrdenListado: null }))
+    .useCase.execute({ session: admin, solicitudId: SOLICITUD });
+  assert.equal(sinCriterio.criterioOrdenListado, null);
+});
+
+test('por solicitud: normaliza el tipo y la paginación', async () => {
+  const { useCase, calls } = porSolicitudUseCase(lecturaPorSolicitud());
+
+  const r = await useCase.execute({ session: client, solicitudId: SOLICITUD, query: { tipo: ' empleado_directo ', page: '2', pageSize: '100' } });
+
+  assert.deepEqual(calls[0].criteria, { solicitudId: SOLICITUD, tipo: 'EMPLEADO_DIRECTO', page: 2, pageSize: 100 });
+  assert.equal(r.page, 2);
+  assert.equal(r.pageSize, 100);
+});
+
+test('por solicitud: inexistente, ajena o de otro tenant responde 404 sin revelar cuál', async () => {
+  const { useCase } = porSolicitudUseCase(null);
+
+  await assert.rejects(() => useCase.execute({ session: client, solicitudId: SOLICITUD }), { code: 'MANI-DSP-404' });
+});
+
+test('por solicitud: valida el id, el tipo, el tamaño de página y el rol antes de leer', async () => {
+  const { useCase, calls } = porSolicitudUseCase(lecturaPorSolicitud());
+
+  await assert.rejects(() => useCase.execute({ session: client, solicitudId: 'no-es-uuid' }), { code: 'MANI-DSP-400' });
+  await assert.rejects(() => useCase.execute({ session: client, solicitudId: SOLICITUD, query: { tipo: 'OTRO' } }), { code: 'MANI-DSP-400' });
+  await assert.rejects(() => useCase.execute({ session: client, solicitudId: SOLICITUD, query: { pageSize: '101' } }), { code: 'MANI-DSP-400' });
+  await assert.rejects(() => useCase.execute({ session: ally, solicitudId: SOLICITUD }), { code: 'MANI-DSP-403' });
+  assert.equal(calls.length, 0);
+});
+
+test('por solicitud: exige el repositorio', () => {
+  assert.throws(() => new GetEligibleAlliesForRequestUseCase({}), /elegibilidadRepository/);
+});

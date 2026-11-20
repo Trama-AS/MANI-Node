@@ -2,6 +2,9 @@ const { DomainError } = require('../../domain/errors/DomainError');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const SET_CONTEXT = 'SELECT app.set_context($1, $2, $3)';
+const SET_CONTEXT_WITH_CORRELATION = "SELECT app.set_context($1, $2, $3), set_config('app.correlation_id', $4, true)";
+
 /**
  * Ejecuta una unidad de trabajo dentro de una transacción PostgreSQL (`pg`)
  * fijando como primera sentencia el contexto de identidad verificado con
@@ -17,10 +20,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *      el error a `client.release(releaseError)`.
  *
  * @param {object} pool Pool de `pg` (con método `.connect()`).
- * @param {object} context Contexto verificado (`{ tenantId, userId = null, role = null }`).
+ * @param {object} context Contexto verificado (`{ tenantId, userId = null, role = null, correlationId = null }`).
+ *        `correlationId` queda en `app.correlation_id` (local a la transacción) para la trazabilidad (SCRUM-1657),
+ *        fijado en la misma sentencia que el contexto (SCRUM-1652).
  * @param {(client: object) => Promise<any>} work Función que recibe el `client` transaccional.
  */
-async function withTenantContext(pool, { tenantId, userId = null, role = null } = {}, work) {
+async function withTenantContext(pool, { tenantId, userId = null, role = null, correlationId = null } = {}, work) {
   if (!pool || typeof pool.connect !== 'function') {
     throw new DomainError('Pool de PostgreSQL no configurado para withTenantContext', 'INTERNAL_ERROR', 500);
   }
@@ -40,7 +45,18 @@ async function withTenantContext(pool, { tenantId, userId = null, role = null } 
 
   try {
     await client.query('BEGIN');
-    await client.query('SELECT app.set_context($1, $2, $3)', [tenantId, userId ?? null, normalizedRole]);
+    if (correlationId) {
+      // Contexto y correlación en una sola sentencia: cada sentencia es un viaje a la base, y en QA cada viaje cuesta
+      // ~110 ms (SCRUM-1652). is_local = true: la correlación muere con la transacción, igual que el contexto.
+      await client.query(SET_CONTEXT_WITH_CORRELATION, [
+        tenantId,
+        userId ?? null,
+        normalizedRole,
+        String(correlationId).slice(0, 128),
+      ]);
+    } else {
+      await client.query(SET_CONTEXT, [tenantId, userId ?? null, normalizedRole]);
+    }
     const result = await work(client);
     await client.query('COMMIT');
     return result;

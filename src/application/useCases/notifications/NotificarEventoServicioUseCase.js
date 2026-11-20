@@ -141,5 +141,17 @@ class NotificarEventoServicioUseCase {
   }
 }
 
+/**
+ * Política de entrega de los eventos del servicio con reintentos (SCRUM-1662). Quien origina el evento no espera más de
+ * `techoMs` en total (antes 2 s con un solo intento): el techo se reparte entre los intentos, así reintentar no alarga la
+ * respuesta cuando el proveedor tarda. Cada intento dura al menos 250 ms y entre intentos hay una pausa corta.
+ * @param {{ timeoutMs: number, retries: number, techoMs?: number }} config
+ */
+NotificarEventoServicioUseCase.politicaDe = ({ timeoutMs, retries, techoMs = 2000 }) => {
+  const reintentos = Number.isInteger(retries) && retries > 0 ? retries : 0;
+  const total = Math.min(timeoutMs, techoMs);
+  return { timeoutMs: Math.max(250, Math.floor(total / (reintentos + 1))), retries: reintentos, baseDelayMs: 50 };
+};
+
 NotificarEventoServicioUseCase.POLITICA_EVENTO = POLITICA_EVENTO;
 module.exports = NotificarEventoServicioUseCase;

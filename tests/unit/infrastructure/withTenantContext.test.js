@@ -144,3 +144,33 @@ describe('SCRUM-1104 (CFG-23b): withTenantContext (ADR-0032 §6)', () => {
     );
   });
 });
+
+describe('SCRUM-1657: correlation ID en la transacción', () => {
+  it('con correlationId fija app.correlation_id local en la misma sentencia que el contexto (SCRUM-1652)', async () => {
+    const { pool, calls } = createFakePool();
+    await withTenantContext(pool, { tenantId: TENANT_ID, userId: USER_ID, role: 'cliente', correlationId: 'corr-123' }, async () => 'ok');
+
+    const sqls = calls.map((c) => c.sql);
+    assert.equal(sqls[1], "SELECT app.set_context($1, $2, $3), set_config('app.correlation_id', $4, true)");
+    assert.deepEqual(calls[1].params, [TENANT_ID, USER_ID, 'cliente', 'corr-123']);
+  });
+
+  it('con correlationId la transacción abre con dos sentencias, no tres (SCRUM-1652)', async () => {
+    const { pool, calls } = createFakePool();
+    await withTenantContext(pool, { tenantId: TENANT_ID, userId: USER_ID, role: 'cliente', correlationId: 'corr-123' }, async () => 'ok');
+
+    assert.deepEqual(calls.map((c) => c.sql.split('(')[0].trim()), ['BEGIN', 'SELECT app.set_context', 'COMMIT']);
+  });
+
+  it('sin correlationId no toca app.correlation_id', async () => {
+    const { pool, calls } = createFakePool();
+    await withTenantContext(pool, { tenantId: TENANT_ID, userId: USER_ID, role: 'cliente' }, async () => 'ok');
+    assert.ok(!calls.some((c) => c.sql.includes('app.correlation_id')));
+  });
+
+  it('recorta un correlationId desmesurado a 128 caracteres', async () => {
+    const { pool, calls } = createFakePool();
+    await withTenantContext(pool, { tenantId: TENANT_ID, role: 'cliente', correlationId: 'x'.repeat(500) }, async () => 'ok');
+    assert.equal(calls[1].params[3].length, 128);
+  });
+});

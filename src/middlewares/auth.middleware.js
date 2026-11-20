@@ -47,7 +47,10 @@ async function authenticate(req, res, next) {
   // La identidad verificada acompaña al resto de la petición: los repositorios la usan para fijar el usuario y el
   // rol en app.set_context, porque Core se conecta sin BYPASSRLS (SCRUM-1468). `next` queda fuera del try: un
   // error de la ruta no debe responderse como un 401.
-  return ejecutarComo({ tenantId: session.tenantId, userId: session.userId, role: session.role }, () => next());
+  return ejecutarComo(
+    { tenantId: session.tenantId, userId: session.userId, role: session.role, correlationId: req.correlationId || null },
+    () => next()
+  );
 }
 
 /**
@@ -89,7 +92,10 @@ async function identificarSiHayToken(req, res, next) {
 
   req.user = session;
   req.tenantId = session.tenantId;
-  return ejecutarComo({ tenantId: session.tenantId, userId: session.userId, role: session.role }, () => next());
+  return ejecutarComo(
+    { tenantId: session.tenantId, userId: session.userId, role: session.role, correlationId: req.correlationId || null },
+    () => next()
+  );
 }
 
 /**

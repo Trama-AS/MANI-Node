@@ -26,6 +26,7 @@ const TokenService = require('./infrastructure/security/TokenService');
 const InMemoryAuthIdentityService = require('./infrastructure/security/InMemoryAuthIdentityService');
 const SupabaseAuthIdentityService = require('./infrastructure/security/SupabaseAuthIdentityService');
 const InMemoryFileStorageService = require('./infrastructure/security/InMemoryFileStorageService');
+const FalibleFileStorageService = require('./infrastructure/security/FalibleFileStorageService');
 const SupabaseFileStorageService = require('./infrastructure/security/SupabaseFileStorageService');
 const SupabaseClientFactory = require('./infrastructure/db/SupabaseClientFactory');
 const PgPoolFactory = require('./infrastructure/db/PgPoolFactory');
@@ -91,6 +92,7 @@ const PgSolicitudContextRepository = require('./infrastructure/repositories/PgSo
 const PgNotificacionRepository = require('./infrastructure/repositories/PgNotificacionRepository');
 const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListEligibleAlliesUseCase');
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
+const GetEligibleAlliesForRequestUseCase = require('./application/useCases/dispatch/GetEligibleAlliesForRequestUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
 const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
@@ -156,7 +158,12 @@ class Container {
       supabaseUrl: config.supabaseUrl,
       supabaseServiceRoleKey: config.supabaseServiceRoleKey,
     });
-    this.pgPoolFactory = new PgPoolFactory({ databaseUrl: config.databaseUrl });
+    this.pgPoolFactory = new PgPoolFactory({
+      databaseUrl: config.databaseUrl,
+      max: config.databasePoolMax,
+      connectionTimeoutMs: config.databasePoolConnectionTimeoutMs,
+      idleTimeoutMs: config.databasePoolIdleTimeoutMs,
+    });
     this.supabaseConnectionChecker = new SupabaseConnectionChecker({
       supabaseClientFactory: this.supabaseClientFactory,
     });
@@ -181,6 +188,14 @@ class Container {
     } else {
       this.fileStorageService = new InMemoryFileStorageService();
       this.authIdentityService = new InMemoryAuthIdentityService({ jwtSecret: config.supabaseJwtSecret });
+    }
+    // Falla inyectable del Storage de KYC (SCRUM-1662); config.assertValid la prohíbe en producción.
+    if (config.storageFalla.length > 0) {
+      this.fileStorageService = new FalibleFileStorageService({
+        interno: this.fileStorageService,
+        operaciones: config.storageFalla,
+        despuesDe: config.storageFallaDespuesDe,
+      });
     }
 
     // Datos: con DATABASE_URL todo va por `pg` como mani_core_svc, sin BYPASSRLS, y cada operación fija
@@ -269,12 +284,15 @@ class Container {
     this.solicitudContextRepository = new PgSolicitudContextRepository({ pgPoolFactory: this.pgPoolFactory });
     this.notificacionRepository = new PgNotificacionRepository({ pgPoolFactory: this.pgPoolFactory });
     this.listEligibleAlliesUseCase = new ListEligibleAlliesUseCase({ elegibilidadRepository: this.elegibilidadRepository });
+    this.getEligibleAlliesForRequestUseCase = new GetEligibleAlliesForRequestUseCase({
+      elegibilidadRepository: this.elegibilidadRepository,
+    });
     this.getSolicitudContextUseCase = new GetSolicitudContextUseCase({
       solicitudContextRepository: this.solicitudContextRepository,
     });
     this.getOwnAllyProfileUseCase = new GetOwnAllyProfileUseCase({ aliadoRepository: this.aliadoRepository });
     // Proveedor push por ambiente (PUSH_PROVIDER, por omisión el mock de HU-M09-06): sin FCM ni APNs reales.
-    this.pushProvider = createPushProvider(config.pushProvider);
+    this.pushProvider = createPushProvider(config.pushProvider, { environment: config.environment, fallas: config.pushMockFallas });
     const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
     this.publishNotificationUseCase = new PublishNotificationUseCase({
       ...notificationDeps,
@@ -306,7 +324,7 @@ class Container {
     // hacer esperar a quien origina el evento.
     this.notificarEventoServicioUseCase = new NotificarEventoServicioUseCase({
       ...notificationDeps,
-      politica: { timeoutMs: Math.min(config.pushProviderTimeoutMs, 2000), retries: 0 },
+      politica: NotificarEventoServicioUseCase.politicaDe({ timeoutMs: config.pushProviderTimeoutMs, retries: config.pushProviderRetries }),
     });
     this.messagesUseCase = new MessagesUseCase({
       messageRepository: this.messageRepository,

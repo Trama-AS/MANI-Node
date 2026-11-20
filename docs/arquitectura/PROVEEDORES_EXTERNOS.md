@@ -105,3 +105,21 @@ interno, que puede traer direcciones o credenciales, no llega al cliente.
 - La prueba de timeout encontró un defecto antes de publicar: al abortar, el rechazo del adaptador ganaba la carrera
   y un timeout se informaba como `UNAVAILABLE` (502 en vez de 504). `callProvider` lo corrige con una marca de
   vencimiento.
+
+## Fallas inyectables para probar (SCRUM-1662)
+
+Para comprobar en DEV, QA y CI que una falla de un proveedor no revierte la operación, hay adaptadores que fallan a voluntad.
+Ninguno se permite en producción: el arranque se detiene si están configurados.
+
+| Qué | Cómo se activa | Comportamiento |
+|---|---|---|
+| Push que falla | `PUSH_PROVIDER=mock_falla` | Falla siempre (`PUSH_MOCK_FALLAS=siempre`, por omisión) o los N primeros intentos de cada notificación (`PUSH_MOCK_FALLAS=1` es una falla pasajera) |
+| Reintentos del push de eventos | `PUSH_PROVIDER_RETRIES` (1 por omisión, 0 los desactiva) | Ante una falla pasajera se reintenta con la misma clave de idempotencia (el id de la notificación), así que el aviso no se duplica |
+| Storage de KYC que falla | `STORAGE_FALLA=upload,delete,createSignedUrl` y `STORAGE_FALLA_DESPUES_DE=N` | Las operaciones listadas fallan con `503 MANI-STG-503` después de N llamadas correctas |
+
+**Qué se espera ver**
+- **Push caído:** la operación que originó el aviso (mensaje, cambio de estado) queda confirmada, la notificación está en la
+  bandeja del usuario y la entrega se informa `FALLIDA`. Nunca se revierte la operación.
+- **Storage caído a mitad del registro:** con `STORAGE_FALLA=upload` y `STORAGE_FALLA_DESPUES_DE=1`, el primer documento KYC
+  sube y el segundo falla: el registro borra el archivo ya subido, las filas y la identidad creada, y relanza el error. No queda
+  nada a medias.

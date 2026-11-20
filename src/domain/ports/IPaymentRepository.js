@@ -5,9 +5,10 @@
 class IPaymentRepository {
   /**
    * Valida que la cotización sea del cliente de la sesión y esté aceptada, y que no tenga ya un pago aprobado.
-   * Si la clave de idempotencia ya registró un pago, lo devuelve en lugar de preparar otro cobro.
+   * Si la clave de idempotencia ya registró un pago con el mismo cuerpo, lo devuelve en lugar de preparar otro cobro;
+   * si la misma clave llega con otra cotización u otra huella, lanza 409 MANI-PAG-409K (SCRUM-1653).
    * @param {{ tenantId: string, userId: string, role: string }} _ctx
-   * @param {{ cotizacionId: string, claveIdempotencia: string|null }} _datos
+   * @param {{ cotizacionId: string, claveIdempotencia: string|null, huella?: string|null }} _datos
    * @returns {Promise<{ existente: object } | { cobro: { cotizacionId: string, solicitudId: string, clienteId: string,
    *           monto: number, moneda: string } }>}
    */
