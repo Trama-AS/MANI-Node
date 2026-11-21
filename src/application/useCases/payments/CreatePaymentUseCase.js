@@ -3,6 +3,7 @@ const { DomainError, ValidationError } = require('../../../domain/errors/DomainE
 const PaymentProviderError = require('../../../domain/errors/PaymentProviderError');
 const callProvider = require('../../providers/callProvider');
 const { contextoDeSesion, uuidValido } = require('./paymentAccess');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 // Política de proveedores (SCRUM-1240): un cobro tiene tiempo máximo y Core NO lo reintenta. Si no hay desenlace,
 // el cliente reintenta con la misma claveIdempotencia y el proveedor devuelve el mismo desenlace sin cobrar dos veces.
@@ -46,7 +47,7 @@ class CreatePaymentUseCase {
     paymentRepository,
     paymentProvider,
     politica = POLITICA_PAGOS,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
   }) {
     if (!paymentRepository) throw new Error('paymentRepository es requerido para CreatePaymentUseCase');
     if (!paymentProvider) throw new Error('paymentProvider es requerido para CreatePaymentUseCase');

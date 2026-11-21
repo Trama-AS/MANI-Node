@@ -1,3 +1,5 @@
+const { logger } = require('../infrastructure/observability/logger');
+
 // Secreto de verificación de JWT (ADR-0031). Falla cerrado: un secreto ausente
 // nunca degrada a un valor conocido, porque ese valor está en el repositorio y
 // cualquiera podría firmar tokens válidos para cualquier tenant (SCRUM-1333).
@@ -24,7 +26,10 @@ function resolveJwtSecret(env = process.env) {
     return secret;
   }
   if (isDevelopment(env)) {
-    console.warn('⚠️  SUPABASE_JWT_SECRET no configurado: se usa el secreto inseguro de desarrollo (solo NODE_ENV=development|test).');
+    logger.warn({
+      event: 'jwt_dev_secret_fallback',
+      message: 'SUPABASE_JWT_SECRET no configurado: se usa el secreto inseguro de desarrollo (solo NODE_ENV=development|test).',
+    });
     return INSECURE_DEV_SECRET;
   }
   throw new JwtConfigurationError(

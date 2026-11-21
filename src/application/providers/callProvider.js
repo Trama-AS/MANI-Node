@@ -3,7 +3,7 @@ const ProviderError = require('../../domain/errors/ProviderError');
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Política común de llamada a un proveedor externo (SCRUM-1240, ARQ-09). Todo caso de uso que habla con un
+ * Política común de llamada a un proveedor externo (SCRUM-1240, ARQ-09, SCRUM-1663). Todo caso de uso que habla con un
  * proveedor de pagos o de notificaciones pasa por aquí, para que el comportamiento ante fallos sea el mismo:
  *
  * - **Timeout:** si el proveedor no responde en `timeoutMs`, se aborta la señal que recibió y se lanza
@@ -13,6 +13,8 @@ const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * - **Reintentos:** solo si `retries > 0` y el fallo es pasajero (`TIMEOUT` o `UNAVAILABLE`). Quien llama solo
  *   pone `retries > 0` cuando la operación es idempotente para el proveedor (misma `idempotencyKey`), así que
  *   repetirla no duplica el efecto. `INVALID_RESPONSE` nunca se reintenta.
+ * - **Circuit Breaker (SCRUM-1663 / QAS-40):** si se suministra `circuitBreaker`, corta la llamada de inmediato con
+ *   `UNAVAILABLE` cuando el circuito está abierto y registra los fallos pasajeros en el disyuntor.
  *
  * @template T
  * @param {(opciones: { signal: AbortSignal, intento: number }) => Promise<T>} operacion
@@ -22,24 +24,43 @@ const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   baseDelayMs?: number,
  *   ErrorClass?: typeof ProviderError,
  *   proveedor?: string,
+ *   circuitBreaker?: CircuitBreaker | null,
  * }} politica
  * @returns {Promise<T>}
  */
-async function callProvider(operacion, { timeoutMs, retries = 0, baseDelayMs = 100, ErrorClass = ProviderError, proveedor = 'proveedor' }) {
+async function callProvider(
+  operacion,
+  { timeoutMs, retries = 0, baseDelayMs = 100, ErrorClass = ProviderError, proveedor = 'proveedor', circuitBreaker = null }
+) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new TypeError('callProvider: timeoutMs debe ser un número positivo');
   }
-  let intento = 1;
-  // Cada vuelta termina devolviendo el resultado, lanzando el fallo o esperando para el siguiente intento.
-  while (true) {
-    try {
-      return await conTimeout(operacion, intento, { timeoutMs, ErrorClass, proveedor });
-    } catch (err) {
-      const fallo = err instanceof ProviderError ? err : new ErrorClass('UNAVAILABLE', `${proveedor} no está disponible`);
-      if (!fallo.transient || intento > retries) throw fallo;
-      await esperar(baseDelayMs * 2 ** (intento - 1));
-      intento += 1;
+  const runWithRetry = async () => {
+    let intento = 1;
+    // Cada vuelta termina devolviendo el resultado, lanzando el fallo o esperando para el siguiente intento.
+    while (true) {
+      try {
+        return await conTimeout(operacion, intento, { timeoutMs, ErrorClass, proveedor });
+      } catch (err) {
+        const fallo = err instanceof ProviderError ? err : new ErrorClass('UNAVAILABLE', `${proveedor} no está disponible`);
+        if (!fallo.transient || intento > retries) throw fallo;
+        await esperar(baseDelayMs * 2 ** (intento - 1));
+        intento += 1;
+      }
     }
+  };
+
+  if (!circuitBreaker) {
+    return runWithRetry();
+  }
+
+  try {
+    return await circuitBreaker.execute(runWithRetry);
+  } catch (err) {
+    if (err && err.circuitOpen) {
+      throw new ErrorClass('UNAVAILABLE', `${proveedor} no está disponible (circuito abierto)`);
+    }
+    throw err;
   }
 }
 

@@ -1,5 +1,6 @@
 const { DomainError, NotFoundError, ConflictError } = require('../../../domain/errors/DomainError');
 const { assertAdminSession, hydrateAllyVerificationView } = require('./allyVerificationMapper');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 function normalizeDecision(rawDecision) {
   const upper = String(rawDecision || '').trim().toUpperCase();
@@ -26,7 +27,7 @@ class ResolveAllyVerificationUseCase {
     aliadoCategoriaRepository,
     catalogRepository,
     documentoKycRepository,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
   }) {
     this.aliadoRepository = aliadoRepository;
     this.usuarioRepository = usuarioRepository;
