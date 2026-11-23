@@ -1,7 +1,13 @@
 const IRuleEvaluationService = require('../../domain/ports/IRuleEvaluationService');
 const RuleEvaluationResult = require('../../domain/entities/RuleEvaluationResult');
 const { DomainError } = require('../../domain/errors/DomainError');
-const CircuitBreaker = require('../../application/providers/CircuitBreaker');
+const {
+  configurarCliente,
+  ejecutarConReintentos,
+  enviarConEspera,
+  errorDeServidor,
+  errorDeContrato,
+} = require('./resilientHttp');
 const { resolveCorrelationId } = require('../observability/logger');
 
 const EVALUATE_PATH = '/api/v1/rules/categories/evaluate';
@@ -10,7 +16,6 @@ const TENANT_RULES_PATH = '/api/v1/rules/tenant-rules/validate';
 const RESULTADOS_TARIFA = new Set(['DENTRO_DE_RANGO', 'POR_DEBAJO', 'POR_ENCIMA']);
 // Lote máximo que acepta Rules por petición (RateEvaluationRequest); el reporte parte la lista.
 const RATES_BATCH = 500;
-const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
 function unavailable(detail) {
   return new DomainError(
@@ -28,28 +33,9 @@ function unavailable(detail) {
  * Falla cerrado: si Rules no responde o el circuit breaker está abierto, la operación se rechaza con 503.
  */
 class RulesServiceHttpClient extends IRuleEvaluationService {
-  constructor({
-    baseUrl,
-    timeoutMs = 3000,
-    retries = 1,
-    fetchImpl = globalThis.fetch,
-    circuitBreaker = null,
-    failureThreshold = 5,
-    resetTimeoutMs = 10000,
-  } = {}) {
+  constructor(options = {}) {
     super();
-    this.baseUrl = baseUrl;
-    this.timeoutMs = timeoutMs;
-    this.retries = retries;
-    this.fetchImpl = fetchImpl;
-    this.circuitBreaker =
-      circuitBreaker ||
-      new CircuitBreaker(null, {
-        name: 'mani-rules-java',
-        failureThreshold,
-        resetTimeoutMs,
-        errorFilter: (err) => !(err instanceof DomainError),
-      });
+    Object.assign(this, configurarCliente('mani-rules-java', options));
   }
 
   async evaluateCategoryRules({ tenantId, categoryId = null, context, role, correlationId } = {}) {
@@ -109,54 +95,21 @@ class RulesServiceHttpClient extends IRuleEvaluationService {
       body: JSON.stringify(payload),
     };
 
-    try {
-      return await this.circuitBreaker.execute(async () => {
-        let lastError;
-        for (let attempt = 0; attempt <= this.retries; attempt += 1) {
-          try {
-            return await this._send(path, request);
-          } catch (err) {
-            if (err instanceof DomainError) throw err;
-            lastError = err;
-            if (!err.retryable) break;
-          }
-        }
-        throw lastError;
-      });
-    } catch (err) {
-      if (err instanceof DomainError) throw err;
-      throw unavailable(err.message);
-    }
+    return ejecutarConReintentos(this, () => this._send(path, request), unavailable);
   }
 
   async _send(path, request) {
-    let response;
-    try {
-      response = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}${path}`, {
-        ...request,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (err) {
-      const reason = err.name === 'TimeoutError' ? `sin respuesta en ${this.timeoutMs} ms` : err.message;
-      throw Object.assign(new Error(reason), { retryable: true });
-    }
+    const response = await enviarConEspera(this, path, request);
 
     if (response.ok) {
       return response.json().catch(() => null);
     }
 
-    if (RETRYABLE_STATUS.has(response.status) || response.status >= 500) {
-      throw Object.assign(new Error(`respondió ${response.status}`), { retryable: RETRYABLE_STATUS.has(response.status) });
-    }
+    if (response.status >= 500) throw errorDeServidor(response.status);
 
     // Un 4xx de Rules significa que Core violó el contrato (encabezados o cuerpo): es una falla
     // de integración, no un dato inválido del usuario.
-    const body = await response.json().catch(() => ({}));
-    throw new DomainError(
-      `El servicio de reglas rechazó la petición (${response.status} ${body.code || ''}): ${body.error || ''}`.trim(),
-      'RULES_SERVICE_ERROR',
-      502
-    );
+    throw await errorDeContrato(response, 'reglas', 'RULES_SERVICE_ERROR');
   }
 }
 

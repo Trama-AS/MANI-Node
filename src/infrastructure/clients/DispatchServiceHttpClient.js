@@ -1,10 +1,15 @@
 const IDispatchAssignmentService = require('../../domain/ports/IDispatchAssignmentService');
 const { DomainError } = require('../../domain/errors/DomainError');
-const CircuitBreaker = require('../../application/providers/CircuitBreaker');
+const {
+  configurarCliente,
+  ejecutarConReintentos,
+  enviarConEspera,
+  errorDeServidor,
+  errorDeContrato,
+} = require('./resilientHttp');
 const { resolveCorrelationId } = require('../observability/logger');
 
 const ASSIGNMENTS_PATH = '/api/v1/dispatch/assignments/me';
-const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
 function unavailable(detail) {
   return new DomainError(`El servicio de despacho no está disponible: ${detail}`, 'DISPATCH_SERVICE_UNAVAILABLE', 503);
@@ -18,28 +23,9 @@ function unavailable(detail) {
  * Falla cerrado (criterio T2): si Dispatch no responde o el circuit breaker está abierto, la consulta se rechaza con 503.
  */
 class DispatchServiceHttpClient extends IDispatchAssignmentService {
-  constructor({
-    baseUrl,
-    timeoutMs = 3000,
-    retries = 1,
-    fetchImpl = globalThis.fetch,
-    circuitBreaker = null,
-    failureThreshold = 5,
-    resetTimeoutMs = 10000,
-  } = {}) {
+  constructor(options = {}) {
     super();
-    this.baseUrl = baseUrl;
-    this.timeoutMs = timeoutMs;
-    this.retries = retries;
-    this.fetchImpl = fetchImpl;
-    this.circuitBreaker =
-      circuitBreaker ||
-      new CircuitBreaker(null, {
-        name: 'mani-dispatch-dotnet',
-        failureThreshold,
-        resetTimeoutMs,
-        errorFilter: (err) => !(err instanceof DomainError),
-      });
+    Object.assign(this, configurarCliente('mani-dispatch-dotnet', options));
   }
 
   async listMyAssignedRequestIds({ authorization, correlationId } = {}) {
@@ -57,37 +43,11 @@ class DispatchServiceHttpClient extends IDispatchAssignmentService {
       },
     };
 
-    try {
-      return await this.circuitBreaker.execute(async () => {
-        let lastError;
-        for (let attempt = 0; attempt <= this.retries; attempt += 1) {
-          try {
-            return await this._send(request);
-          } catch (err) {
-            if (err instanceof DomainError) throw err;
-            lastError = err;
-            if (!err.retryable) break;
-          }
-        }
-        throw lastError;
-      });
-    } catch (err) {
-      if (err instanceof DomainError) throw err;
-      throw unavailable(err.message);
-    }
+    return ejecutarConReintentos(this, () => this._send(request), unavailable);
   }
 
   async _send(request) {
-    let response;
-    try {
-      response = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}${ASSIGNMENTS_PATH}`, {
-        ...request,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (err) {
-      const reason = err.name === 'TimeoutError' ? `sin respuesta en ${this.timeoutMs} ms` : err.message;
-      throw Object.assign(new Error(reason), { retryable: true });
-    }
+    const response = await enviarConEspera(this, ASSIGNMENTS_PATH, request);
 
     if (response.ok) {
       const body = await response.json().catch(() => null);
@@ -100,17 +60,10 @@ class DispatchServiceHttpClient extends IDispatchAssignmentService {
     // 403: Dispatch no reconoce a la cuenta como aliado del tenant, así que no tiene asignaciones.
     if (response.status === 403) return [];
 
-    if (response.status >= 500) {
-      throw Object.assign(new Error(`respondió ${response.status}`), { retryable: RETRYABLE_STATUS.has(response.status) });
-    }
+    if (response.status >= 500) throw errorDeServidor(response.status);
 
     // Otro 4xx (p. ej. 401 con un token que Core ya validó) es una falla de integración entre servicios.
-    const body = await response.json().catch(() => ({}));
-    throw new DomainError(
-      `El servicio de despacho rechazó la petición (${response.status} ${body.code || ''}): ${body.error || ''}`.trim(),
-      'DISPATCH_SERVICE_ERROR',
-      502
-    );
+    throw await errorDeContrato(response, 'despacho', 'DISPATCH_SERVICE_ERROR');
   }
 }
 
