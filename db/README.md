@@ -59,8 +59,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0039`** | [`0039_contexto_sin_esquema_auth.sql`](migrations/0039_contexto_sin_esquema_auth.sql) | `SCRUM-1468` | TEC-21: `app.tenant_id()`, `app.user_id()` y `app.user_role()` leen `request.jwt.claims` sin pasar por el esquema `auth`. En Supabase `postgres` no puede dar `USAGE` sobre ese esquema, así que el `GRANT` de la `0006` no aplica. |
 | **`0043`** | [`0043_estado_solicitud_cotizacion_check.sql`](migrations/0043_estado_solicitud_cotizacion_check.sql) | `SCRUM-1713` | QAS-10: `CHECK` de estado en `solicitud` (`PENDIENTE`, `ASIGNADA`, `COTIZANDO`, `ACEPTADA`, `RECHAZADA`, `EN_EJECUCION`, `FINALIZADA`, `CERRADA`, `CANCELADA`) y `cotizacion` (`PENDIENTE`, `ACEPTADA`, `RECHAZADA`, `AJUSTE_SOLICITADO`), agregados `NOT VALID`; se validan solos si no hay filas fuera del catálogo y, si las hay, la migración avisa con un `NOTICE` y no falla. El catálogo vive en `src/domain/estados.js`. Verificación: [`db/verify/0043_verificar_estado_check.sql`](verify/0043_verificar_estado_check.sql). |
 | **`0044`** | [`0044_retirar_lectura_publica_tenant_zona.sql`](migrations/0044_retirar_lectura_publica_tenant_zona.sql) | `SCRUM-1720` | `anon` deja de leer `tenant` y `zona`: se retiran `lectura_global_tenant` y `lectura_global_zona` (creadas a mano, `TO public`), `anon` sale de `tenant_lectura` y `zona_lectura` y pierde el `SELECT`. Core, Dispatch y `authenticated` siguen leyendo. Verificación: [`db/verify/0044_verificar_lectura_tenant_zona.sql`](verify/0044_verificar_lectura_tenant_zona.sql). |
+| **`0045`** | [`0045_usuario_nombre.sql`](migrations/0045_usuario_nombre.sql) | `SCRUM-1647` | `usuario.nombre` (opcional): nombre con el que se saluda a la persona. Los registros de cliente y de aliado lo guardan, `GET /profiles/me` lo devuelve como `fullName` y, sin él, sigue mostrando el correo. Se rellena para las cuentas existentes con la razón social del cliente o del aliado. |
 
-La siguiente migración libre es la **`0045`**.
+La siguiente migración libre es la **`0046`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 

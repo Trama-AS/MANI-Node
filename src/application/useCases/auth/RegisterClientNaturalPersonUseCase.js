@@ -109,7 +109,7 @@ class RegisterClientNaturalPersonUseCase {
     await ejecutarComo({ tenantId, userId, role: 'CLIENT' }, async () => {
       try {
         // Espejo de negocio -- handle_new_user migrado explícitamente a Node.
-        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
+        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone, fullName });
         usuarioCreado = true;
 
         const cliente = await this.clienteRepository.create({
