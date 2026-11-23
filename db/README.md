@@ -58,8 +58,9 @@ De acuerdo con **[ADR-0030](https://github.com/Trama-AS/MANI-docs/blob/main/adr/
 | **`0038`** | [`0038_retirar_politica_documento_legal_heredada.sql`](migrations/0038_retirar_politica_documento_legal_heredada.sql) | `SCRUM-1468` | TEC-21 (R-06): retira de `documento_legal` la política `TO public` de la `0004`, que solo existe donde hay `auth.jwt()` y que la `0007` no eliminó porque borró otro nombre. Se conserva `documento_legal_lectura`. |
 | **`0039`** | [`0039_contexto_sin_esquema_auth.sql`](migrations/0039_contexto_sin_esquema_auth.sql) | `SCRUM-1468` | TEC-21: `app.tenant_id()`, `app.user_id()` y `app.user_role()` leen `request.jwt.claims` sin pasar por el esquema `auth`. En Supabase `postgres` no puede dar `USAGE` sobre ese esquema, así que el `GRANT` de la `0006` no aplica. |
 | **`0043`** | [`0043_estado_solicitud_cotizacion_check.sql`](migrations/0043_estado_solicitud_cotizacion_check.sql) | `SCRUM-1713` | QAS-10: `CHECK` de estado en `solicitud` (`PENDIENTE`, `ASIGNADA`, `COTIZANDO`, `ACEPTADA`, `RECHAZADA`, `EN_EJECUCION`, `FINALIZADA`, `CERRADA`, `CANCELADA`) y `cotizacion` (`PENDIENTE`, `ACEPTADA`, `RECHAZADA`, `AJUSTE_SOLICITADO`), agregados `NOT VALID`; se validan solos si no hay filas fuera del catálogo y, si las hay, la migración avisa con un `NOTICE` y no falla. El catálogo vive en `src/domain/estados.js`. Verificación: [`db/verify/0043_verificar_estado_check.sql`](verify/0043_verificar_estado_check.sql). |
+| **`0044`** | [`0044_retirar_lectura_publica_tenant_zona.sql`](migrations/0044_retirar_lectura_publica_tenant_zona.sql) | `SCRUM-1720` | `anon` deja de leer `tenant` y `zona`: se retiran `lectura_global_tenant` y `lectura_global_zona` (creadas a mano, `TO public`), `anon` sale de `tenant_lectura` y `zona_lectura` y pierde el `SELECT`. Core, Dispatch y `authenticated` siguen leyendo. Verificación: [`db/verify/0044_verificar_lectura_tenant_zona.sql`](verify/0044_verificar_lectura_tenant_zona.sql). |
 
-La siguiente migración libre es la **`0044`**.
+La siguiente migración libre es la **`0045`**.
 
 ### 2.1 Números retirados: `0011` y `0012` (TEC-08, `SCRUM-1455`)
 
@@ -109,8 +110,8 @@ Toda tabla con `tenant_id` tiene `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL 
 
 | Tabla | Dueño (`ADR-0030`) | `mani_core_svc` | `mani_dispatch_svc` | Políticas RLS Vigentes | Regla de Aislamiento |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `tenant` | Core | `SELECT` | `SELECT` | `tenant_lectura` (`TO anon, authenticated, mani_core_svc, mani_dispatch_svc`) | `FOR SELECT USING (true)` (directorio de slugs pre-auth, `ADR-0018`); escritura solo `postgres`. |
-| `zona` | Core | `SELECT` | `SELECT` | `zona_lectura` (`TO anon, authenticated, mani_core_svc, mani_dispatch_svc`) | `FOR SELECT USING (true)` (catálogo geográfico global sin `tenant_id`); escritura solo `postgres`. |
+| `tenant` | Core | `SELECT` | — | `tenant_lectura` (`TO authenticated, mani_core_svc, mani_dispatch_svc`) | `FOR SELECT USING (true)` (directorio de tenants para usuarios con sesión y servicios, `ADR-0018`); `anon` ya no lee desde la `0044` (SCRUM-1720); escritura solo `postgres`. |
+| `zona` | Core | `SELECT` | — | `zona_lectura` (`TO authenticated, mani_core_svc, mani_dispatch_svc`) | `FOR SELECT USING (true)` (catálogo geográfico global sin `tenant_id`); `anon` ya no lee desde la `0044` (SCRUM-1720); escritura solo `postgres`. |
 | `usuario` | Core | `CRUD` | — | `usuario_tenant` (`TO authenticated, mani_core_svc`) | Patrón T: `tenant_id = app.tenant_id()` (`USING` y `WITH CHECK`). |
 | `categoria_servicio` | Core | `CRUD` | — | `categoria_servicio_tenant` (`TO authenticated, mani_core_svc`) | Patrón T: `tenant_id = app.tenant_id()` (reemplaza lectura pública anterior). |
 | `aliado`, `cliente`, `sitio`, `aliado_categoria`, `cobertura_aliado`, `aliado_ausencia` | Core | `CRUD` | — | `<tabla>_tenant` (`TO authenticated, mani_core_svc`) | Patrón T: `tenant_id = app.tenant_id()`. Dispatch no tiene permisos sobre estas tablas (`P3`). |
