@@ -288,7 +288,7 @@ test('SCRUM-877: se cancela desde cualquier estado anterior a la ejecución', as
 });
 
 test('SCRUM-877: en ejecución o cerrada responde 409 MANI-SOL-409C y revierte sin escribir', async () => {
-  for (const estado of ['EN_EJECUCION', 'FINALIZADA']) {
+  for (const estado of ['EN_EJECUCION', 'FINALIZADA', 'CERRADA']) {
     const { factory, sentencias } = fakeFactory(cancelacion(estado));
     await assert.rejects(
       () => new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR }),
@@ -299,15 +299,16 @@ test('SCRUM-877: en ejecución o cerrada responde 409 MANI-SOL-409C y revierte s
   }
 });
 
-test('SCRUM-877: cancelar otra vez es idempotente: devuelve la solicitud sin repetir evento ni aviso', async () => {
+test('SCRUM-1654 (T-17): cancelar por segunda vez una solicitud ya CANCELADA responde 409 MANI-SOL-409C sin cambiar estado ni emitir evento o aviso', async () => {
   const { factory, sentencias } = fakeFactory(cancelacion('CANCELADA', 'aliado-1'));
 
-  const r = await new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR });
+  await assert.rejects(
+    () => new PgServiceRequestRepository({ pgPoolFactory: factory }).cancelar(ctx, { solicitudId: SOL_CANCELAR }),
+    (e) => e.statusCode === 409 && e.code === 'MANI-SOL-409C' && /CANCELADA/.test(e.message)
+  );
 
-  assert.equal(r.cancelada, false);
-  assert.equal(r.solicitud.estado, 'CANCELADA');
   assert.ok(!sentencias.some((s) => /^(UPDATE|INSERT)/.test(s.sql)));
-  assert.equal(sentencias.at(-1).sql, 'COMMIT');
+  assert.equal(sentencias.at(-1).sql, 'ROLLBACK');
 });
 
 test('SCRUM-877: una solicitud ajena, de otro tenant o inexistente responde 404 MANI-SOL-404', async () => {

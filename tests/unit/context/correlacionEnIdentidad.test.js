@@ -26,7 +26,7 @@ test('SCRUM-1657: runInTenantContext toma el correlation ID de la petición en c
     runInTenantContext(factory, { tenantId: TENANT, userId: USER, role: 'CLIENT' }, async () => 'ok')
   );
   const fijado = consultas.find((c) => c.sql.includes('app.correlation_id'));
-  assert.deepEqual(fijado.params, ['corr-ambiente']);
+  assert.equal(fijado.params[3], 'corr-ambiente');
 });
 
 test('SCRUM-1657: el correlation ID explícito del llamador manda sobre el de la petición', async () => {
@@ -34,5 +34,5 @@ test('SCRUM-1657: el correlation ID explícito del llamador manda sobre el de la
   await ejecutarComo({ tenantId: TENANT, userId: USER, role: 'CLIENT', correlationId: 'corr-ambiente' }, () =>
     runInTenantContext(factory, { tenantId: TENANT, userId: USER, role: 'CLIENT', correlationId: 'corr-propio' }, async () => 'ok')
   );
-  assert.deepEqual(consultas.find((c) => c.sql.includes('app.correlation_id')).params, ['corr-propio']);
+  assert.equal(consultas.find((c) => c.sql.includes('app.correlation_id')).params[3], 'corr-propio');
 });

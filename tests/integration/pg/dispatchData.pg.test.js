@@ -253,6 +253,67 @@ test('PG contexto (SCRUM-1399) como mani_core_svc: solo el admin, el cliente due
   assert.equal(await repo.findContext(s.ctxCliente, uuid()), null, 'inexistente');
 });
 
+test('PG elegibles por solicitud (SCRUM-1652) como mani_core_svc: mismo resultado que contexto + elegibles, y la misma visibilidad', opts, async (t) => {
+  const { pool, core } = entorno(t);
+  const repo = new PgElegibilidadRepository({ pgPoolFactory: core });
+  const contexto = new PgSolicitudContextRepository({ pgPoolFactory: core });
+  const s = await seedTenant(pool);
+  const otro = await seedTenant(pool);
+  await addAliado(pool, s, { nombre: 'Ana' });
+  const beto = await addAliado(pool, s, { nombre: 'Beto', tipo: 'PERSONA_JURIDICA' });
+  await addAliado(pool, s, { nombre: 'Caro' });
+  await addAliado(pool, s, { nombre: 'Sin verificar', estado: 'PENDIENTE' });
+  await addAliado(pool, otro, { nombre: 'Otro tenant' });
+  const ofertado = await addAliado(pool, s, { nombre: 'Con oferta' });
+  const solicitud = await addSolicitud(pool, s);
+  const otroCliente = await addUsuario(pool, s.tenant, 'CLIENTE');
+  await pool.query("INSERT INTO cliente (id, tenant_id, usuario_id, tipo) VALUES ($1, $2, $3, 'PERSONA_NATURAL')", [uuid(), s.tenant, otroCliente]);
+  const adminCtx = { tenantId: s.tenant, userId: uuid(), role: 'ADMIN' };
+  const criterios = { solicitudId: solicitud, page: 1, pageSize: 100 };
+
+  // Lo mismo que hoy arma Dispatch con dos llamadas: contexto y luego elegibles con su zona y categoría.
+  const ctx = await contexto.findContext(s.ctxCliente, solicitud);
+  const porSeparado = await repo.findEligible(s.ctxCliente, { categoriaId: ctx.categoriaId, zonaId: ctx.zonaId, page: 1, pageSize: 100 });
+
+  const unaLectura = await repo.findEligibleForRequest(s.ctxCliente, criterios);
+  assert.deepEqual(unaLectura.solicitud, { id: solicitud, zonaId: s.zona, categoriaId: s.categoria, estado: 'PENDIENTE' });
+  assert.deepEqual(unaLectura.allies, porSeparado.allies, 'mismos aliados, mismo orden y mismos campos');
+  assert.equal(unaLectura.totalCount, porSeparado.totalCount);
+  assert.equal(unaLectura.totalCount, 4);
+  assert.equal(unaLectura.tieneReglaPropia, false, 'el tenant sembrado no tiene reglas propias');
+
+  assert.equal((await repo.findEligibleForRequest(adminCtx, criterios)).totalCount, 4, 'el admin del tenant ve lo mismo');
+
+  const juridicas = await repo.findEligibleForRequest(s.ctxCliente, { ...criterios, tipo: 'PERSONA_JURIDICA' });
+  assert.deepEqual(juridicas.allies.map((a) => a.id), [beto.aliado]);
+  const pagina = await repo.findEligibleForRequest(s.ctxCliente, { ...criterios, page: 2, pageSize: 3 });
+  assert.equal(pagina.allies.length, 1);
+  assert.equal(pagina.totalCount, 4);
+
+  assert.equal(await repo.findEligibleForRequest({ tenantId: s.tenant, userId: otroCliente, role: 'CLIENT' }, criterios), null, 'otro cliente del tenant');
+  assert.equal(await repo.findEligibleForRequest(ofertado.ctx, criterios), null, 'un aliado, aunque tenga la oferta');
+  assert.equal(await repo.findEligibleForRequest(otro.ctxCliente, criterios), null, 'otro tenant');
+  assert.equal(await repo.findEligibleForRequest({ tenantId: otro.tenant, userId: uuid(), role: 'ADMIN' }, criterios), null, 'el admin de otro tenant');
+  assert.equal(await repo.findEligibleForRequest(s.ctxCliente, { ...criterios, solicitudId: uuid() }), null, 'inexistente');
+});
+
+test('PG elegibles por solicitud (SCRUM-1652): lee el criterio de orden de la regla VIGENTE del tenant', opts, async (t) => {
+  const { pool, core } = entorno(t);
+  const repo = new PgElegibilidadRepository({ pgPoolFactory: core });
+  const s = await seedTenant(pool);
+  const solicitud = await addSolicitud(pool, s);
+  const regla = (version, reglas, estado) => pool.query(
+    "INSERT INTO regla_tenant (tenant_id, version, reglas, estado, creado_por, actor_rol) VALUES ($1, $2, $3, $4, $5, 'ADMIN')",
+    [s.tenant, version, JSON.stringify(reglas), estado, uuid()]
+  );
+  await regla(1, { ordenListado: { criterio: 'CALIFICACION' } }, 'HISTORICA');
+  await regla(2, { ordenListado: { criterio: 'COBERTURA' } }, 'VIGENTE');
+
+  const r = await repo.findEligibleForRequest(s.ctxCliente, { solicitudId: solicitud, page: 1, pageSize: 20 });
+  assert.equal(r.tieneReglaPropia, true);
+  assert.equal(r.criterioOrdenListado, 'COBERTURA', 'la versión vigente, no la histórica');
+});
+
 test('PG notificaciones como mani_core_svc: crea para el usuario del aliado, lista por solicitud y no cruza tenants', opts, async (t) => {
   const { pool, core } = entorno(t);
   const repo = new PgNotificacionRepository({ pgPoolFactory: core });
