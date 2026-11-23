@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0043 (Core Node) — Retiro de lecturas de Dispatch sobre tablas de Core (SCRUM-1660 / T-23 / QAS-20)
+-- Migración 0044 (Core Node) — Retiro de lecturas de Dispatch sobre tablas de Core (SCRUM-1660 / T-23 / QAS-20)
 -- =====================================================================
 -- Contexto (ADR-0030, QAS-20):
 --   Cada microservicio accede exclusivamente a las tablas de su propio dominio.
@@ -21,7 +21,7 @@
 DO $$
 BEGIN
     IF NOT (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user) THEN
-        RAISE EXCEPTION 'MANI-RLS-500: la migración 0043 debe aplicarla un rol que se salte RLS (superusuario o BYPASSRLS), no %', current_user;
+        RAISE EXCEPTION 'MANI-RLS-500: la migración 0044 debe aplicarla un rol que se salte RLS (superusuario o BYPASSRLS), no %', current_user;
     END IF;
 END $$;
 
@@ -48,5 +48,5 @@ CREATE POLICY solicitud_lectura ON solicitud
     USING (tenant_id = app.tenant_id());
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0043', 'SCRUM-1660 (T-23 / QAS-20): retirar permisos de lectura de mani_dispatch_svc sobre tablas de Core (tenant, zona, solicitud)')
+VALUES ('0044', 'SCRUM-1660 (T-23 / QAS-20): retirar permisos de lectura de mani_dispatch_svc sobre tablas de Core (tenant, zona, solicitud)')
 ON CONFLICT (version) DO NOTHING;
