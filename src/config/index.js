@@ -112,8 +112,12 @@ const config = {
   dispatchServiceUrl: process.env.DISPATCH_SERVICE_URL,
   // Proveedor de notificaciones push (HU-M09-06). Hoy solo existe `mock`; otro valor detiene el arranque.
   pushProvider: process.env.PUSH_PROVIDER || 'mock',
-  // Proveedor de pagos (HU-M11-01). Hoy solo existe `mock` (sandbox sin dinero real); otro valor detiene el arranque.
+  // Proveedor de pagos (HU-M11-01). Otro valor sin adaptador detiene el arranque.
+  // Adaptadores: `mock` (en memoria) y `sandbox_http` (sandbox por HTTP; SCRUM-1725). Con `sandbox_http` hace falta la URL.
   paymentProvider: process.env.PAYMENT_PROVIDER || 'mock',
+  paymentProviderUrl: process.env.PAYMENT_PROVIDER_URL || '',
+  // Credencial del sandbox: solo se envía en `Authorization`; nunca se registra ni se devuelve.
+  paymentProviderApiKey: process.env.PAYMENT_PROVIDER_API_KEY || '',
   // Tiempo máximo de espera de cada proveedor externo (SCRUM-1240). Las credenciales de un proveedor real también
   // se leen aquí, desde process.env, y nunca se registran ni se devuelven.
   pushProviderTimeoutMs: positiveIntFromEnv('PUSH_PROVIDER_TIMEOUT_MS', 5000),
