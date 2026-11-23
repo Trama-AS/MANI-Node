@@ -3,6 +3,13 @@ const PaymentProviderError = require('../../domain/errors/PaymentProviderError')
 
 const DESENLACES = ['APROBADO', 'RECHAZADO', 'PENDIENTE'];
 
+/** Quita las barras del final sin expresión regular (evita el patrón de backtracking que SonarQube señala). */
+function quitarBarrasFinales(texto) {
+  let fin = texto.length;
+  while (fin > 0 && texto[fin - 1] === '/') fin -= 1;
+  return texto.slice(0, fin);
+}
+
 /**
  * Segundo adaptador de pagos (SCRUM-1725, QAS-26): cobra contra un sandbox de pagos por HTTP, en lugar de simular en
  * memoria como el mock. Sirve para comprobar que el puerto IPaymentProvider se puede intercambiar por configuración
@@ -18,7 +25,7 @@ class HttpSandboxPaymentProvider extends IPaymentProvider {
     super();
     if (!url) throw new Error('HttpSandboxPaymentProvider requiere url');
     if (typeof fetchImpl !== 'function') throw new Error('HttpSandboxPaymentProvider requiere fetch');
-    this.baseUrl = String(url).replace(/\/+$/, '');
+    this.baseUrl = quitarBarrasFinales(String(url));
     this.apiKey = apiKey || null;
     this.fetchImpl = fetchImpl;
   }

@@ -11,6 +11,16 @@ const PROVIDERS = {
 
 class PaymentProviderConfigurationError extends Error {}
 
+/** `true` si es una URL http(s) con host: se valida con `URL`, sin expresión regular. */
+function esUrlHttp(valor) {
+  try {
+    const u = new URL(String(valor || '').trim());
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 // Adaptadores que no arrancan sin su URL: es preferible detener el arranque a descubrir el hueco en el primer cobro.
 const REQUIEREN_URL = new Set(['sandbox_http']);
 
@@ -26,7 +36,7 @@ function createPaymentProvider(name = 'mock', { url, apiKey, fetchImpl } = {}) {
       `PAYMENT_PROVIDER="${name}" no tiene adaptador. Valores disponibles: ${Object.keys(PROVIDERS).join(', ')}.`
     );
   }
-  if (REQUIEREN_URL.has(key) && !/^https?:\/\/\S+$/i.test(String(url || '').trim())) {
+  if (REQUIEREN_URL.has(key) && !esUrlHttp(url)) {
     throw new PaymentProviderConfigurationError(`PAYMENT_PROVIDER="${key}" requiere PAYMENT_PROVIDER_URL con una URL http(s) válida.`);
   }
   return factory({ url: url && String(url).trim(), apiKey, fetchImpl });
