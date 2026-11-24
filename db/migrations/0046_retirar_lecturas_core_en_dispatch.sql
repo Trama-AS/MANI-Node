@@ -1,5 +1,5 @@
 -- =====================================================================
--- Migración 0044 (Core Node) — Retiro de lecturas de Dispatch sobre tablas de Core (SCRUM-1660 / T-23 / QAS-20)
+-- Migración 0046 (Core Node) — Retiro de lecturas de Dispatch sobre tablas de Core (SCRUM-1660 / T-23 / QAS-20)
 -- =====================================================================
 -- Contexto (ADR-0030, QAS-20):
 --   Cada microservicio accede exclusivamente a las tablas de su propio dominio.
@@ -12,6 +12,9 @@
 -- Esta migración:
 --   1. Revoca `SELECT` sobre `tenant`, `zona` y `solicitud` al rol `mani_dispatch_svc`.
 --   2. Recrea las políticas `tenant_lectura`, `zona_lectura` y `solicitud_lectura` sin incluir a `mani_dispatch_svc`.
+--      `tenant_lectura` y `zona_lectura` quedan solo para `authenticated` y `mani_core_svc`: corre después de la 0044
+--      (SCRUM-1720), que sacó a `anon`, y no lo vuelve a meter. De la 0044 conserva el patrón de crear la política
+--      solo con los roles que existen, para no fallar en una base sin los roles de Supabase.
 --   3. Deja a `mani_dispatch_svc` únicamente con `SELECT, INSERT` sobre `solicitud_rechazo` y `EXECUTE` sobre
 --      `app.set_context(uuid, uuid, text)` y `app.es_aliado_del_usuario(uuid)`.
 --
@@ -21,7 +24,7 @@
 DO $$
 BEGIN
     IF NOT (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user) THEN
-        RAISE EXCEPTION 'MANI-RLS-500: la migración 0044 debe aplicarla un rol que se salte RLS (superusuario o BYPASSRLS), no %', current_user;
+        RAISE EXCEPTION 'MANI-RLS-500: la migración 0046 debe aplicarla un rol que se salte RLS (superusuario o BYPASSRLS), no %', current_user;
     END IF;
 END $$;
 
@@ -32,15 +35,22 @@ BEGIN
     END IF;
 END $$;
 
-DROP POLICY IF EXISTS tenant_lectura ON tenant;
-CREATE POLICY tenant_lectura ON tenant
-    FOR SELECT TO anon, authenticated, mani_core_svc
-    USING (true);
-
-DROP POLICY IF EXISTS zona_lectura ON zona;
-CREATE POLICY zona_lectura ON zona
-    FOR SELECT TO anon, authenticated, mani_core_svc
-    USING (true);
+DO $$
+DECLARE
+    roles_lectura TEXT;
+BEGIN
+    SELECT string_agg(quote_ident(rolname), ', ' ORDER BY rolname) INTO roles_lectura
+    FROM pg_roles
+    WHERE rolname IN ('authenticated', 'mani_core_svc');
+    IF roles_lectura IS NULL THEN
+        RAISE NOTICE 'SCRUM-1660: no existen los roles de lectura; se dejan tenant y zona sin política canónica';
+    ELSE
+        DROP POLICY IF EXISTS tenant_lectura ON tenant;
+        EXECUTE format('CREATE POLICY tenant_lectura ON tenant FOR SELECT TO %s USING (true)', roles_lectura);
+        DROP POLICY IF EXISTS zona_lectura ON zona;
+        EXECUTE format('CREATE POLICY zona_lectura ON zona FOR SELECT TO %s USING (true)', roles_lectura);
+    END IF;
+END $$;
 
 DROP POLICY IF EXISTS solicitud_lectura ON solicitud;
 CREATE POLICY solicitud_lectura ON solicitud
@@ -48,5 +58,5 @@ CREATE POLICY solicitud_lectura ON solicitud
     USING (tenant_id = app.tenant_id());
 
 INSERT INTO schema_migrations (version, description)
-VALUES ('0044', 'SCRUM-1660 (T-23 / QAS-20): retirar permisos de lectura de mani_dispatch_svc sobre tablas de Core (tenant, zona, solicitud)')
+VALUES ('0046', 'SCRUM-1660 (T-23 / QAS-20): retirar permisos de lectura de mani_dispatch_svc sobre tablas de Core (tenant, zona, solicitud)')
 ON CONFLICT (version) DO NOTHING;

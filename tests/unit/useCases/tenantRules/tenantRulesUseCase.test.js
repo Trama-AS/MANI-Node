@@ -12,16 +12,28 @@ const ADMIN_A = { tenantId: TENANT_A, userId: 'aaaa1111-1111-4111-8111-111111111
 const CLIENTE_A = { tenantId: TENANT_A, userId: 'cccc1111-1111-4111-8111-111111111111', role: 'CLIENT' };
 const ALIADO_A = { tenantId: TENANT_A, userId: 'bbbb1111-1111-4111-8111-111111111111', role: 'ALLY' };
 
-function fakeRulesService({ shouldFail503 = false, shouldFail422 = false } = {}) {
+/**
+ * Doble de Rules con el contrato de POST /api/v1/rules/tenant-rules/validate (SCRUM-1722): si las reglas son
+ * válidas devuelve `rules` normalizadas; si no, el cliente HTTP lanza RULES_VALIDATION_ERROR (422).
+ */
+function fakeRulesService({ shouldFail503 = false, violations = null, sinReglas = false } = {}) {
+  const recibidas = [];
   return {
-    async validateTenantRules() {
+    recibidas,
+    async validateTenantRules({ rules }) {
+      recibidas.push(rules);
       if (shouldFail503) {
         throw new DomainError('Servicio de reglas no disponible', 'RULES_SERVICE_UNAVAILABLE', 503);
       }
-      if (shouldFail422) {
-        throw new DomainError('Reglas de tenant incompatibles', 'RULES_VALIDATION_ERROR', 422);
+      if (violations) {
+        throw new DomainError(`Reglas de tenant incompatibles: ${violations.join(', ')}`, 'RULES_VALIDATION_ERROR', 422);
       }
-      return { valid: true };
+      if (sinReglas) return { valid: true, version: 'tenant-rules-v1', violations: [] };
+      const normalizadas = {
+        ...rules,
+        ordenListado: { criterio: String(rules.ordenListado.criterio).trim().toUpperCase() },
+      };
+      return { valid: true, version: 'tenant-rules-v1', violations: [], rules: normalizadas };
     },
   };
 }
@@ -111,66 +123,6 @@ test('C2: Rechaza expectedVersion desactualizada con 409 MANI-RGL-409C y no modi
   assert.equal(vigente.version, 1);
 });
 
-test('C2: Rechaza reglas con criterios inválidos o fuera de rango con 400 sin alterar nada', async () => {
-  const repo = new InMemoryTenantRulesRepository();
-  const uc = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: fakeRulesService() });
-
-  // Criterio de orden inválido
-  await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, ordenListado: { criterio: 'PRECIO' } } } }),
-    /MANI-RGL-400/
-  );
-
-  // Tolerancia > 50 %
-  await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, alertaTarifa: { toleranciaPorcentaje: 60 } } } }),
-    /MANI-RGL-400/
-  );
-
-  // Comisión > 30 %
-  await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, comision: { porcentaje: 35 } } } }),
-    /MANI-RGL-400/
-  );
-
-  // Comisión con más de 2 decimales: la liquidación solo guarda 2 y el desglose no cuadraría
-  await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, comision: { porcentaje: 10.555 } } } }),
-    /MANI-RGL-400/
-  );
-
-  // Penalización > 0 con ventana = 0
-  await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, cancelacion: { ventanaHoras: 0, penalizacionPorcentaje: 20 } } } }),
-    /MANI-RGL-400/
-  );
-
-  // Minutos para aceptar < 1
-  await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, oferta: { minutosParaAceptar: 0 } } } }),
-    /MANI-RGL-400/
-  );
-});
-
-test('T2 / C2: Si Rules rechaza (422) o no responde (503), falla cerrado sin persistir nada', async () => {
-  const repo = new InMemoryTenantRulesRepository();
-  const uc503 = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: fakeRulesService({ shouldFail503: true }) });
-
-  await assert.rejects(
-    () => uc503.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: REGLAS_VALIDAS } }),
-    (err) => err.statusCode === 503 && err.code === 'RULES_SERVICE_UNAVAILABLE'
-  );
-
-  const uc422 = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: fakeRulesService({ shouldFail422: true }) });
-  await assert.rejects(
-    () => uc422.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: REGLAS_VALIDAS } }),
-    (err) => err.statusCode === 422 && err.code === 'RULES_VALIDATION_ERROR'
-  );
-
-  const vigente = await uc503.consultarVigente({ user: ADMIN_A });
-  assert.equal(vigente.version, 0);
-});
-
 test('C3: Clientes y Aliados no pueden actualizar reglas (403 MANI-RGL-403)', async () => {
   const repo = new InMemoryTenantRulesRepository();
   const uc = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: fakeRulesService() });
@@ -209,76 +161,91 @@ test('C3: Aislamiento entre tenants: configurar reglas en Tenant A no afecta al 
   assert.equal(vigB.origen, 'POR_OMISION');
 });
 
-// Revisión de QA (C2): los valores deben ser números JSON. `Number()` convertía null, true, "", "15" y [] en 0, 1 o 15
-// y se guardaban; ahora cada uno es 400 y no se llega a Rules ni al repositorio.
-const NO_NUMERICOS = [
-  ['null', null],
-  ['true', true],
-  ['false', false],
-  ['cadena vacía', ''],
-  ['cadena con número', '15'],
-  ['arreglo vacío', []],
-  ['arreglo con número', [15]],
-  ['objeto', { valor: 15 }],
-  ['NaN', Number.NaN],
-  ['ausente', undefined],
-];
-const CAMPOS_NUMERICOS = [
-  ['alertaTarifa', 'toleranciaPorcentaje'],
-  ['comision', 'porcentaje'],
-  ['cancelacion', 'ventanaHoras'],
-  ['cancelacion', 'penalizacionPorcentaje'],
-  ['oferta', 'minutosParaAceptar'],
-];
+// SCRUM-1722 / QAS-21: Rules es el único que valida las reglas del tenant. Core no tiene copia local de los límites.
 
-for (const [seccion, campo] of CAMPOS_NUMERICOS) {
-  for (const [nombre, valor] of NO_NUMERICOS) {
-    test(`C2: ${seccion}.${campo} = ${nombre} se rechaza con 400 MANI-RGL-400 sin guardar ni llamar a Rules`, async () => {
-      const repo = new InMemoryTenantRulesRepository();
-      let llamadasRules = 0;
-      const uc = new TenantRulesUseCase({
-        tenantRulesRepository: repo,
-        ruleEvaluationService: { validateTenantRules: async () => { llamadasRules += 1; return { valid: true }; } },
-      });
-      const reglas = { ...REGLAS_VALIDAS, [seccion]: { ...REGLAS_VALIDAS[seccion], [campo]: valor } };
-      await assert.rejects(
-        () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas } }),
-        (err) => err.statusCode === 400 && err.code === 'MANI-RGL-400' && err.message.includes(`${seccion}.${campo}`)
-      );
-      assert.equal(llamadasRules, 0);
-      assert.equal((await repo.getVigente(ADMIN_A)).version, 0);
-    });
-  }
-}
+test('SCRUM-1722: Core envía las reglas tal como llegan y guarda las normalizadas que devuelve Rules', async () => {
+  const repo = new InMemoryTenantRulesRepository();
+  const rules = fakeRulesService();
+  const uc = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: rules });
 
-test('C2: el criterio de orden debe ser texto; un número, null o un arreglo se rechazan', async () => {
-  const uc = new TenantRulesUseCase({ tenantRulesRepository: new InMemoryTenantRulesRepository(), ruleEvaluationService: fakeRulesService() });
-  for (const criterio of [1, null, ['COBERTURA'], true]) {
-    await assert.rejects(
-      () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, ordenListado: { criterio } } } }),
-      (err) => err.statusCode === 400 && err.message.includes('ordenListado.criterio')
-    );
-  }
+  const enviadas = { ...REGLAS_VALIDAS, ordenListado: { criterio: ' cobertura ' } };
+  const guardada = await uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: enviadas } });
+
+  assert.deepEqual(rules.recibidas[0], enviadas, 'Core no normaliza ni recorta antes de preguntar a Rules');
+  assert.equal(guardada.reglas.ordenListado.criterio, 'COBERTURA');
 });
 
-test('C2: los límites numéricos son inclusivos y el criterio se normaliza', async () => {
-  const uc = new TenantRulesUseCase({ tenantRulesRepository: new InMemoryTenantRulesRepository(), ruleEvaluationService: fakeRulesService() });
-  const r = await uc.actualizar({
-    user: ADMIN_A,
-    body: {
-      expectedVersion: 0,
-      reglas: {
-        ordenListado: { criterio: ' calificacion ' },
-        alertaTarifa: { toleranciaPorcentaje: 50 },
-        comision: { porcentaje: 0 },
-        cancelacion: { ventanaHoras: 72, penalizacionPorcentaje: 100 },
-        oferta: { minutosParaAceptar: 1440 },
+test('SCRUM-1722 / C2: unas reglas que Rules rechaza son 400 MANI-RGL-400 con sus violaciones y no se guardan', async () => {
+  const repo = new InMemoryTenantRulesRepository();
+  const uc = new TenantRulesUseCase({
+    tenantRulesRepository: repo,
+    ruleEvaluationService: fakeRulesService({ violations: ['comision.porcentaje debe ser un número entre 0 y 30, con máximo 2 decimales'] }),
+  });
+
+  await assert.rejects(
+    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: { ...REGLAS_VALIDAS, comision: { porcentaje: 10.555 } } } }),
+    (err) => err.statusCode === 400 && err.code === 'MANI-RGL-400' && err.message.includes('comision.porcentaje')
+  );
+  assert.equal((await repo.getVigente(ADMIN_A)).version, 0);
+});
+
+test('SCRUM-1722 / T2: si Rules no responde es 503 MANI-RGL-503, sin regla local de respaldo ni cambios', async () => {
+  const repo = new InMemoryTenantRulesRepository();
+  const uc = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: fakeRulesService({ shouldFail503: true }) });
+
+  await assert.rejects(
+    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: REGLAS_VALIDAS } }),
+    (err) => err.statusCode === 503 && err.code === 'MANI-RGL-503'
+  );
+  assert.equal((await repo.getVigente(ADMIN_A)).version, 0);
+});
+
+test('SCRUM-1722: si Rules aprueba sin devolver las reglas normalizadas es 502 MANI-RGL-502 y no se guarda', async () => {
+  const repo = new InMemoryTenantRulesRepository();
+  const uc = new TenantRulesUseCase({ tenantRulesRepository: repo, ruleEvaluationService: fakeRulesService({ sinReglas: true }) });
+
+  await assert.rejects(
+    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: REGLAS_VALIDAS } }),
+    (err) => err.statusCode === 502 && err.code === 'MANI-RGL-502'
+  );
+  assert.equal((await repo.getVigente(ADMIN_A)).version, 0);
+});
+
+test('SCRUM-1722: cualquier otra falla de integración con Rules es 502 MANI-RGL-502', async () => {
+  const uc = new TenantRulesUseCase({
+    tenantRulesRepository: new InMemoryTenantRulesRepository(),
+    ruleEvaluationService: {
+      async validateTenantRules() {
+        throw new DomainError('El servicio de reglas rechazó la petición (400 TENANT_REQUIRED)', 'RULES_SERVICE_ERROR', 502);
       },
     },
   });
-  assert.equal(r.reglas.ordenListado.criterio, 'CALIFICACION');
   await assert.rejects(
-    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 1, reglas: { ...REGLAS_VALIDAS, oferta: { minutosParaAceptar: 1.5 } } } }),
-    (err) => err.statusCode === 400 && err.message.includes('oferta.minutosParaAceptar')
+    () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: REGLAS_VALIDAS } }),
+    (err) => err.statusCode === 502 && err.code === 'MANI-RGL-502' && err.message.includes('TENANT_REQUIRED')
   );
+});
+
+test('SCRUM-1722: un error que no es del dominio se propaga tal cual', async () => {
+  const boom = new TypeError('fallo inesperado');
+  const uc = new TenantRulesUseCase({
+    tenantRulesRepository: new InMemoryTenantRulesRepository(),
+    ruleEvaluationService: { validateTenantRules: async () => { throw boom; } },
+  });
+  await assert.rejects(() => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas: REGLAS_VALIDAS } }), boom);
+});
+
+test('la forma de la petición la valida Core: reglas que no son objeto o expectedVersion inválido son 400 sin llamar a Rules', async () => {
+  const rules = fakeRulesService();
+  const uc = new TenantRulesUseCase({ tenantRulesRepository: new InMemoryTenantRulesRepository(), ruleEvaluationService: rules });
+
+  for (const reglas of [null, 'reglas', [REGLAS_VALIDAS], 15, undefined]) {
+    await assert.rejects(
+      () => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: 0, reglas } }),
+      (err) => err.statusCode === 400 && err.code === 'MANI-RGL-400' && err.message.includes('reglas debe ser un objeto')
+    );
+  }
+  await assert.rejects(() => uc.actualizar({ user: ADMIN_A, body: { reglas: REGLAS_VALIDAS } }), /expectedVersion es obligatorio/);
+  await assert.rejects(() => uc.actualizar({ user: ADMIN_A, body: { expectedVersion: -1, reglas: REGLAS_VALIDAS } }), /entero >= 0/);
+  assert.equal(rules.recibidas.length, 0);
 });

@@ -75,7 +75,7 @@ class PgProfileRepository extends IProfileRepository {
 
 async function leerPerfil(client, userId, tenantId) {
   const { rows } = await client.query(
-    `SELECT u.id, u.tenant_id, u.email, u.rol, u.telefono, u.direccion, u.foto_url,
+    `SELECT u.id, u.tenant_id, u.email, u.rol, u.nombre, u.telefono, u.direccion, u.foto_url,
             a.nombre_razon_social, a.estado_verificacion
        FROM usuario u
        LEFT JOIN aliado a ON a.usuario_id = u.id AND a.tenant_id = u.tenant_id
@@ -91,7 +91,8 @@ async function leerPerfil(client, userId, tenantId) {
     id: fila.id,
     userId: fila.id,
     role,
-    fullName: esAliado ? fila.nombre_razon_social : fila.email,
+    // Aliado con KYC: su razón social; si no, el nombre guardado en el registro; sin ninguno, el correo (SCRUM-1647).
+    fullName: esAliado ? fila.nombre_razon_social : fila.nombre?.trim() || fila.email,
     status: esAliado ? ESTADO_VERIFICACION_FROM_DB[fila.estado_verificacion] || 'PENDING' : 'VERIFIED',
     tenantId: fila.tenant_id,
     phone: fila.telefono ?? undefined,
