@@ -88,6 +88,11 @@ jobs:
       - name: Pruebas con cobertura
         run: npm run test:coverage
 
+      # SCRUM-1727 (QAS-23): porcentaje de cada caso de uso crítico en el resumen del job. Informativo: el umbral que
+      # bloquea el PR es el del quality gate de SonarQube.
+      - name: Cobertura de los casos de uso críticos
+        run: node scripts/cobertura-casos-criticos.js coverage/lcov.info
+
       # El reporter lcov de Node escribe rutas relativas (SF:src/...), así que
       # el archivo sirve tal cual en el workspace del runner self-hosted.
       - name: Publicar reporte lcov
