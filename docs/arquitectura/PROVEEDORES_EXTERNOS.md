@@ -149,3 +149,15 @@ Ninguno se permite en producción: el arranque se detiene si están configurados
 - **Storage caído a mitad del registro:** con `STORAGE_FALLA=upload` y `STORAGE_FALLA_DESPUES_DE=1`, el primer documento KYC
   sube y el segundo falla: el registro borra el archivo ya subido, las filas y la identidad creada, y relanza el error. No queda
   nada a medias.
+
+## 7. Circuit Breaker y Resiliencia (SCRUM-1663 · QAS-40)
+
+Para proteger a los servicios de llamadas colgadas o dependencias caídas de forma repetida (QAS-40):
+
+1. **Disyuntor (`CircuitBreaker`) en Core (`src/application/providers/CircuitBreaker.js`):**
+   - Implementa la máquina de estados `CLOSED -> OPEN -> HALF_OPEN -> CLOSED` (compatible con `opossum`) integrada en `callProvider` y en los clientes HTTP internos (`RulesServiceHttpClient`, `DispatchServiceHttpClient`).
+   - Tras `failureThreshold` (5 por defecto) fallos pasajeros consecutivos (timeout, error de red o `5xx`), el circuito pasa a `OPEN` durante `resetTimeoutMs` (10 000 ms por defecto) y rechaza de inmediato con `503` / `UNAVAILABLE` sin agotar conexiones ni esperar el timeout.
+   - Los errores de validación o contrato de negocio (`4xx` / `DomainError` / `INVALID_RESPONSE`) no contabilizan como caídas de disponibilidad ni abren el circuito.
+   - Al cumplirse `resetTimeoutMs`, el disyuntor pasa a `HALF_OPEN`: una llamada exitosa restablece `CLOSED` y reinicia el contador; una falla la devuelve a `OPEN`.
+2. **Alcance frente a proveedores externos reales:**
+   - Mientras pagos y notificaciones operen sobre adaptadores simulados en memoria, se exige siempre **timeout estricto**, **validación de respuesta** y **disyuntor** sobre los clientes HTTP y `callProvider`, quedando activo de forma transparente para los adaptadores de proveedores externos reales que se registren en `PROVIDERS`.

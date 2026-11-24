@@ -1,6 +1,7 @@
 const Site = require('../../../domain/entities/Site');
 const { ValidationError } = require('../../../domain/errors/DomainError');
 const { assertClientOwnerOrAdmin, cargarCliente } = require('./clientAccess');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 /**
  * Caso de Uso: Agregar Sitio a Cliente Empresa Existente (RF-08 / RF-09)
@@ -59,9 +60,14 @@ class AddSiteToCompanyClientUseCase {
     site.validate();
 
     const savedSite = await this.repository.addSite(client.id, tenantId, site);
-    console.log(
-      `[AddSiteToCompanyClientUseCase] Sitio "${savedSite.nombre}" agregado al cliente "${client.id}". Corr: ${correlationId}`
-    );
+    logger.info({
+      event: 'company_site_added',
+      clienteId: client.id,
+      siteId: savedSite.id,
+      tenantId,
+      correlationId,
+      message: `Sitio "${savedSite.nombre}" agregado al cliente "${client.id}"`,
+    });
 
     return savedSite;
   }

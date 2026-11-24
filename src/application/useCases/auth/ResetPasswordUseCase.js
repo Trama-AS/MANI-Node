@@ -1,4 +1,5 @@
 const { ValidationError, UnauthorizedError } = require('../../../domain/errors/DomainError');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 const MIN_PASSWORD_LENGTH = 8;
 const ACTIVE_STATES = new Set(['ACTIVE', 'ACTIVO']);
@@ -18,7 +19,7 @@ class ResetPasswordUseCase {
     tenantRepository,
     usuarioRepository,
     authIdentityService,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
   }) {
     this.tenantRepository = tenantRepository;
     this.usuarioRepository = usuarioRepository;

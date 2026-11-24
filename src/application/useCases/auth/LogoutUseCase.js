@@ -7,8 +7,10 @@ const { UnauthorizedError } = require('../../../domain/errors/DomainError');
  * dueño de la sesión). Aquí solo queda constancia de quién cerró sesión, en qué tenant y cuándo, con el tenant y el
  * usuario tomados del JWT verificado y nunca del cuerpo (T4). Sin datos personales: ni correo ni token.
  */
+const { logger } = require('../../../infrastructure/observability/logger');
+
 class LogoutUseCase {
-  constructor({ auditLogger = (entry) => console.info(JSON.stringify(entry)), now = () => new Date() } = {}) {
+  constructor({ auditLogger = (entry) => logger.audit(entry), now = () => new Date() } = {}) {
     this.auditLogger = auditLogger;
     this.now = now;
   }

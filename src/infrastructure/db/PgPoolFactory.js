@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { logger } = require('../observability/logger');
 
 /**
  * Crea y memoiza el pool de conexiones directas a PostgreSQL (DATABASE_URL).
@@ -34,7 +35,10 @@ class PgPoolFactory {
       // Un cliente inactivo que pierde la conexión emite 'error'; sin este
       // manejador el proceso termina por una excepción no capturada.
       this.pool.on('error', (err) => {
-        console.error(`⚠️  Error en un cliente inactivo del pool de PostgreSQL: ${err.message}`);
+        logger.error({
+          event: 'pg_pool_idle_error',
+          message: `Error en un cliente inactivo del pool de PostgreSQL: ${err.message}`,
+        });
       });
     }
 

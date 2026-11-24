@@ -1,5 +1,6 @@
 const { ValidationError } = require('../../../domain/errors/DomainError');
 const isValidEmail = require('../../../domain/validation/isValidEmail');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 const ACTIVE_STATES = new Set(['ACTIVE', 'ACTIVO']);
 
@@ -17,7 +18,7 @@ class RequestPasswordRecoveryUseCase {
     usuarioRepository,
     authIdentityService,
     redirectTo,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
   }) {
     this.tenantRepository = tenantRepository;
     this.usuarioRepository = usuarioRepository;

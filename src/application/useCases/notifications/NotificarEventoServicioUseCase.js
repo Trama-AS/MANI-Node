@@ -1,5 +1,6 @@
 const PushProviderError = require('../../../domain/errors/PushProviderError');
 const callProvider = require('../../providers/callProvider');
+const { logger: obsLogger } = require('../../../infrastructure/observability/logger');
 
 const CANAL = 'PUSH';
 // Un evento del servicio no debe hacer esperar a quien lo originó: la notificación ya queda en la bandeja (se persiste
@@ -26,7 +27,7 @@ class NotificarEventoServicioUseCase {
     notificacionRepository,
     pushProvider,
     politica = POLITICA_EVENTO,
-    logger = (entrada) => console.warn(JSON.stringify(entrada)),
+    logger = (entrada) => obsLogger.warn(entrada),
   }) {
     if (!notificacionRepository) throw new Error('notificacionRepository es requerido para NotificarEventoServicioUseCase');
     if (!pushProvider) throw new Error('pushProvider es requerido para NotificarEventoServicioUseCase');
