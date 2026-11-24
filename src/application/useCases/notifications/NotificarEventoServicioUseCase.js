@@ -1,5 +1,6 @@
 const PushProviderError = require('../../../domain/errors/PushProviderError');
 const callProvider = require('../../providers/callProvider');
+const { politicaPushConTecho } = require('../../providers/politicaPushConTecho');
 const { logger: obsLogger } = require('../../../infrastructure/observability/logger');
 
 const CANAL = 'PUSH';
@@ -7,6 +8,9 @@ const CANAL = 'PUSH';
 // antes de llamar al proveedor), así que un push que tarda no se reintenta y se informa como fallido.
 const POLITICA_EVENTO = Object.freeze({ timeoutMs: 2000, retries: 0 });
 const DESTINOS = ['CLIENTE', 'ALIADO', 'CONTRARIO'];
+
+/** Causa de una falla de entrega para el log: el tipo del proveedor (TIMEOUT, UNAVAILABLE...) o el nombre del error. */
+const causaDeLaFalla = (err) => err?.kind ?? (err instanceof Error ? err.name : 'desconocida');
 
 /**
  * Notifica un evento del servicio al participante que corresponde (SCRUM-882, SCRUM-884; reutiliza la frontera de
@@ -127,7 +131,18 @@ class NotificarEventoServicioUseCase {
         { ...this.politica, ErrorClass: PushProviderError, proveedor: `El proveedor push ${this.pushProvider.name}` }
       );
       return entrega.estado;
-    } catch {
+    } catch (err) {
+      // SCRUM-1662 (QAS-02): la falla del push no revierte nada, pero queda registrada con la correlación para poder
+      // rastrearla. Sin payload ni datos personales.
+      this.logger({
+        event: 'notificacion.entrega_fallida',
+        tenant_id: ctx.tenantId,
+        notificacion_id: id,
+        canal: CANAL,
+        proveedor: this.pushProvider.name,
+        causa: causaDeLaFalla(err),
+        correlation_id: correlationId,
+      });
       return 'FALLIDA';
     }
   }
@@ -148,11 +163,7 @@ class NotificarEventoServicioUseCase {
  * respuesta cuando el proveedor tarda. Cada intento dura al menos 250 ms y entre intentos hay una pausa corta.
  * @param {{ timeoutMs: number, retries: number, techoMs?: number }} config
  */
-NotificarEventoServicioUseCase.politicaDe = ({ timeoutMs, retries, techoMs = 2000 }) => {
-  const reintentos = Number.isInteger(retries) && retries > 0 ? retries : 0;
-  const total = Math.min(timeoutMs, techoMs);
-  return { timeoutMs: Math.max(250, Math.floor(total / (reintentos + 1))), retries: reintentos, baseDelayMs: 50 };
-};
+NotificarEventoServicioUseCase.politicaDe = ({ timeoutMs, retries, techoMs = 2000 }) => politicaPushConTecho({ timeoutMs, retries, techoMs });
 
 NotificarEventoServicioUseCase.POLITICA_EVENTO = POLITICA_EVENTO;
 module.exports = NotificarEventoServicioUseCase;

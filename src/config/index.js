@@ -124,6 +124,9 @@ const config = {
   // Reintentos de la entrega push de los eventos del servicio ante una falla pasajera (SCRUM-1662). La clave de
   // idempotencia es el id de la notificación, así que reintentar no duplica el aviso. 0 los desactiva.
   pushProviderRetries: nonNegativeIntFromEnv('PUSH_PROVIDER_RETRIES', 1),
+  // Techo de espera del push de la oferta de despacho, entre todos los intentos (SCRUM-1662). Debe quedar por debajo de los
+  // 10 s con que Dispatch corta cada llamada a Core: antes eran 3 intentos de 5 s y la orquestación respondía 503.
+  pushOfertaTechoMs: positiveIntFromEnv('PUSH_OFERTA_TECHO_MS', 3000),
   // Solo con PUSH_PROVIDER=mock_falla (ver FalibleMockPushProvider).
   pushMockFallas: pushMockFallasFromEnv(),
   // Falla inyectable del Storage de KYC (SCRUM-1662): lista de operaciones que fallan y cuántas llamadas funcionan antes.

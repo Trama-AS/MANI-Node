@@ -2,6 +2,7 @@ const { ForbiddenError, NotFoundError, ValidationError } = require('../../../dom
 const { requireDispatchSession, requireUuid } = require('./dispatchAccess');
 const PushProviderError = require('../../../domain/errors/PushProviderError');
 const callProvider = require('../../providers/callProvider');
+const { logger: obsLogger } = require('../../../infrastructure/observability/logger');
 
 const TIPOS = ['OFERTA_DESPACHO'];
 const CANALES = ['PUSH'];
@@ -11,12 +12,13 @@ const CANALES = ['PUSH'];
 const POLITICA_PUSH = Object.freeze({ timeoutMs: 5000, retries: 2, baseDelayMs: 100 });
 
 class PublishNotificationUseCase {
-  constructor({ notificacionRepository, pushProvider, politica = POLITICA_PUSH }) {
+  constructor({ notificacionRepository, pushProvider, politica = POLITICA_PUSH, logger = (entrada) => obsLogger.warn(entrada) }) {
     if (!notificacionRepository) throw new Error('notificacionRepository es requerido para PublishNotificationUseCase');
     if (!pushProvider) throw new Error('pushProvider es requerido para PublishNotificationUseCase');
     this.notificacionRepository = notificacionRepository;
     this.pushProvider = pushProvider;
     this.politica = { ...POLITICA_PUSH, ...politica };
+    this.logger = logger;
   }
 
   async execute({ session, body = {}, correlationId }) {
@@ -73,7 +75,17 @@ class PublishNotificationUseCase {
           }),
         { ...this.politica, ErrorClass: PushProviderError, proveedor: `El proveedor push ${this.pushProvider.name}` }
       );
-    } catch {
+    } catch (err) {
+      // SCRUM-1662 (QAS-02): la oferta ya está en la bandeja del aliado; la falla del push se registra con la correlación.
+      this.logger({
+        event: 'notificacion.entrega_fallida',
+        tenant_id: tenantId,
+        notificacion_id: created.id,
+        canal: body.canal,
+        proveedor: this.pushProvider.name,
+        causa: err?.kind ?? (err instanceof Error ? err.name : 'desconocida'),
+        correlation_id: correlationId,
+      });
       entrega = { proveedor: this.pushProvider.name, estado: 'FALLIDA', simulada: this.pushProvider.simulated === true };
     }
     return { id: created.id, nueva: true, entrega };

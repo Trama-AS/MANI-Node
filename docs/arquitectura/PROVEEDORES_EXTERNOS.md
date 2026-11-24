@@ -141,6 +141,8 @@ Ninguno se permite en producción: el arranque se detiene si están configurados
 |---|---|---|
 | Push que falla | `PUSH_PROVIDER=mock_falla` | Falla siempre (`PUSH_MOCK_FALLAS=siempre`, por omisión) o los N primeros intentos de cada notificación (`PUSH_MOCK_FALLAS=1` es una falla pasajera) |
 | Reintentos del push de eventos | `PUSH_PROVIDER_RETRIES` (1 por omisión, 0 los desactiva) | Ante una falla pasajera se reintenta con la misma clave de idempotencia (el id de la notificación), así que el aviso no se duplica |
+| Techo del push de la oferta de despacho | `PUSH_OFERTA_TECHO_MS` (3000 por omisión) | La oferta no espera al push más de este tiempo **entre todos los intentos** (con 2 reintentos, 3 intentos de 1 s). Antes eran 3 intentos de 5 s (15 s) y Dispatch corta cada llamada a Core a los 10 s: la orquestación respondía 503 y dejaba 1 de 2 ofertas. Con el techo, un push sin respuesta deja la oferta en la bandeja y la entrega `FALLIDA` en ~3 s |
+| Registro de la falla de entrega | siempre activo | Cada entrega `FALLIDA` (oferta de despacho o evento del servicio) deja una línea `notificacion.entrega_fallida` con `tenant_id`, `notificacion_id`, `canal`, `proveedor`, `causa` (`TIMEOUT`, `UNAVAILABLE`, `INVALID_RESPONSE`) y `correlation_id`. No lleva el payload, el detalle del proveedor ni datos personales |
 | Storage de KYC que falla | `STORAGE_FALLA=upload,delete,createSignedUrl` y `STORAGE_FALLA_DESPUES_DE=N` | Las operaciones listadas fallan con `503 MANI-STG-503` después de N llamadas correctas |
 
 **Qué se espera ver**
