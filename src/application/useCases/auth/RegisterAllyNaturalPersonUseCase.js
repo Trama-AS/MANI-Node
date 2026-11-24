@@ -169,7 +169,7 @@ class RegisterAllyNaturalPersonUseCase {
     await ejecutarComo({ tenantId, userId, role: 'ALLY' }, async () => {
       try {
         // 2. Espejo de negocio — handle_new_user migrado explícitamente a Node.
-        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'ALLY', estado: 'ACTIVE', phone });
+        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'ALLY', estado: 'ACTIVE', phone, fullName });
         usuarioCreado = true;
 
         const aliado = await this.aliadoRepository.create({
