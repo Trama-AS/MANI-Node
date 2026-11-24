@@ -81,11 +81,37 @@ interno, que puede traer direcciones o credenciales, no llega al cliente.
 - El tenant y el destinatario salen siempre del JWT y del repositorio, nunca del cuerpo (ADR-0018), y viajan al
   proveedor para que la entrega quede aislada y auditada por tenant.
 
+### Adaptadores de pagos disponibles (SCRUM-1725, QAS-26)
+
+| `PAYMENT_PROVIDER` | Adaptador | Qué hace | Variables extra |
+|---|---|---|---|
+| `mock` (por omisión) | `MockPaymentProvider` | Simula el desenlace en memoria; no llama a ninguna red | — |
+| `sandbox_http` | `HttpSandboxPaymentProvider` | Cobra contra un sandbox de pagos por HTTP (`POST {PAYMENT_PROVIDER_URL}/cobros`) con `Idempotency-Key` y `X-Correlation-ID`; respeta `signal` | `PAYMENT_PROVIDER_URL` (obligatoria, http/https); `PAYMENT_PROVIDER_API_KEY` (opcional, va solo en `Authorization`) |
+
+Ambos implementan `IPaymentProvider` y pasan el mismo contrato (`providers.contract.test.js`): el caso de uso
+`CreatePaymentUseCase` no sabe cuál usa. **Cambiar de adaptador es solo configuración**, sin tocar código:
+
+```bash
+# mock (por omisión)
+PAYMENT_PROVIDER=mock
+
+# sandbox por HTTP
+PAYMENT_PROVIDER=sandbox_http
+PAYMENT_PROVIDER_URL=https://sandbox-pagos.example.test
+PAYMENT_PROVIDER_API_KEY=...   # solo si el sandbox la pide; no se registra ni se devuelve
+```
+
+Un valor sin adaptador, o `sandbox_http` sin URL válida, detiene el arranque. La traducción de fallas del sandbox:
+408 y 504 → `TIMEOUT`; 429 y 5xx → `UNAVAILABLE`; otro 4xx o un cuerpo fuera del contrato → `INVALID_RESPONSE`; un
+`RECHAZADO` es un desenlace válido. El sandbox no mueve dinero real, así que el adaptador sigue siendo `simulated: true`.
+
 ## 5. Matriz de contratos y pruebas
 
 | Garantía | Criterio | Prueba |
 |---|---|---|
-| Cada adaptador implementa su puerto, declara `name` y `simulated` | C1 | `providers.contract.test.js` (todos los `PROVIDERS`) |
+| Cada adaptador implementa su puerto, declara `name` y `simulated` | C1 | `providers.contract.test.js` (todos los `PROVIDERS`, incluidos `mock` y `sandbox_http`) |
+| `sandbox_http`: cabeceras, traducción de fallas y sin filtrar credenciales | C1, C2 | `httpSandboxPaymentProvider.test.js` |
+| El mismo caso de uso de cobro corre con los dos adaptadores | C3 | `paymentAdaptadores.test.js` |
 | Desenlace dentro del contrato, con referencia o `mensajeId` | C1 | `providers.contract.test.js` |
 | Misma clave, mismo desenlace; claves distintas, operaciones distintas | C2 | `providers.contract.test.js` |
 | Simulado nunca se presenta como real | C1 | `providers.contract.test.js` |
