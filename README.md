@@ -168,7 +168,7 @@ docker run -d -p 3000:3000 --name mani-core mani-node:local
 
 * **CI** (`.github/workflows/ci.yml`): en cada push y PR corre `npm run lint` y `npm test`.
 * **Quality Gate** (`.github/workflows/quality-gate.yml`): en los PR a `develop`, `release` y `main` corre las pruebas con cobertura (incluidas las de PostgreSQL, con un servicio `postgres:15`), la prueba de contrato contra `docs/openapi` y SonarQube. `Pruebas y cobertura` y `Sonar Quality Gate` son checks requeridos para fusionar.
-* **CD** (`.github/workflows/cd.yml`): tras un CI en verde sobre `main`, construye la imagen y la publica como `ghcr.io/trama-as/mani-node:<sha>` (sin `:latest`), y la despliega por SSH en los GitHub Environments `dev` y `qa` (secrets con prefijo `DEV_` o `QA_`: `*_SSH_HOST`, `*_SSH_USER`, `*_SSH_KEY`, `*_SSH_PORT`, `*_HOST_PORT`, `*_DATABASE_URL`, `*_SUPABASE_URL`, `*_SUPABASE_SERVICE_ROLE_KEY`, `*_SUPABASE_JWT_SECRET`, `*_RULES_SERVICE_URL`, `*_HEALTHCHECK_URL`). También se puede disparar a mano para redesplegar un tag existente.
+* **CD** (`.github/workflows/cd.yml`): tras un CI en verde sobre `main`, construye la imagen y la publica como `ghcr.io/trama-as/mani-node:<sha>` (sin `:latest`). **Eso es lo único que hace hoy.** Sus jobs `Deploy a DEV` y `Deploy a QA` (por SSH, con secrets `DEV_*` y `QA_*`) **no están operativos**: falta el GitHub Environment `qa` (solo existe `dev`) y el acceso SSH a las VM. Las tres ejecuciones que hay (7 y 22 de octubre, 5 de noviembre) terminaron en `failure`: la imagen se publicó, `Deploy a DEV` falló y `Deploy a QA` se omitió. QA y PROD se despliegan como dice la tabla de [Despliegue](#-despliegue).
 
 ---
 
@@ -180,9 +180,10 @@ La imagen se construye una sola vez y se promueve entre ambientes; no se reconst
 | :--- | :--- | :--- | :--- |
 | Push a `develop` | `docker-publish.yml` | `ghcr.io/trama-as/mani-node:develop` | Integración |
 | Push a `release` | `docker-publish.yml` | `ghcr.io/trama-as/mani-node:staging` | **QA** (VM `10.43.100.141`) |
-| `promote-latest.yml` (manual, *Run workflow*) | `promote-latest.yml` | `ghcr.io/trama-as/mani-node:latest` = **el mismo digest** de `:staging` | **PROD** |
+| `promote-latest.yml` (manual, *Run workflow*, desde `main`) | `promote-latest.yml` | `ghcr.io/trama-as/mani-node:latest` = **el mismo digest** de `:staging` | **PROD** |
 | Etiqueta `vX.Y.Z` en `main` | `docker-publish.yml` | `ghcr.io/trama-as/mani-node:X.Y.Z` | Versión publicada |
 
+- `promote-latest.yml` se puede ejecutar cuando llegue a `main`: hoy solo está en `develop` y `release`, y GitHub responde 404 al dispararlo.
 - **Rollback:** se vuelve a ejecutar `promote-latest.yml` con el digest anterior, que queda en el resumen de cada ejecución.
 - **Flujo de ramas** (rama → PR a `develop` → QA → `release` → `main`, nunca PR directo a `main`): [Ramas, flujo y protección](https://github.com/Trama-AS/MANI-docs/blob/main/wiki/03-repositorios/ramas-flujo-y-proteccion.md). **Ambientes:** [Ambientes y promoción](https://github.com/Trama-AS/MANI-docs/blob/main/wiki/04-proceso/ambientes-y-promocion.md).
 
