@@ -86,9 +86,10 @@ jobs:
         with:
           context: .
           push: true
+          # Sin :latest (SCRUM-1723 / QAS-24): esa etiqueta solo la pone
+          # promote-latest.yml con el digest que QA probó en :staging.
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
-            ${{ steps.vars.outputs.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
