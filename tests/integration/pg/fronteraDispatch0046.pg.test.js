@@ -19,15 +19,36 @@ const migracion = (archivo) => fs.readFileSync(path.join(__dirname, '../../../db
 const M0044 = migracion('0044_retirar_lectura_publica_tenant_zona.sql');
 const M0046 = migracion('0046_retirar_lecturas_core_en_dispatch.sql');
 
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Toma de una vez los candados exclusivos de `tablas` sin quedarse esperando con alguno ya tomado: otros archivos pg
+ * insertan en estas tablas en paralelo, y esperar un candado mientras se tiene otro daba deadlock (40P01). Con NOWAIT,
+ * si alguno está ocupado se suelta todo (savepoint) y se reintenta; así esta prueba nunca forma parte de un deadlock.
+ */
+async function bloquear(client, tablas) {
+  for (let intento = 0; intento < 100; intento += 1) {
+    await client.query('SAVEPOINT candados');
+    try {
+      await client.query(`LOCK TABLE ${tablas} IN ACCESS EXCLUSIVE MODE NOWAIT`);
+      await client.query('RELEASE SAVEPOINT candados');
+      return;
+    } catch (err) {
+      await client.query('ROLLBACK TO SAVEPOINT candados');
+      if (err.code !== '55P03') throw err;
+      await esperar(50);
+    }
+  }
+  throw new Error(`no se pudieron tomar los candados de ${tablas}`);
+}
+
 async function enTransaccion(t, fn) {
   const fabrica = new PgPoolFactory({ databaseUrl: url });
   t.after(() => fabrica.close());
   const client = await fabrica.getPool().connect();
   try {
     await client.query('BEGIN');
-    // Todos los candados al empezar y en orden fijo: otros archivos pg insertan en estas tablas en paralelo, y tomar
-    // uno, esperar otro y cruzarse con ellos daba deadlock (40P01) en fondosGarantia.pg.test.js.
-    await client.query('LOCK TABLE tenant, zona, solicitud IN ACCESS EXCLUSIVE MODE');
+    await bloquear(client, 'tenant, zona, solicitud');
     await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
