@@ -14,6 +14,20 @@ class IElegibilidadRepository {
   async findEligible(_ctx, _criteria) {
     throw new Error('Método findEligible() no implementado en IElegibilidadRepository');
   }
+
+  /**
+   * Contexto de la solicitud, sus elegibles y el criterio de orden del tenant en una sola lectura (SCRUM-1652).
+   * Zona y categoría salen de la solicitud. Solo el admin del tenant y el cliente dueño la ven. No excluye rechazos:
+   * los descuenta Dispatch, dueño de solicitud_rechazo (ADR-0030).
+   * @param {{ tenantId: string, userId: string, role: string }} _ctx Contexto verificado de la sesión.
+   * @param {{ solicitudId: string, tipo?: string, page: number, pageSize: number }} _criteria
+   * @returns {Promise<null | { solicitud: { id: string, zonaId: string, categoriaId: string, estado: string },
+   *   tieneReglaPropia: boolean, criterioOrdenListado: string|null, allies: object[], totalCount: number }>}
+   *   null si la sesión no puede ver la solicitud.
+   */
+  async findEligibleForRequest(_ctx, _criteria) {
+    throw new Error('Método findEligibleForRequest() no implementado en IElegibilidadRepository');
+  }
 }
 
 module.exports = IElegibilidadRepository;

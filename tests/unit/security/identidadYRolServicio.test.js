@@ -15,7 +15,7 @@ test('ejecutarComo fija la identidad solo dentro del trabajo y la congela', asyn
   await ejecutarComo({ tenantId: T1, userId: 'u1', role: 'ALLY' }, async () => {
     await new Promise((r) => setImmediate(r));
     const actual = identidadActual();
-    assert.deepEqual(actual, { tenantId: T1, userId: 'u1', role: 'ALLY' });
+    assert.deepEqual(actual, { tenantId: T1, userId: 'u1', role: 'ALLY', correlationId: null });
     assert.throws(() => {
       'use strict';
       actual.tenantId = T2;
@@ -79,12 +79,13 @@ function conTokenService(t, verifyToken) {
 test('authenticate e identificarSiHayToken dejan la identidad del JWT para el resto de la petición', async (t) => {
   conTokenService(t, async () => ({ userId: 'u-9', tenantId: T1, role: 'admin_tenant' }));
   for (const middleware of [authenticate, identificarSiHayToken]) {
-    const req = { headers: { authorization: 'Bearer x' } };
+    const req = { headers: { authorization: 'Bearer x' }, correlationId: 'corr-mw' };
     let vista;
     await middleware(req, {}, () => {
       vista = identidadActual();
     });
-    assert.deepEqual(vista, { tenantId: T1, userId: 'u-9', role: 'admin_tenant' });
+    // SCRUM-1657: el correlation ID de la petición acompaña a la identidad.
+    assert.deepEqual(vista, { tenantId: T1, userId: 'u-9', role: 'admin_tenant', correlationId: 'corr-mw' });
     assert.equal(req.user.userId, 'u-9');
   }
 });

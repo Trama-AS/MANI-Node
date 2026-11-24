@@ -1,12 +1,14 @@
 const { NotFoundError, ValidationError } = require('../../../domain/errors/DomainError');
+const { conFotoFirmada } = require('./fotoPerfilFirmada');
 
 class GetOwnProfileUseCase {
-  constructor({ profileRepository, tenantRepository = null }) {
+  constructor({ profileRepository, tenantRepository = null, fileStorageService = null }) {
     if (!profileRepository) {
       throw new Error('profileRepository es requerido para GetOwnProfileUseCase');
     }
     this.profileRepository = profileRepository;
     this.tenantRepository = tenantRepository;
+    this.fileStorageService = fileStorageService;
   }
 
   async execute({ userId, tenantId = null } = {}) {
@@ -28,7 +30,8 @@ class GetOwnProfileUseCase {
       const tenant = await this.tenantRepository.findById(ownTenantId);
       if (tenant?.name) json.tenantName = tenant.name;
     }
-    return json;
+    // La base guarda la ruta en Storage; el cliente recibe una URL firmada que pueda abrir (SCRUM-1634).
+    return conFotoFirmada(json, this.fileStorageService);
   }
 }
 

@@ -60,11 +60,41 @@ function uuidList(value, field, max) {
   return [...new Set(items.map((v) => v.toLowerCase()))];
 }
 
+function positiveInt(value, field, fallback, max) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || (max && n > max)) {
+    throw new ValidationError(`MANI-DSP-400: ${field} debe ser un entero entre 1 y ${max || 'el máximo'}`, 'MANI-DSP-400');
+  }
+  return n;
+}
+
+// Filtro opcional de tipo de aliado: vacío es «todos»; cualquier otro valor debe ser uno de los tres tipos.
+function tipoOpcional(value) {
+  const tipoPedido = value === undefined || value === null ? '' : String(value).trim();
+  if (tipoPedido === '') return null;
+  const tipo = tipoPedido.toUpperCase();
+  if (!TIPOS_ALIADO.includes(tipo)) {
+    throw new ValidationError(`MANI-DSP-400: tipo debe ser uno de ${TIPOS_ALIADO.join(', ')}`, 'MANI-DSP-400');
+  }
+  return tipo;
+}
+
+// Página del listado de elegibles: `page` desde 1 y `pageSize` de 1 a MAX_PAGE_SIZE (20 por omisión).
+function paginaElegibles(query = {}) {
+  return {
+    page: positiveInt(query.page, 'page', 1),
+    pageSize: positiveInt(query.pageSize, 'pageSize', 20, MAX_PAGE_SIZE),
+  };
+}
+
 module.exports = {
   requireDispatchSession,
   requireContextSession,
   requireUuid,
   uuidList,
+  tipoOpcional,
+  paginaElegibles,
   TIPOS_ALIADO,
   MAX_PAGE_SIZE,
   MAX_EXCLUIDOS,

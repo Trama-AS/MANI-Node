@@ -171,3 +171,63 @@ test('PG: sin DATABASE_URL los pagos fallan cerrado con 503', async () => {
   const ctx = { tenantId: uuid(), userId: uuid(), role: 'CLIENT' };
   await assert.rejects(() => repo.prepararCobro(ctx, { cotizacionId: uuid(), claveIdempotencia: null }), (err) => err.statusCode === 503);
 });
+
+// ---- SCRUM-1653 (T-16, QAS-42): la misma clave con otro cuerpo devuelve 409 ----
+
+const huella = (n) => `h-${n}`.padEnd(64, '0');
+
+test('PG 1653: la misma clave con el mismo cuerpo devuelve el pago original; con otro escenario responde 409 MANI-PAG-409K', opts, async (t) => {
+  const { pool, repo } = await entorno(t);
+  const s = await sembrarTenant(pool);
+  const clave = uuid();
+
+  const original = await repo.registrar(s.ctx, aprobado(s, { claveIdempotencia: clave, huella: huella('aprobado') }));
+
+  const mismo = await repo.prepararCobro(s.ctx, { cotizacionId: s.cotizacion, claveIdempotencia: clave, huella: huella('aprobado') });
+  assert.equal(mismo.existente.id, original.pago.id, 'mismo cuerpo: respuesta original');
+
+  await assert.rejects(
+    () => repo.prepararCobro(s.ctx, { cotizacionId: s.cotizacion, claveIdempotencia: clave, huella: huella('rechazado') }),
+    (e) => e.statusCode === 409 && e.code === 'MANI-PAG-409K'
+  );
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM pago WHERE cotizacion_id = $1', [s.cotizacion])).rows[0].n, 1);
+});
+
+test('PG 1653: la misma clave con otra cotización responde 409 y no cobra la segunda', opts, async (t) => {
+  const { pool, repo } = await entorno(t);
+  const a = await sembrarTenant(pool);
+  const clave = uuid();
+  await repo.registrar(a.ctx, aprobado(a, { claveIdempotencia: clave, huella: huella('a') }));
+
+  // Otra cotización del mismo cliente.
+  const otra = uuid();
+  const { rows } = await pool.query('SELECT solicitud_id, aliado_id FROM cotizacion WHERE id = $1', [a.cotizacion]);
+  await pool.query(
+    "INSERT INTO cotizacion (id, tenant_id, solicitud_id, aliado_id, valor_mano_obra, valor_materiales, estado) VALUES ($1, $2, $3, $4, 1000, 0, 'ACEPTADA')",
+    [otra, a.tenant, rows[0].solicitud_id, rows[0].aliado_id]
+  );
+
+  await assert.rejects(
+    () => repo.prepararCobro(a.ctx, { cotizacionId: otra, claveIdempotencia: clave, huella: huella('b') }),
+    (e) => e.statusCode === 409 && e.code === 'MANI-PAG-409K'
+  );
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM pago WHERE tenant_id = $1', [a.tenant])).rows[0].n, 1, 'no hay un segundo pago');
+});
+
+test('PG 1653: un pago anterior a la huella (huella NULL) se compara solo por cotización', opts, async (t) => {
+  const { pool, repo } = await entorno(t);
+  const s = await sembrarTenant(pool);
+  const clave = uuid();
+  const viejo = await repo.registrar(s.ctx, aprobado(s, { claveIdempotencia: clave }));
+  assert.equal((await pool.query('SELECT huella_idempotencia FROM pago WHERE id = $1', [viejo.pago.id])).rows[0].huella_idempotencia, null);
+
+  const reintento = await repo.prepararCobro(s.ctx, { cotizacionId: s.cotizacion, claveIdempotencia: clave, huella: huella('x') });
+  assert.equal(reintento.existente.id, viejo.pago.id, 'sin huella previa no hay falso 409 en el mismo cotización');
+});
+
+test('PG 1653: sin clave de idempotencia no se guarda huella ni se aplica la regla', opts, async (t) => {
+  const { pool, repo } = await entorno(t);
+  const s = await sembrarTenant(pool);
+  const { pago } = await repo.registrar(s.ctx, aprobado(s, { estado: 'RECHAZADO', motivo: 'x', huella: huella('ignorada') }));
+  assert.equal((await pool.query('SELECT huella_idempotencia FROM pago WHERE id = $1', [pago.id])).rows[0].huella_idempotencia, null);
+});

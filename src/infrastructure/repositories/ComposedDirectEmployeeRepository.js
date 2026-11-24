@@ -1,10 +1,15 @@
 const IDirectEmployeeRepository = require('../../domain/ports/IDirectEmployeeRepository');
+const { logger } = require('../observability/logger');
 
 async function safeRun(action) {
   try {
     await action();
   } catch (err) {
-    console.error('[ComposedDirectEmployeeRepository] Falla en compensación:', err?.message || err);
+    logger.error({
+      event: 'direct_employee_compensation_error',
+      component: 'ComposedDirectEmployeeRepository',
+      message: err?.message || String(err),
+    });
   }
 }
 

@@ -18,7 +18,7 @@ const almacen = new AsyncLocalStorage();
 
 /**
  * Ejecuta `trabajo` con `identidad` como identidad vigente y devuelve lo que devuelva `trabajo`.
- * @param {{ tenantId: string, userId?: string|null, role?: string|null }} identidad
+ * @param {{ tenantId: string, userId?: string|null, role?: string|null, correlationId?: string|null }} identidad
  * @param {() => any} trabajo
  */
 function ejecutarComo(identidad, trabajo) {
@@ -29,6 +29,9 @@ function ejecutarComo(identidad, trabajo) {
     tenantId: identidad.tenantId,
     userId: identidad.userId ?? null,
     role: identidad.role ?? null,
+    // SCRUM-1657: el correlation ID de la petición viaja con la identidad hasta la transacción, donde queda en
+    // `app.correlation_id` y lo toman los DEFAULT de las tablas de trazabilidad.
+    correlationId: identidad.correlationId ?? null,
   });
   return almacen.run(congelada, trabajo);
 }

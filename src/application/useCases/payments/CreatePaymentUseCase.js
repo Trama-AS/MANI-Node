@@ -1,7 +1,9 @@
+const crypto = require('node:crypto');
 const { DomainError, ValidationError } = require('../../../domain/errors/DomainError');
 const PaymentProviderError = require('../../../domain/errors/PaymentProviderError');
 const callProvider = require('../../providers/callProvider');
 const { contextoDeSesion, uuidValido } = require('./paymentAccess');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 // Política de proveedores (SCRUM-1240): un cobro tiene tiempo máximo y Core NO lo reintenta. Si no hay desenlace,
 // el cliente reintenta con la misma claveIdempotencia y el proveedor devuelve el mismo desenlace sin cobrar dos veces.
@@ -26,6 +28,14 @@ function desenlaceValido(resultado) {
 }
 
 /**
+ * Huella de lo que el cliente pidió cobrar (SCRUM-1653): la misma cotización y el mismo escenario dan la misma huella.
+ * Con la misma clave, otra huella no es un reintento sino otra petición.
+ */
+function huellaDe({ cotizacionId, escenario }) {
+  return crypto.createHash('sha256').update(JSON.stringify({ cotizacionId, escenario })).digest('hex');
+}
+
+/**
  * Pago del cliente en el sandbox (SCRUM-1432, HU-M11-01, RF-24). El cliente dueño de una cotización aceptada la paga
  * con el proveedor simulado. El monto sale de la cotización, nunca del cuerpo; el cliente, el tenant y el rol, del JWT.
  *
@@ -37,7 +47,7 @@ class CreatePaymentUseCase {
     paymentRepository,
     paymentProvider,
     politica = POLITICA_PAGOS,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
   }) {
     if (!paymentRepository) throw new Error('paymentRepository es requerido para CreatePaymentUseCase');
     if (!paymentProvider) throw new Error('paymentProvider es requerido para CreatePaymentUseCase');
@@ -59,7 +69,9 @@ class CreatePaymentUseCase {
     const claveIdempotencia = body.claveIdempotencia ? uuidValido(body.claveIdempotencia, 'claveIdempotencia') : null;
     const escenario = body.escenario === undefined ? 'APROBADO' : String(body.escenario);
 
-    const preparado = await this.paymentRepository.prepararCobro(ctx, { cotizacionId, claveIdempotencia });
+    const huella = claveIdempotencia ? huellaDe({ cotizacionId, escenario }) : null;
+
+    const preparado = await this.paymentRepository.prepararCobro(ctx, { cotizacionId, claveIdempotencia, huella });
     if (preparado.existente) return { pago: preparado.existente, creado: false };
     const { cobro } = preparado;
 
@@ -99,6 +111,7 @@ class CreatePaymentUseCase {
       motivo: resultado.motivo,
       correlationId,
       claveIdempotencia,
+      huella,
     });
 
     this.auditLogger({

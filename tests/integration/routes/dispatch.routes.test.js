@@ -288,3 +288,69 @@ test('POST /notifications con una oferta que ya existía responde 200 sin repeti
     assert.deepEqual(push.sentTo(TENANT, 'u-ally'), []);
   })();
 });
+
+// SCRUM-1652: contexto, elegibles y criterio de orden de una solicitud en una sola lectura.
+const GetEligibleAlliesForRequestUseCase = require('../../../src/application/useCases/dispatch/GetEligibleAlliesForRequestUseCase');
+
+const eligibleForRequestFake = (calls, resultado) => ({
+  getEligibleAlliesForRequestUseCase: new GetEligibleAlliesForRequestUseCase({
+    elegibilidadRepository: {
+      findEligibleForRequest: async (ctx, criteria) => {
+        calls.push({ ...criteria, ctx });
+        return resultado;
+      },
+    },
+  }),
+});
+
+const resultadoPorSolicitud = {
+  solicitud: { id: SOLICITUD, zonaId: ZONA, categoriaId: CATEGORIA, estado: 'PENDIENTE' },
+  tieneReglaPropia: true,
+  criterioOrdenListado: 'COBERTURA',
+  allies: [{ id: ALLY, nombreRazonSocial: 'Ana', tipo: 'PERSONA_NATURAL', estadoVerificacion: 'VERIFICADO', zonasCobertura: 2 }],
+  totalCount: 1,
+};
+
+test('GET /allies/eligible/by-request/:id sin Authorization responde 401', async () => {
+  const res = await request(app).get(`/api/v1/allies/eligible/by-request/${SOLICITUD}`);
+
+  assert.equal(res.status, 401);
+});
+
+test('GET /allies/eligible/by-request/:id devuelve contexto, criterio y elegibles con el tenant del token', async () => {
+  const calls = [];
+  await withFakes(eligibleForRequestFake(calls, resultadoPorSolicitud), async () => {
+    const res = await request(app)
+      .get(`/api/v1/allies/eligible/by-request/${SOLICITUD}`)
+      .query({ tipo: 'persona_natural', page: 1, pageSize: 100 })
+      .set('Authorization', bearer())
+      .set('X-Tenant-Id', '99999999-9999-4999-8999-999999999999');
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.solicitud, resultadoPorSolicitud.solicitud);
+    assert.equal(res.body.criterioOrdenListado, 'COBERTURA');
+    assert.equal(res.body.totalCount, 1);
+    assert.equal(res.body.allies[0].zonasCobertura, 2);
+    assert.equal(res.body.pageSize, 100);
+    assert.equal(calls[0].ctx.tenantId, TENANT);
+    assert.equal(calls[0].solicitudId, SOLICITUD);
+    assert.equal(calls[0].tipo, 'PERSONA_NATURAL');
+  })();
+});
+
+test('GET /allies/eligible/by-request/:id responde 404 si la sesión no ve la solicitud', withFakes(eligibleForRequestFake([], null), async () => {
+  const res = await request(app)
+    .get(`/allies/eligible/by-request/${SOLICITUD}`)
+    .set('Authorization', bearer({ role: 'admin_tenant' }));
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.code, 'MANI-DSP-404');
+}));
+
+test('GET /allies/eligible/by-request/:id: un aliado no puede consultarla (403)', withFakes(eligibleForRequestFake([], resultadoPorSolicitud), async () => {
+  const res = await request(app)
+    .get(`/api/v1/allies/eligible/by-request/${SOLICITUD}`)
+    .set('Authorization', bearer({ role: 'aliado' }));
+
+  assert.equal(res.status, 403);
+}));

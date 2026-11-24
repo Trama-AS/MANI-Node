@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { logger } = require('../observability/logger');
 
 /**
  * Crea y memoiza el pool de conexiones directas a PostgreSQL (DATABASE_URL).
@@ -7,9 +8,11 @@ const { Pool } = require('pg');
  * Para Supabase, el modo SSL se decide en la propia URL (`?sslmode=...`).
  */
 class PgPoolFactory {
-  constructor({ databaseUrl, max = 5 } = {}) {
+  constructor({ databaseUrl, max = 5, connectionTimeoutMs = 10000, idleTimeoutMs = 30000 } = {}) {
     this.databaseUrl = databaseUrl;
     this.max = max;
+    this.connectionTimeoutMs = connectionTimeoutMs;
+    this.idleTimeoutMs = idleTimeoutMs;
     this.pool = null;
   }
 
@@ -26,13 +29,16 @@ class PgPoolFactory {
       this.pool = new Pool({
         connectionString: this.databaseUrl,
         max: this.max,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: this.idleTimeoutMs,
+        connectionTimeoutMillis: this.connectionTimeoutMs,
       });
       // Un cliente inactivo que pierde la conexión emite 'error'; sin este
       // manejador el proceso termina por una excepción no capturada.
       this.pool.on('error', (err) => {
-        console.error(`⚠️  Error en un cliente inactivo del pool de PostgreSQL: ${err.message}`);
+        logger.error({
+          event: 'pg_pool_idle_error',
+          message: `Error en un cliente inactivo del pool de PostgreSQL: ${err.message}`,
+        });
       });
     }
 

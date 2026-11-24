@@ -1,6 +1,7 @@
 const { ForbiddenError, UnauthorizedError, ValidationError } = require('../../../domain/errors/DomainError');
 
 const { entregarAviso } = require('../notifications/entregarAviso');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -13,7 +14,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 class AssignServiceRequestUseCase {
   constructor({
     solicitudAsignacionRepository,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
     notificador = null,
   }) {
     if (!solicitudAsignacionRepository) throw new Error('solicitudAsignacionRepository es requerido');

@@ -163,6 +163,7 @@ class RegisterAllyCompanyUseCase {
           rol: 'ALLY',
           estado: 'ACTIVE',
           phone: phone ? String(phone).trim() : undefined,
+          fullName: cleanRazonSocial,
         });
         usuarioCreado = true;
 
