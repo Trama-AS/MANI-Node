@@ -25,6 +25,9 @@ async function enTransaccion(t, fn) {
   const client = await fabrica.getPool().connect();
   try {
     await client.query('BEGIN');
+    // Todos los candados al empezar y en orden fijo: otros archivos pg insertan en estas tablas en paralelo, y tomar
+    // uno, esperar otro y cruzarse con ellos daba deadlock (40P01) en fondosGarantia.pg.test.js.
+    await client.query('LOCK TABLE tenant, zona, solicitud IN ACCESS EXCLUSIVE MODE');
     await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -46,6 +49,14 @@ async function leerComo(client, rol, tabla) {
   }
 }
 
+/**
+ * Estado anterior a la 0046: Dispatch con lectura sobre tenant, zona y solicitud. En CI la base ya trae todas las
+ * migraciones, así que sin esto la 0046 ya estaría aplicada y la prueba no mediría nada.
+ */
+async function antesDe0046(client) {
+  await client.query('GRANT SELECT ON tenant, zona, solicitud TO mani_dispatch_svc');
+}
+
 async function sembrar(client) {
   const tenant = uuid();
   await client.query("INSERT INTO tenant (id, nombre, slug, estado) VALUES ($1, 'T1660', $2, 'ACTIVO')", [tenant, `t1660-${tenant}`]);
@@ -55,6 +66,7 @@ async function sembrar(client) {
 test('SCRUM-1660: tras la 0044 y la 0046, anon y Dispatch reciben permission denied en tenant y zona', opts, async (t) => {
   await enTransaccion(t, async (client) => {
     await sembrar(client);
+    await antesDe0046(client);
     await client.query(M0044);
     // Con solo la 0044, Dispatch todavía lee: es lo que la 0046 le quita.
     assert.ok((await leerComo(client, 'mani_dispatch_svc', 'tenant')).n > 0, 'con la 0044 sola, Dispatch aún lee tenant');
@@ -73,6 +85,7 @@ test('SCRUM-1660: tras la 0044 y la 0046, anon y Dispatch reciben permission den
 test('SCRUM-1660: tras la 0044 y la 0046, Core y authenticated siguen leyendo tenant y zona', opts, async (t) => {
   await enTransaccion(t, async (client) => {
     await sembrar(client);
+    await antesDe0046(client);
     await client.query(M0044);
     await client.query(M0046);
 
@@ -87,6 +100,7 @@ test('SCRUM-1660: tras la 0044 y la 0046, Core y authenticated siguen leyendo te
 
 test('SCRUM-1660: la 0046 no reabre tenant ni zona a anon y se registra una sola vez como 0046', opts, async (t) => {
   await enTransaccion(t, async (client) => {
+    await antesDe0046(client);
     await client.query(M0044);
     await client.query(M0046);
     await client.query(M0046);

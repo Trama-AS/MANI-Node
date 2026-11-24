@@ -23,6 +23,8 @@ async function enTransaccion(t, fn) {
   const client = await fabrica.getPool().connect();
   try {
     await client.query('BEGIN');
+    // Candados al empezar y en orden fijo, para no cruzarse con los archivos pg que insertan en paralelo (40P01).
+    await client.query('LOCK TABLE tenant, zona IN ACCESS EXCLUSIVE MODE');
     await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -65,6 +67,8 @@ async function estadoDeQa(client) {
     CREATE POLICY tenant_lectura ON tenant FOR SELECT TO anon, authenticated, mani_core_svc, mani_dispatch_svc USING (true);
     CREATE POLICY zona_lectura ON zona FOR SELECT TO anon, authenticated, mani_core_svc, mani_dispatch_svc USING (true);
     GRANT SELECT ON tenant, zona TO anon;
+    -- Dispatch también leía en QA; la 0046 (SCRUM-1660) se lo quita después, y en CI ya viene aplicada.
+    GRANT SELECT ON tenant, zona TO mani_dispatch_svc;
   `);
 }
 
