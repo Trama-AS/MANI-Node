@@ -94,6 +94,7 @@ const ListEligibleAlliesUseCase = require('./application/useCases/dispatch/ListE
 const GetSolicitudContextUseCase = require('./application/useCases/dispatch/GetSolicitudContextUseCase');
 const GetEligibleAlliesForRequestUseCase = require('./application/useCases/dispatch/GetEligibleAlliesForRequestUseCase');
 const PublishNotificationUseCase = require('./application/useCases/dispatch/PublishNotificationUseCase');
+const { politicaPushConTecho } = require('./application/providers/politicaPushConTecho');
 const ListNotificationsUseCase = require('./application/useCases/dispatch/ListNotificationsUseCase');
 const ListMyInboxUseCase = require('./application/useCases/notifications/ListMyInboxUseCase');
 const { createPushProvider } = require('./infrastructure/push/createPushProvider');
@@ -246,6 +247,7 @@ class Container {
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
       tenantRepository: this.tenantRepository,
+      fileStorageService: this.fileStorageService,
     });
 
     this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
@@ -296,7 +298,12 @@ class Container {
     const notificationDeps = { notificacionRepository: this.notificacionRepository, pushProvider: this.pushProvider };
     this.publishNotificationUseCase = new PublishNotificationUseCase({
       ...notificationDeps,
-      politica: { timeoutMs: config.pushProviderTimeoutMs },
+      // La oferta no espera al push más de `pushOfertaTechoMs` en total (SCRUM-1662): Dispatch corta a los 10 s.
+      politica: politicaPushConTecho({
+        timeoutMs: config.pushProviderTimeoutMs,
+        retries: PublishNotificationUseCase.POLITICA_PUSH.retries,
+        techoMs: config.pushOfertaTechoMs,
+      }),
     });
     this.listNotificationsUseCase = new ListNotificationsUseCase({ notificacionRepository: this.notificacionRepository });
     this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);

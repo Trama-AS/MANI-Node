@@ -380,7 +380,7 @@ test('POST /api/v1/profiles/me/photo permite subir foto en formato soportado y r
     .attach('photo', Buffer.from('fake-png-bytes'), { filename: 'avatar.png', contentType: 'image/png' });
 
   assert.equal(okRes.status, 200);
-  assert.match(okRes.body.profile.photoUrl, /^trama-demo\/demo-ally-1\/avatar-/);
+  assert.match(okRes.body.profile.photoUrl, /^https:\/\/storage\.mani\.local\/kyc-documentos\/trama-demo\/demo-ally-1\/avatar-.+\?token=/);
 
   const badRes = await request(app)
     .post('/api/v1/profiles/me/photo')
