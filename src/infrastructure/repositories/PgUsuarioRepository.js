@@ -26,21 +26,22 @@ class PgUsuarioRepository extends IUsuarioRepository {
     );
   }
 
-  async create({ id, tenantId, email, rol, estado, phone }) {
+  async create({ id, tenantId, email, rol, estado, phone, fullName }) {
     // Mismo upsert por id que hacía handle_new_user (ADR-0022): reintentar un registro no duplica la fila.
     return this.#unaFila(
       tenantId,
-      `INSERT INTO usuario (id, tenant_id, email, rol, estado, telefono)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO usuario (id, tenant_id, email, rol, estado, telefono, nombre)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id) DO UPDATE
           SET tenant_id = EXCLUDED.tenant_id,
               email = EXCLUDED.email,
               rol = EXCLUDED.rol,
               estado = EXCLUDED.estado,
               -- Sin teléfono en la petición se conserva el guardado, como hacía el upsert de supabase-js.
-              telefono = COALESCE(EXCLUDED.telefono, usuario.telefono)
+              telefono = COALESCE(EXCLUDED.telefono, usuario.telefono),
+              nombre = COALESCE(EXCLUDED.nombre, usuario.nombre)
        RETURNING *`,
-      [id, tenantId, email, ROL_TO_DB[rol] || rol, ESTADO_USUARIO_TO_DB[estado] || estado, phone ?? null],
+      [id, tenantId, email, ROL_TO_DB[rol] || rol, ESTADO_USUARIO_TO_DB[estado] || estado, phone ?? null, fullName?.trim() || null],
       'Error creando usuario'
     );
   }

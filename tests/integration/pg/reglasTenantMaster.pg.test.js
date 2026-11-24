@@ -23,12 +23,38 @@ const opts = { skip: url ? false : 'TEST_DATABASE_URL no configurada' };
 const uuid = () => crypto.randomUUID();
 const comoCore = (u) => `${u}${u.includes('?') ? '&' : '?'}options=-c%20role%3Dmani_core_svc`;
 
-// Doble de Rules: aplica la misma política que TenantRulesValidator de MANI-Java para el criterio de orden.
+// Doble de Rules con la política de TenantRulesValidator de MANI-Java (SCRUM-1722): es la única que valida, así que
+// el doble la reproduce y, como Rules, devuelve las reglas normalizadas que Core guarda.
 function rulesDeReglas({ body, headers }) {
   if (!headers['x-tenant-id'] || !headers['x-user-role']) return { status: 400, body: { code: 'TENANT_REQUIRED' } };
-  const criterio = body.rules && body.rules.ordenListado && body.rules.ordenListado.criterio;
-  const violations = ['CALIFICACION', 'COBERTURA'].includes(criterio) ? [] : ['ordenListado.criterio debe ser CALIFICACION o COBERTURA'];
-  return { status: 200, body: { valid: violations.length === 0, version: 'tenant-rules-v1', violations } };
+  const r = body.rules || {};
+  const v = [];
+  const num = (x, min, max, campo) => {
+    if (typeof x !== 'number' || x < min || x > max) v.push(`${campo} debe ser un número entre ${min} y ${max}`);
+  };
+  const criterio = typeof r.ordenListado?.criterio === 'string' ? r.ordenListado.criterio.trim().toUpperCase() : '';
+  if (!['CALIFICACION', 'COBERTURA'].includes(criterio)) v.push('ordenListado.criterio debe ser CALIFICACION o COBERTURA');
+  num(r.alertaTarifa?.toleranciaPorcentaje, 0, 50, 'alertaTarifa.toleranciaPorcentaje');
+  const comision = r.comision?.porcentaje;
+  if (typeof comision !== 'number' || comision < 0 || comision > 30 || Number(comision.toFixed(2)) !== comision) {
+    v.push('comision.porcentaje debe ser un número entre 0 y 30, con máximo 2 decimales');
+  }
+  num(r.cancelacion?.ventanaHoras, 0, 72, 'cancelacion.ventanaHoras');
+  num(r.cancelacion?.penalizacionPorcentaje, 0, 100, 'cancelacion.penalizacionPorcentaje');
+  if (r.cancelacion?.penalizacionPorcentaje > 0 && r.cancelacion?.ventanaHoras === 0) {
+    v.push('cancelacion: una penalización mayor que 0 exige una ventana mayor que 0 horas');
+  }
+  const minutos = r.oferta?.minutosParaAceptar;
+  if (!Number.isInteger(minutos) || minutos < 1 || minutos > 1440) v.push('oferta.minutosParaAceptar debe ser un entero entre 1 y 1440');
+  if (v.length) return { status: 200, body: { valid: false, version: 'tenant-rules-v1', violations: v } };
+  const rules = {
+    ordenListado: { criterio },
+    alertaTarifa: { toleranciaPorcentaje: r.alertaTarifa.toleranciaPorcentaje },
+    comision: { porcentaje: comision },
+    cancelacion: { ventanaHoras: r.cancelacion.ventanaHoras, penalizacionPorcentaje: r.cancelacion.penalizacionPorcentaje },
+    oferta: { minutosParaAceptar: minutos },
+  };
+  return { status: 200, body: { valid: true, version: 'tenant-rules-v1', violations: [], rules } };
 }
 
 const token = (sub, tenant, role) =>
@@ -117,7 +143,7 @@ test('1366 C1: el administrador guarda la v1 y luego la v2; la vigente cambia y 
   assert.equal(enviado.body.rules.ordenListado.criterio, 'COBERTURA');
 });
 
-test('1366 C2: versión desactualizada (409), valores inválidos (400), reglas que Rules rechaza (422) o Rules caído (503) no cambian la vigente', opts, async (t) => {
+test('1366 C2 / 1722: versión desactualizada (409), reglas que Rules rechaza (400) o Rules caído (503) no cambian la vigente', opts, async (t) => {
   const { pool, rules } = await entorno(t);
   const a = await sembrarTenant(pool);
   await api('put', a.jwt.admin, { expectedVersion: 0, reglas: REGLAS });
@@ -133,13 +159,15 @@ test('1366 C2: versión desactualizada (409), valores inválidos (400), reglas q
 
   rules.respondWith(() => ({ status: 200, body: { valid: false, version: 'tenant-rules-v1', violations: ['regla incompatible'] } }));
   const rechazada = await api('put', a.jwt.admin, { expectedVersion: 1, reglas: REGLAS });
-  assert.equal(rechazada.status, 422);
-  assert.equal(rechazada.body.code, 'RULES_VALIDATION_ERROR');
+  // SCRUM-1722: el rechazo de Rules llega con el código del dominio y su violación, como cualquier 400.
+  assert.equal(rechazada.status, 400);
+  assert.equal(rechazada.body.code, 'MANI-RGL-400');
+  assert.match(rechazada.body.error, /regla incompatible/);
 
   rules.respondWith(() => ({ status: 503, body: {} }));
   const caido = await api('put', a.jwt.admin, { expectedVersion: 1, reglas: REGLAS });
   assert.equal(caido.status, 503);
-  assert.equal(caido.body.code, 'RULES_SERVICE_UNAVAILABLE');
+  assert.equal(caido.body.code, 'MANI-RGL-503');
 
   assert.deepEqual(await filas(), antes);
 });

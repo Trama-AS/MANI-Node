@@ -1,6 +1,7 @@
 const Site = require('../../../domain/entities/Site');
 const { ValidationError, NotFoundError } = require('../../../domain/errors/DomainError');
 const { assertClientOwnerOrAdmin, cargarCliente } = require('./clientAccess');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 /** Campos de la sede que se editan aquí. Las reglas tienen su propia operación (PATCH /sites/:id/rules, SCRUM-853). */
 const CAMPOS_EDITABLES = ['nombre', 'direccion', 'zonaId', 'contactoNombre', 'contactoTelefono'];
@@ -61,9 +62,15 @@ class UpdateCompanyClientSiteUseCase {
     if (!guardada) {
       throw new NotFoundError(`Sitio con ID "${siteId}" no encontrado para este cliente.`, 'SITE_NOT_FOUND');
     }
-    console.log(
-      `[UpdateCompanyClientSiteUseCase] Sitio "${guardada.id}" del cliente "${client.id}" editado (${Object.keys(datos).join(', ')}). Corr: ${correlationId}`
-    );
+    logger.info({
+      event: 'company_site_updated',
+      clienteId: client.id,
+      siteId: guardada.id,
+      tenantId,
+      campos: Object.keys(datos),
+      correlationId,
+      message: `Sitio "${guardada.id}" del cliente "${client.id}" editado (${Object.keys(datos).join(', ')})`,
+    });
     return guardada;
   }
 }

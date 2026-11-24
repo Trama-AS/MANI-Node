@@ -1,6 +1,14 @@
 const IRuleEvaluationService = require('../../domain/ports/IRuleEvaluationService');
 const RuleEvaluationResult = require('../../domain/entities/RuleEvaluationResult');
 const { DomainError } = require('../../domain/errors/DomainError');
+const {
+  configurarCliente,
+  ejecutarConReintentos,
+  enviarConEspera,
+  errorDeServidor,
+  errorDeContrato,
+} = require('./resilientHttp');
+const { resolveCorrelationId } = require('../observability/logger');
 
 const EVALUATE_PATH = '/api/v1/rules/categories/evaluate';
 const RATES_PATH = '/api/v1/rules/rates/evaluate';
@@ -8,7 +16,6 @@ const TENANT_RULES_PATH = '/api/v1/rules/tenant-rules/validate';
 const RESULTADOS_TARIFA = new Set(['DENTRO_DE_RANGO', 'POR_DEBAJO', 'POR_ENCIMA']);
 // Lote máximo que acepta Rules por petición (RateEvaluationRequest); el reporte parte la lista.
 const RATES_BATCH = 500;
-const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
 function unavailable(detail) {
   return new DomainError(
@@ -19,21 +26,16 @@ function unavailable(detail) {
 }
 
 /**
- * Adaptador HTTP real de IRuleEvaluationService contra MANI-Java (US-03.1.1-M6).
- * Llama por la red interna (RULES_SERVICE_URL), no a través del Gateway, propagando el tenant y
- * el rol ya verificados en el JWT como X-Tenant-Id / X-User-Role, igual que hace el Gateway.
+ * Adaptador HTTP real de IRuleEvaluationService contra MANI-Java (US-03.1.1-M6, SCRUM-1658, SCRUM-1663).
+ * Llama por la red interna (RULES_SERVICE_URL), no a través del Gateway, propagando el tenant,
+ * el rol y el X-Correlation-ID de la petición en curso.
  *
- * Falla cerrado: si Rules no responde, la operación se rechaza con 503 en vez de aplicar las
- * reglas antiguas en Core. La evaluación es idempotente, así que se reintenta una vez ante
- * errores de red o 502/503/504.
+ * Falla cerrado: si Rules no responde o el circuit breaker está abierto, la operación se rechaza con 503.
  */
 class RulesServiceHttpClient extends IRuleEvaluationService {
-  constructor({ baseUrl, timeoutMs = 3000, retries = 1, fetchImpl = globalThis.fetch } = {}) {
+  constructor(options = {}) {
     super();
-    this.baseUrl = baseUrl;
-    this.timeoutMs = timeoutMs;
-    this.retries = retries;
-    this.fetchImpl = fetchImpl;
+    Object.assign(this, configurarCliente('mani-rules-java', options));
   }
 
   async evaluateCategoryRules({ tenantId, categoryId = null, context, role, correlationId } = {}) {
@@ -81,58 +83,33 @@ class RulesServiceHttpClient extends IRuleEvaluationService {
       throw unavailable('RULES_SERVICE_URL no está configurada');
     }
 
+    const cid = resolveCorrelationId({ correlationId });
     const request = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Id': tenantId,
         'X-User-Role': role,
-        'X-Correlation-ID': correlationId || 'none',
+        'X-Correlation-ID': cid,
       },
       body: JSON.stringify(payload),
     };
 
-    let lastError;
-    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
-      try {
-        return await this._send(path, request);
-      } catch (err) {
-        if (err instanceof DomainError) throw err;
-        lastError = err;
-        if (!err.retryable) break;
-      }
-    }
-    throw unavailable(lastError.message);
+    return ejecutarConReintentos(this, () => this._send(path, request), unavailable);
   }
 
   async _send(path, request) {
-    let response;
-    try {
-      response = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}${path}`, {
-        ...request,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (err) {
-      const reason = err.name === 'TimeoutError' ? `sin respuesta en ${this.timeoutMs} ms` : err.message;
-      throw Object.assign(new Error(reason), { retryable: true });
-    }
+    const response = await enviarConEspera(this, path, request);
 
     if (response.ok) {
       return response.json().catch(() => null);
     }
 
-    if (RETRYABLE_STATUS.has(response.status) || response.status >= 500) {
-      throw Object.assign(new Error(`respondió ${response.status}`), { retryable: RETRYABLE_STATUS.has(response.status) });
-    }
+    if (response.status >= 500) throw errorDeServidor(response.status);
 
     // Un 4xx de Rules significa que Core violó el contrato (encabezados o cuerpo): es una falla
     // de integración, no un dato inválido del usuario.
-    const body = await response.json().catch(() => ({}));
-    throw new DomainError(
-      `El servicio de reglas rechazó la petición (${response.status} ${body.code || ''}): ${body.error || ''}`.trim(),
-      'RULES_SERVICE_ERROR',
-      502
-    );
+    throw await errorDeContrato(response, 'reglas', 'RULES_SERVICE_ERROR');
   }
 }
 

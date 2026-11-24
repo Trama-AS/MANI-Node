@@ -1,5 +1,6 @@
 const { ValidationError, NotFoundError, UnauthorizedError } = require('../../../domain/errors/DomainError');
 const requireCategoryUuid = require('./requireCategoryUuid');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 /**
  * Flujo operativo de la categoría (US-03.1.1-M2.1): activar/desactivar sin
@@ -16,7 +17,7 @@ const requireCategoryUuid = require('./requireCategoryUuid');
  * podría registrar quién lo hizo.
  */
 class SetCategoryStatusUseCase {
-  constructor({ catalogRepository, auditLogger = (entry) => console.info(JSON.stringify(entry)), now = () => new Date() }) {
+  constructor({ catalogRepository, auditLogger = (entry) => logger.audit(entry), now = () => new Date() }) {
     if (!catalogRepository) {
       throw new Error('catalogRepository es requerido para SetCategoryStatusUseCase');
     }

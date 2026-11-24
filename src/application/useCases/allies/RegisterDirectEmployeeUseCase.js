@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const DirectEmployee = require('../../../domain/entities/DirectEmployee');
 const { ValidationError, ConflictError, DomainError } = require('../../../domain/errors/DomainError');
 const isValidEmail = require('../../../domain/validation/isValidEmail');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 // Documento de identidad de una persona: el empleado directo no es una empresa, así que no hay NIT (decisión del PO, 26-oct).
 const VALID_DOCUMENT_TYPES = ['CC', 'CE', 'PASSPORT'];
@@ -18,7 +19,11 @@ async function safeRun(action) {
   try {
     await action();
   } catch (err) {
-    console.error('[RegisterDirectEmployeeUseCase] Falla en compensación:', err?.message || err);
+    logger.error({
+      event: 'direct_employee_compensation_error',
+      component: 'RegisterDirectEmployeeUseCase',
+      message: err?.message || String(err),
+    });
   }
 }
 
@@ -53,7 +58,7 @@ class RegisterDirectEmployeeUseCase {
     directEmployeeRepository,
     fileStorageService,
     authIdentityService,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
     now = () => new Date(),
   }) {
     if (!directEmployeeRepository) throw new Error('directEmployeeRepository es requerido');

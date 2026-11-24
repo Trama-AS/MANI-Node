@@ -1,29 +1,31 @@
 const IDispatchAssignmentService = require('../../domain/ports/IDispatchAssignmentService');
 const { DomainError } = require('../../domain/errors/DomainError');
+const {
+  configurarCliente,
+  ejecutarConReintentos,
+  enviarConEspera,
+  errorDeServidor,
+  errorDeContrato,
+} = require('./resilientHttp');
+const { resolveCorrelationId } = require('../observability/logger');
 
 const ASSIGNMENTS_PATH = '/api/v1/dispatch/assignments/me';
-const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
 function unavailable(detail) {
   return new DomainError(`El servicio de despacho no está disponible: ${detail}`, 'DISPATCH_SERVICE_UNAVAILABLE', 503);
 }
 
 /**
- * Adaptador HTTP de IDispatchAssignmentService contra MANI-Dispatch (SCRUM-853).
- * Llama por la red interna (DISPATCH_SERVICE_URL), no a través del Gateway, reenviando el JWT del aliado:
- * Dispatch lo resuelve con Core y devuelve solo sus asignaciones.
+ * Adaptador HTTP de IDispatchAssignmentService contra MANI-Dispatch (SCRUM-853, SCRUM-1658, SCRUM-1663).
+ * Llama por la red interna (DISPATCH_SERVICE_URL), no a través del Gateway, reenviando el JWT del aliado
+ * y el X-Correlation-ID de la petición en curso.
  *
- * Falla cerrado (criterio T2): si Dispatch no responde, la consulta se rechaza con 503 en vez de suponer que el
- * aliado está o no asignado. La consulta es de solo lectura, así que se reintenta una vez ante errores de red o
- * 502/503/504.
+ * Falla cerrado (criterio T2): si Dispatch no responde o el circuit breaker está abierto, la consulta se rechaza con 503.
  */
 class DispatchServiceHttpClient extends IDispatchAssignmentService {
-  constructor({ baseUrl, timeoutMs = 3000, retries = 1, fetchImpl = globalThis.fetch } = {}) {
+  constructor(options = {}) {
     super();
-    this.baseUrl = baseUrl;
-    this.timeoutMs = timeoutMs;
-    this.retries = retries;
-    this.fetchImpl = fetchImpl;
+    Object.assign(this, configurarCliente('mani-dispatch-dotnet', options));
   }
 
   async listMyAssignedRequestIds({ authorization, correlationId } = {}) {
@@ -31,39 +33,21 @@ class DispatchServiceHttpClient extends IDispatchAssignmentService {
       throw unavailable('DISPATCH_SERVICE_URL no está configurada');
     }
 
+    const cid = resolveCorrelationId({ correlationId });
     const request = {
       method: 'GET',
       headers: {
         Accept: 'application/json',
         Authorization: authorization || '',
-        'X-Correlation-ID': correlationId || 'none',
+        'X-Correlation-ID': cid,
       },
     };
 
-    let lastError;
-    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
-      try {
-        return await this._send(request);
-      } catch (err) {
-        if (err instanceof DomainError) throw err;
-        lastError = err;
-        if (!err.retryable) break;
-      }
-    }
-    throw unavailable(lastError.message);
+    return ejecutarConReintentos(this, () => this._send(request), unavailable);
   }
 
   async _send(request) {
-    let response;
-    try {
-      response = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}${ASSIGNMENTS_PATH}`, {
-        ...request,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (err) {
-      const reason = err.name === 'TimeoutError' ? `sin respuesta en ${this.timeoutMs} ms` : err.message;
-      throw Object.assign(new Error(reason), { retryable: true });
-    }
+    const response = await enviarConEspera(this, ASSIGNMENTS_PATH, request);
 
     if (response.ok) {
       const body = await response.json().catch(() => null);
@@ -76,17 +60,10 @@ class DispatchServiceHttpClient extends IDispatchAssignmentService {
     // 403: Dispatch no reconoce a la cuenta como aliado del tenant, así que no tiene asignaciones.
     if (response.status === 403) return [];
 
-    if (response.status >= 500) {
-      throw Object.assign(new Error(`respondió ${response.status}`), { retryable: RETRYABLE_STATUS.has(response.status) });
-    }
+    if (response.status >= 500) throw errorDeServidor(response.status);
 
     // Otro 4xx (p. ej. 401 con un token que Core ya validó) es una falla de integración entre servicios.
-    const body = await response.json().catch(() => ({}));
-    throw new DomainError(
-      `El servicio de despacho rechazó la petición (${response.status} ${body.code || ''}): ${body.error || ''}`.trim(),
-      'DISPATCH_SERVICE_ERROR',
-      502
-    );
+    throw await errorDeContrato(response, 'despacho', 'DISPATCH_SERVICE_ERROR');
   }
 }
 

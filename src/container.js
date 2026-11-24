@@ -302,7 +302,10 @@ class Container {
     this.listMyInboxUseCase = new ListMyInboxUseCase(notificationDeps);
 
     // Pagos del sandbox (HU-M11-01): proveedor simulado por ambiente (PAYMENT_PROVIDER, por omisión el mock).
-    this.paymentProvider = createPaymentProvider(config.paymentProvider);
+    this.paymentProvider = createPaymentProvider(config.paymentProvider, {
+      url: config.paymentProviderUrl,
+      apiKey: config.paymentProviderApiKey,
+    });
     this.paymentRepository = new PgPaymentRepository({ pgPoolFactory: this.pgPoolFactory });
     this.createPaymentUseCase = new CreatePaymentUseCase({
       paymentRepository: this.paymentRepository,

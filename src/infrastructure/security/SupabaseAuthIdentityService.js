@@ -133,7 +133,12 @@ class SupabaseAuthIdentityService extends IAuthIdentityService {
     if (accessToken) {
       const { error: revokeError } = await client.auth.admin.signOut(accessToken, 'local');
       if (revokeError) {
-        console.warn(`⚠️  No se pudo revocar la sesión del enlace de recuperación del usuario ${userId}: ${revokeError.message}`);
+        const { logger } = require('../observability/logger');
+        logger.warn({
+          event: 'auth_recovery_session_revoke_failed',
+          userId,
+          message: `No se pudo revocar la sesión del enlace de recuperación del usuario ${userId}: ${revokeError.message}`,
+        });
       }
     }
   }

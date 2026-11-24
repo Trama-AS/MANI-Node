@@ -108,7 +108,7 @@ class RegisterClientCompanyUseCase {
     // La compensación corre con la misma identidad, para poder borrar lo que este registro alcanzó a crear.
     await ejecutarComo({ tenantId, userId, role: 'CLIENT' }, async () => {
       try {
-        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone });
+        await this.usuarioRepository.create({ id: userId, tenantId, email, rol: 'CLIENT', estado: 'ACTIVE', phone, fullName: razonSocial });
         usuarioCreado = true;
 
         cliente = await this.clienteRepository.create({

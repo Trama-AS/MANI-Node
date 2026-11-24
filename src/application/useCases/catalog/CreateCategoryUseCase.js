@@ -1,5 +1,6 @@
 const { ValidationError, UnauthorizedError } = require('../../../domain/errors/DomainError');
 const assertCategoryRules = require('./assertCategoryRules');
+const { logger } = require('../../../infrastructure/observability/logger');
 
 /**
  * Creación de categoría de servicio (US-03.1.1-M2.1, HU-M04-01 / SCRUM-1390).
@@ -13,7 +14,7 @@ class CreateCategoryUseCase {
   constructor({
     catalogRepository,
     ruleEvaluationService,
-    auditLogger = (entry) => console.info(JSON.stringify(entry)),
+    auditLogger = (entry) => logger.audit(entry),
     now = () => new Date(),
   }) {
     if (!catalogRepository) {

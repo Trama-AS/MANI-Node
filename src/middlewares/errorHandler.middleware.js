@@ -1,3 +1,5 @@
+const { logger } = require('../infrastructure/observability/logger');
+
 function notFoundHandler(req, res) {
   res.status(404).json({
     error: 'Ruta no encontrada en MANI-Core-Node',
@@ -6,7 +8,15 @@ function notFoundHandler(req, res) {
 }
 
 function errorHandler(err, req, res, _next) {
-  console.error(err);
+  logger.error({
+    event: 'http_error',
+    method: req.method,
+    path: req.originalUrl,
+    statusCode: err?.statusCode || (err?.name === 'MulterError' ? 400 : 500),
+    code: err?.code || 'INTERNAL_ERROR',
+    correlationId: req.correlationId || 'none',
+    message: err?.message || String(err),
+  });
 
   // Multer rechaza campos/archivos fuera de lo configurado (p. ej.
   // LIMIT_UNEXPECTED_FILE cuando el whitelist de auth.routes.js no incluye

@@ -156,22 +156,33 @@ test('TEC-21: documento_kyc exige además el propio aliado o el admin del tenant
   assert.equal((await leer({ tenantId: a.tenant, userId: null, role: null })).length, 0, 'sin usuario, ninguno');
 });
 
-test('TEC-21: con el filtro desactivado, mani_dispatch_svc solo ve las solicitudes de su tenant', opts, async (t) => {
+test('TEC-21 / SCRUM-1660 (QAS-20): mani_dispatch_svc solo accede a solicitud_rechazo de su tenant y no tiene permiso sobre tablas de Core', opts, async (t) => {
   const { pool } = fabricasPg(t, url);
   const dispatch = new PgPoolFactory({ databaseUrl: comoRol(url, 'mani_dispatch_svc') });
   t.after(() => dispatch.close());
   const { a, b } = await sembrarDosTenants(pool);
 
-  const filas = await enContexto(dispatch, { tenantId: a.tenant, userId: a.usuarioAliado, role: 'aliado' }, 'SELECT id, tenant_id FROM solicitud');
-  assert.ok(filas.some((f) => f.id === a.solicitud));
-  assert.ok(filas.every((f) => f.tenant_id === a.tenant));
-  assert.ok(!filas.some((f) => f.id === b.solicitud));
-
-  // Dispatch no tiene GRANT sobre las tablas de Core (ADR-0030): ni con contexto puede leer aliados.
-  await assert.rejects(
-    enContexto(dispatch, { tenantId: a.tenant, userId: a.usuarioAliado, role: 'aliado' }, 'SELECT 1 FROM aliado'),
-    (err) => err.code === '42501'
+  await pool.query(
+    "INSERT INTO solicitud_rechazo (tenant_id, solicitud_id, aliado_id, motivo) VALUES ($1, $2, $3, 'FUERA_DE_ZONA'), ($4, $5, $6, 'FUERA_DE_ZONA')",
+    [a.tenant, a.solicitud, a.aliado, b.tenant, b.solicitud, b.aliado]
   );
+
+  const rechazos = await enContexto(
+    dispatch,
+    { tenantId: a.tenant, userId: a.usuarioCliente, role: 'cliente' },
+    'SELECT solicitud_id, tenant_id FROM solicitud_rechazo'
+  );
+  assert.ok(rechazos.some((f) => f.solicitud_id === a.solicitud));
+  assert.ok(rechazos.every((f) => f.tenant_id === a.tenant));
+  assert.ok(!rechazos.some((f) => f.solicitud_id === b.solicitud));
+
+  // SCRUM-1660 (QAS-20): Dispatch no tiene GRANT sobre ninguna tabla de Core (ni solicitud, ni tenant, ni zona, ni aliado).
+  for (const tabla of ['solicitud', 'tenant', 'zona', 'aliado']) {
+    await assert.rejects(
+      enContexto(dispatch, { tenantId: a.tenant, userId: a.usuarioAliado, role: 'aliado' }, `SELECT 1 FROM ${tabla}`),
+      (err) => err.code === '42501'
+    );
+  }
 });
 
 test('TEC-21: el contexto funciona aunque el rol de servicio no tenga USAGE sobre el esquema auth, como en Supabase', opts, async (t) => {
