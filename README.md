@@ -167,16 +167,25 @@ docker run -d -p 3000:3000 --name mani-core mani-node:local
 ## 🔄 CI/CD
 
 * **CI** (`.github/workflows/ci.yml`): en cada push y PR corre `npm run lint` y `npm test`.
-* **CD** (`.github/workflows/cd.yml`): en cada push a `main`, construye la imagen con el `Dockerfile` (`node:22-alpine`, requerido por `@supabase/supabase-js`) y la publica en GHCR como `ghcr.io/trama-as/mani-node:<sha>` y `:latest`. Luego despliega por SSH primero en **DEV** y, si el health check responde `200`, promueve el mismo artefacto a **QA**.
-* También se puede disparar manualmente (`workflow_dispatch`) para redesplegar un tag de imagen existente sin reconstruir.
+* **Quality Gate** (`.github/workflows/quality-gate.yml`): en los PR a `develop`, `release` y `main` corre las pruebas con cobertura (incluidas las de PostgreSQL, con un servicio `postgres:15`), la prueba de contrato contra `docs/openapi` y SonarQube. `Pruebas y cobertura` y `Sonar Quality Gate` son checks requeridos para fusionar.
+* **CD** (`.github/workflows/cd.yml`): tras un CI en verde sobre `main`, construye la imagen y la publica como `ghcr.io/trama-as/mani-node:<sha>` (sin `:latest`). **Eso es lo único que hace hoy.** Sus jobs `Deploy a DEV` y `Deploy a QA` (por SSH, con secrets `DEV_*` y `QA_*`) **no están operativos**: falta el GitHub Environment `qa` (solo existe `dev`) y el acceso SSH a las VM. Las tres ejecuciones que hay (7 y 22 de octubre, 5 de noviembre) terminaron en `failure`: la imagen se publicó, `Deploy a DEV` falló y `Deploy a QA` se omitió. QA y PROD se despliegan como dice la tabla de [Despliegue](#-despliegue).
 
-Infraestructura pendiente de aprovisionar (coordinar con **CFG-27/CFG-28**) antes de que el job de deploy funcione de punta a punta:
-1. Hosts DEV y QA con Docker instalado, accesibles por SSH desde GitHub Actions runners.
-2. GitHub Environments `dev` y `qa` (Settings → Environments), cada uno con estos secrets:
-   `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PORT` (opcional), `HOST_PORT` (opcional), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `HEALTHCHECK_URL` (ej. `http://<host>:<puerto>/health`).
-3. (Recomendado) "Required reviewers" en el Environment `qa` para aprobar manualmente la promoción DEV → QA.
+---
 
-Hasta que esos secrets existan, el job `build-and-push` sí publicará la imagen en GHCR; los jobs `deploy-dev`/`deploy-qa` fallarán al no encontrar host/credenciales, lo cual es esperado hasta completar el aprovisionamiento.
+## 🚢 Despliegue
+
+La imagen se construye una sola vez y se promueve entre ambientes; no se reconstruye para PROD (SCRUM-1723 / QAS-24). El despliegue en las VM lo hace **DevOps**.
+
+| Rama o acción | Workflow | Imagen en GHCR | Ambiente |
+| :--- | :--- | :--- | :--- |
+| Push a `develop` | `docker-publish.yml` | `ghcr.io/trama-as/mani-node:develop` | Integración |
+| Push a `release` | `docker-publish.yml` | `ghcr.io/trama-as/mani-node:staging` | **QA** (VM `10.43.100.141`) |
+| `promote-latest.yml` (manual, *Run workflow*, desde `main`) | `promote-latest.yml` | `ghcr.io/trama-as/mani-node:latest` = **el mismo digest** de `:staging` | **PROD** |
+| Etiqueta `vX.Y.Z` en `main` | `docker-publish.yml` | `ghcr.io/trama-as/mani-node:X.Y.Z` | Versión publicada |
+
+- `promote-latest.yml` se puede ejecutar cuando llegue a `main`: hoy solo está en `develop` y `release`, y GitHub responde 404 al dispararlo.
+- **Rollback:** se vuelve a ejecutar `promote-latest.yml` con el digest anterior, que queda en el resumen de cada ejecución.
+- **Flujo de ramas** (rama → PR a `develop` → QA → `release` → `main`, nunca PR directo a `main`): [Ramas, flujo y protección](https://github.com/Trama-AS/MANI-docs/blob/main/wiki/03-repositorios/ramas-flujo-y-proteccion.md). **Ambientes:** [Ambientes y promoción](https://github.com/Trama-AS/MANI-docs/blob/main/wiki/04-proceso/ambientes-y-promocion.md).
 
 ---
 
