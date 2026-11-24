@@ -33,7 +33,7 @@ test('SCRUM-1027: actualiza datos personales, teléfono, dirección y foto del u
   assert.equal(updated.fullName, 'Usuario Demo Actualizado');
   assert.equal(updated.phone, '+57 300 456 7890');
   assert.equal(updated.address, 'Calle 100 # 15-20 Apto 401');
-  assert.match(updated.photoUrl, /^trama-demo\/demo-user-1\/avatar-/);
+  assert.match(updated.photoUrl, /^https:\/\/storage\.mani\.local\/kyc-documentos\/trama-demo\/demo-user-1\/avatar-.+\?token=/);
 });
 
 test('SCRUM-854: rechaza con 403 MANI-PRF-403 cuando intenta editar el perfil de otro usuario', async () => {
@@ -199,6 +199,6 @@ test('SCRUM-1628 C3: una foto de más de 5 MB se rechaza con MANI-PRF-413 y no c
       tenantId: 'trama-demo',
       photoFile: { originalname: 'a.png', mimetype, buffer: Buffer.alloc(MB5, 1) },
     });
-    assert.match(ok.photoUrl, /^trama-demo\/demo-user-1\/avatar-/, mimetype);
+    assert.match(ok.photoUrl, /^https:\/\/storage\.mani\.local\/kyc-documentos\/trama-demo\/demo-user-1\/avatar-.+\?token=/, mimetype);
   }
 });

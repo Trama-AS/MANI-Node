@@ -5,6 +5,7 @@ const {
   NotFoundError,
   ValidationError,
 } = require('../../../domain/errors/DomainError');
+const { conFotoFirmada } = require('./fotoPerfilFirmada');
 
 const PHONE_REGEX = /^\+?[0-9\s()-]{7,20}$/;
 // SCRUM-1628 (decisión del PO en SCRUM-854): la foto de perfil es JPG o PNG de hasta 5 MB; no se acepta WEBP.
@@ -162,7 +163,9 @@ class UpdateOwnProfileUseCase {
       throw new NotFoundError(`No se encontró un perfil para el usuario ${userId}`, 'MANI-PRF-404');
     }
 
-    return typeof updatedProfile.toJSON === 'function' ? updatedProfile.toJSON() : updatedProfile;
+    const json = typeof updatedProfile.toJSON === 'function' ? updatedProfile.toJSON() : updatedProfile;
+    // En la base queda la ruta; la respuesta lleva una URL firmada que la app pueda mostrar (SCRUM-1634).
+    return conFotoFirmada(json, this.fileStorageService);
   }
 }
 

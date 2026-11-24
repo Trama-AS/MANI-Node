@@ -246,6 +246,7 @@ class Container {
     this.getOwnProfileUseCase = new GetOwnProfileUseCase({
       profileRepository: this.profileRepository,
       tenantRepository: this.tenantRepository,
+      fileStorageService: this.fileStorageService,
     });
 
     this.updateOwnProfileUseCase = new UpdateOwnProfileUseCase({
